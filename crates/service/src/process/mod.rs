@@ -38,12 +38,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     let (sync_sender, sync_receiver) = flume::unbounded::<SyncEvent>();
 
     // Create state with sync sender
-    let state = match ServiceState::from_config(
-        service_config,
-        sync_sender.clone(),
-    )
-    .await
-    {
+    let state = match ServiceState::from_config(service_config, sync_sender.clone()).await {
         Ok(state) => std::sync::Arc::new(state),
         Err(e) => {
             tracing::error!("error creating server state: {}", e);

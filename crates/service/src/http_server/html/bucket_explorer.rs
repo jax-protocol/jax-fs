@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tracing::instrument;
 use uuid::Uuid;
 
-use common::bucket::Manifest;
+use common::mount::Manifest;
 use common::linked_data::BlockEncoded;
 
 use crate::database::models::SyncStatus;

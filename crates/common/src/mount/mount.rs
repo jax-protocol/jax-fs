@@ -6,7 +6,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use uuid::Uuid;
 
-use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, Share};
+use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
@@ -73,7 +73,7 @@ pub enum MountError {
     #[error("codec error: {0}")]
     Codec(#[from] CodecError),
     #[error("share error: {0}")]
-    Share(#[from] crate::crypto::ShareError),
+    Share(#[from] crate::crypto::SecretShareError),
     #[error("peers share was not found. this should be impossible")]
     ShareNotFound,
 }
@@ -143,7 +143,7 @@ impl Mount {
         // put the node in the blobs store for the secret
         let entry_link = Self::_put_node_in_blobs(&entry, &secret, blobs).await?;
         // share the secret with the owner
-        let share = Share::new(&secret, &owner.public())?;
+        let share = SecretShare::new(&secret, &owner.public())?;
         // Initialize pins with root node hash
         let mut pins = Pins::new();
         pins.insert(*entry_link.hash());

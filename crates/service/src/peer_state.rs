@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use common::bucket::Manifest;
+use common::mount::Manifest;
 use common::crypto::SecretKey;
 use common::linked_data::{BlockEncoded, Link};
 use common::peer::{BlobsStore, BucketSyncStatus, PeerStateProvider, ShareInfo, SyncStatus};
@@ -37,7 +37,12 @@ impl std::fmt::Debug for ServicePeerState {
 }
 
 impl ServicePeerState {
-    pub fn new(database: Database, blobs: BlobsStore, endpoint: iroh::Endpoint, node_secret: SecretKey) -> Self {
+    pub fn new(
+        database: Database,
+        blobs: BlobsStore,
+        endpoint: iroh::Endpoint,
+        node_secret: SecretKey,
+    ) -> Self {
         Self {
             database,
             blobs,
@@ -56,7 +61,8 @@ impl ServicePeerState {
         use std::net::{Ipv4Addr, SocketAddrV4};
 
         // Create the endpoint
-        let socket_addr = listen_addr.unwrap_or_else(|| std::net::SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
+        let socket_addr = listen_addr
+            .unwrap_or_else(|| std::net::SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
 
         let addr = SocketAddrV4::new(
             socket_addr

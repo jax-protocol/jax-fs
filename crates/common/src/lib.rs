@@ -1,9 +1,4 @@
-/**
- * Common types that dsecribe core JaxBucket responsibilities.
- *  - Buckets
- *  - Nodes
- */
-pub mod bucket;
+pub mod bucket_state_provider;
 /**
  * Cryptographic types and operations.
  *  - Public and Private key implementations
@@ -18,6 +13,14 @@ pub mod crypto;
  */
 pub mod linked_data;
 /**
+ * Common types that describe how to mount
+ *  and operate on our internal representation
+ *  of a 'bucket'.
+ * Represents the contents of a bucket at a given
+ *  version
+ */
+pub mod mount;
+/**
  * Storage layer implementation.
  *  Just a light wrapper around the Iroh-Blobs
  *  protocol and ALPN handler
@@ -30,9 +33,9 @@ pub mod peer;
 pub mod version;
 
 pub mod prelude {
-    pub use crate::bucket::{Manifest, Mount, MountError};
     pub use crate::crypto::{PublicKey, SecretKey};
     pub use crate::linked_data::{multibase, Cid, CidError, Link};
+    pub use crate::mount::{Manifest, Mount, MountError};
     pub use crate::peer::Peer;
     pub use crate::version::build_info;
 }

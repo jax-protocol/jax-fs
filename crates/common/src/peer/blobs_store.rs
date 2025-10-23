@@ -13,7 +13,7 @@ use iroh_blobs::{
         downloader::{Downloader, Shuffled},
         ExportBaoError, RequestError,
     },
-    store::fs::FsStore,
+    store::{fs::FsStore, mem::MemStore},
     BlobsProtocol, Hash,
 };
 
@@ -64,6 +64,14 @@ impl BlobsStore {
         let store = FsStore::load(path).await?;
         tracing::debug!("BlobsStore::load completed loading FsStore");
         // let blobs = Blobs::builder(store).build(&endpoint);
+        let blobs = BlobsProtocol::new(&store, None);
+        Ok(Self {
+            inner: Arc::new(blobs),
+        })
+    }
+
+    pub async fn memory() -> Result<Self, BlobsStoreError> {
+        let store = MemStore::new();
         let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {
             inner: Arc::new(blobs),

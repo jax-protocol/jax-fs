@@ -57,19 +57,20 @@ impl State {
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Create peer state which will own endpoint creation
-        let peer_state = Arc::new(ServicePeerState::from_config(
-            database.clone(),
-            blobs.clone(),
-            blobs_store_path.clone(),
-            node_secret.clone(),
-            config.node_listen_addr,
-        ).await.map_err(|e| StateSetupError::PeerStateError(e.to_string()))?);
+        let peer_state = Arc::new(
+            ServicePeerState::from_config(
+                database.clone(),
+                blobs.clone(),
+                blobs_store_path.clone(),
+                node_secret.clone(),
+                config.node_listen_addr,
+            )
+            .await
+            .map_err(|e| StateSetupError::PeerStateError(e.to_string()))?,
+        );
 
         // 5. Build peer from the state (peer will use the endpoint from state via the protocol handler)
-        let peer = Peer::from_state(
-            peer_state.clone(),
-            blobs_store_path,
-        );
+        let peer = Peer::from_state(peer_state.clone(), blobs_store_path);
 
         // Log the bound addresses
         let bound_addrs = peer.endpoint().bound_sockets();

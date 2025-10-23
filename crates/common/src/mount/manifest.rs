@@ -3,20 +3,20 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::crypto::{PublicKey, Secret, Share, ShareError};
+use crate::crypto::{PublicKey, Secret, SecretShare, SecretShareError};
 use crate::linked_data::{BlockEncoded, DagCborCodec, Link};
 use crate::version::Version;
 
 use super::principal::{Principal, PrincipalRole};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BucketShare {
+pub struct Share {
     principal: Principal,
-    share: Share,
+    share: SecretShare,
 }
 
-impl BucketShare {
-    pub fn new(share: Share, public_key: PublicKey) -> Self {
+impl Share {
+    pub fn new(share: SecretShare, public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
                 role: PrincipalRole::Owner,
@@ -30,12 +30,12 @@ impl BucketShare {
         &self.principal
     }
 
-    pub fn share(&self) -> &Share {
+    pub fn share(&self) -> &SecretShare {
         &self.share
     }
 }
 
-pub type Shares = BTreeMap<String, BucketShare>;
+pub type Shares = BTreeMap<String, Share>;
 
 /**
 * BucketData
@@ -82,7 +82,7 @@ impl Manifest {
         id: Uuid,
         name: String,
         owner: PublicKey,
-        share: Share,
+        share: SecretShare,
         entry: Link,
         pins: Link,
     ) -> Self {
@@ -91,7 +91,7 @@ impl Manifest {
             name,
             shares: BTreeMap::from([(
                 owner.to_hex(),
-                BucketShare {
+                Share {
                     principal: Principal {
                         role: PrincipalRole::Owner,
                         identity: owner,
@@ -106,13 +106,17 @@ impl Manifest {
         }
     }
 
-    pub fn get_share(&self, public_key: &PublicKey) -> Option<&BucketShare> {
+    pub fn get_share(&self, public_key: &PublicKey) -> Option<&Share> {
         self.shares.get(&public_key.to_hex())
     }
 
-    pub fn add_share(&mut self, public_key: PublicKey, secret: Secret) -> Result<(), ShareError> {
-        let share = Share::new(&secret, &public_key)?;
-        let bucket_share = BucketShare::new(share, public_key);
+    pub fn add_share(
+        &mut self,
+        public_key: PublicKey,
+        secret: Secret,
+    ) -> Result<(), SecretShareError> {
+        let share = SecretShare::new(&secret, &public_key)?;
+        let bucket_share = Share::new(share, public_key);
         self.shares.insert(public_key.to_hex(), bucket_share);
         Ok(())
     }
@@ -129,7 +133,7 @@ impl Manifest {
         &self.name
     }
 
-    pub fn shares(&self) -> &BTreeMap<String, BucketShare> {
+    pub fn shares(&self) -> &BTreeMap<String, Share> {
         &self.shares
     }
 
@@ -173,11 +177,11 @@ mod tests {
         use ipld_core::codec::Codec;
         use serde_ipld_dagcbor::codec::DagCborCodec;
 
-        let share = Share::default();
+        let share = SecretShare::default();
 
         // Try to encode/decode just the Share
         let encoded = DagCborCodec::encode_to_vec(&share).unwrap();
-        let decoded: Share = DagCborCodec::decode_from_slice(&encoded).unwrap();
+        let decoded: SecretShare = DagCborCodec::decode_from_slice(&encoded).unwrap();
 
         assert_eq!(share, decoded);
     }

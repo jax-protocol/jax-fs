@@ -37,9 +37,7 @@ impl std::fmt::Debug for JaxProtocol {
 impl JaxProtocol {
     /// Create a new JAX protocol handler with the given state provider
     pub fn new(state: Arc<dyn PeerStateProvider>) -> Self {
-        Self {
-            state,
-        }
+        Self { state }
     }
 
     /// Handle an incoming connection

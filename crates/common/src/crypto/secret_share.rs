@@ -37,11 +37,11 @@ pub const KW_NONCE_SIZE: usize = 8;
 ///
 /// Layout: ephemeral_pubkey (32) || wrapped_secret (40) = 72 bytes
 /// Note: AES-KW adds 8 bytes of padding to the 32-byte secret, resulting in 40 bytes
-pub const SHARE_SIZE: usize = PUBLIC_KEY_SIZE + SECRET_SIZE + KW_NONCE_SIZE;
+pub const SECRET_SHARE_SIZE: usize = PUBLIC_KEY_SIZE + SECRET_SIZE + KW_NONCE_SIZE;
 
 /// Errors that can occur during share creation or recovery
 #[derive(Debug, thiserror::Error)]
-pub enum ShareError {
+pub enum SecretShareError {
     #[error("share error: {0}")]
     Default(#[from] anyhow::Error),
     #[error("key error: {0}")]
@@ -76,9 +76,9 @@ pub enum ShareError {
 /// assert_eq!(bucket_secret, recovered_secret);
 /// ```
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub struct Share(pub(crate) [u8; SHARE_SIZE]);
+pub struct SecretShare(pub(crate) [u8; SECRET_SHARE_SIZE]);
 
-impl Serialize for Share {
+impl Serialize for SecretShare {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -87,7 +87,7 @@ impl Serialize for Share {
     }
 }
 
-impl<'de> Deserialize<'de> for Share {
+impl<'de> Deserialize<'de> for SecretShare {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -98,7 +98,7 @@ impl<'de> Deserialize<'de> for Share {
         struct ShareVisitor;
 
         impl<'de> Visitor<'de> for ShareVisitor {
-            type Value = Share;
+            type Value = SecretShare;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a byte array or sequence of SHARE_SIZE")
@@ -108,15 +108,15 @@ impl<'de> Deserialize<'de> for Share {
             where
                 E: Error,
             {
-                if v.len() != SHARE_SIZE {
+                if v.len() != SECRET_SHARE_SIZE {
                     return Err(E::invalid_length(
                         v.len(),
-                        &format!("expected {} bytes", SHARE_SIZE).as_str(),
+                        &format!("expected {} bytes", SECRET_SHARE_SIZE).as_str(),
                     ));
                 }
-                let mut array = [0u8; SHARE_SIZE];
+                let mut array = [0u8; SECRET_SHARE_SIZE];
                 array.copy_from_slice(v);
-                Ok(Share(array))
+                Ok(SecretShare(array))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -127,15 +127,15 @@ impl<'de> Deserialize<'de> for Share {
                 while let Some(byte) = seq.next_element::<u8>()? {
                     bytes.push(byte);
                 }
-                if bytes.len() != SHARE_SIZE {
+                if bytes.len() != SECRET_SHARE_SIZE {
                     return Err(A::Error::invalid_length(
                         bytes.len(),
-                        &format!("expected {} bytes", SHARE_SIZE).as_str(),
+                        &format!("expected {} bytes", SECRET_SHARE_SIZE).as_str(),
                     ));
                 }
-                let mut array = [0u8; SHARE_SIZE];
+                let mut array = [0u8; SECRET_SHARE_SIZE];
                 array.copy_from_slice(&bytes);
-                Ok(Share(array))
+                Ok(SecretShare(array))
             }
         }
 
@@ -144,50 +144,50 @@ impl<'de> Deserialize<'de> for Share {
     }
 }
 
-impl Default for Share {
+impl Default for SecretShare {
     fn default() -> Self {
-        Share([0; SHARE_SIZE])
+        SecretShare([0; SECRET_SHARE_SIZE])
     }
 }
 
-impl From<[u8; SHARE_SIZE]> for Share {
-    fn from(bytes: [u8; SHARE_SIZE]) -> Self {
-        Share(bytes)
+impl From<[u8; SECRET_SHARE_SIZE]> for SecretShare {
+    fn from(bytes: [u8; SECRET_SHARE_SIZE]) -> Self {
+        SecretShare(bytes)
     }
 }
 
-impl From<Share> for [u8; SHARE_SIZE] {
-    fn from(share: Share) -> Self {
+impl From<SecretShare> for [u8; SECRET_SHARE_SIZE] {
+    fn from(share: SecretShare) -> Self {
         share.0
     }
 }
 
-impl TryFrom<&[u8]> for Share {
-    type Error = ShareError;
+impl TryFrom<&[u8]> for SecretShare {
+    type Error = SecretShareError;
     fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
-        if bytes.len() != SHARE_SIZE {
+        if bytes.len() != SECRET_SHARE_SIZE {
             return Err(anyhow::anyhow!(
                 "invalid share size, expected {}, got {}",
-                SHARE_SIZE,
+                SECRET_SHARE_SIZE,
                 bytes.len()
             )
             .into());
         }
-        let mut share = Share::default();
+        let mut share = SecretShare::default();
         share.0.copy_from_slice(bytes);
         Ok(share)
     }
 }
 
-impl Share {
+impl SecretShare {
     /// Parse a share from a hexadecimal string
     ///
     /// Accepts both plain hex and "0x"-prefixed hex strings.
-    pub fn from_hex(hex: &str) -> Result<Self, ShareError> {
+    pub fn from_hex(hex: &str) -> Result<Self, SecretShareError> {
         let hex = hex.strip_prefix("0x").unwrap_or(hex);
-        let mut buff = [0; SHARE_SIZE];
+        let mut buff = [0; SECRET_SHARE_SIZE];
         hex::decode_to_slice(hex, &mut buff).map_err(|_| anyhow::anyhow!("hex decode error"))?;
-        Ok(Share::from(buff))
+        Ok(SecretShare::from(buff))
     }
 
     /// Convert share to hexadecimal string
@@ -213,7 +213,7 @@ impl Share {
     /// # Errors
     ///
     /// Returns an error if key conversion or encryption fails.
-    pub fn new(secret: &Secret, recipient: &PublicKey) -> Result<Self, ShareError> {
+    pub fn new(secret: &Secret, recipient: &PublicKey) -> Result<Self, SecretShareError> {
         // Generate ephemeral Ed25519 keypair
         let ephemeral_private = SecretKey::generate();
         let ephemeral_public = ephemeral_private.public();
@@ -235,11 +235,11 @@ impl Share {
             .map_err(|_| anyhow::anyhow!("AES-KW wrap error"))?;
 
         // Build share: ephemeral_public_key || wrapped_secret
-        let mut share = Share::default();
+        let mut share = SecretShare::default();
         let ephemeral_bytes = ephemeral_public.to_bytes();
 
         // sanity check we're getting `SHARE_SIZE` bytes here
-        if ephemeral_bytes.len() + wrapped.len() != SHARE_SIZE {
+        if ephemeral_bytes.len() + wrapped.len() != SECRET_SHARE_SIZE {
             return Err(anyhow::anyhow!("expected share size is incorrect").into());
         };
 
@@ -273,7 +273,7 @@ impl Share {
     ///
     /// If this function returns an error, it means either the Share was created for a different
     /// recipient, the data was corrupted, or an attacker tampered with it.
-    pub fn recover(&self, recipient_secret: &SecretKey) -> Result<Secret, ShareError> {
+    pub fn recover(&self, recipient_secret: &SecretKey) -> Result<Secret, SecretShareError> {
         // Extract the ephemeral public key
         let ephemeral_public_bytes = &self.0[..PUBLIC_KEY_SIZE];
         let ephemeral_public = PublicKey::try_from(ephemeral_public_bytes)?;
@@ -319,7 +319,7 @@ mod test {
         let secret = Secret::from_slice(&[42u8; SECRET_SIZE]).unwrap();
         let private_key = SecretKey::generate();
         let public_key = private_key.public();
-        let share = Share::new(&secret, &public_key).unwrap();
+        let share = SecretShare::new(&secret, &public_key).unwrap();
         let recovered_secret = share.recover(&private_key).unwrap();
         assert_eq!(secret, recovered_secret);
     }
@@ -331,7 +331,7 @@ mod test {
         let alice_public = alice_private.public();
         let bob_private = SecretKey::generate();
         // Alice creates a share for Bob
-        let share = Share::new(&secret, &alice_public).unwrap();
+        let share = SecretShare::new(&secret, &alice_public).unwrap();
         // Alice can recover the secret
         let recovered_by_alice = share.recover(&alice_private).unwrap();
         assert_eq!(secret, recovered_by_alice);
@@ -345,9 +345,9 @@ mod test {
         let secret = Secret::generate();
         let private_key = SecretKey::generate();
         let public_key = private_key.public();
-        let share = Share::new(&secret, &public_key).unwrap();
+        let share = SecretShare::new(&secret, &public_key).unwrap();
         let hex = share.to_hex();
-        let recovered_share = Share::from_hex(&hex).unwrap();
+        let recovered_share = SecretShare::from_hex(&hex).unwrap();
         assert_eq!(share, recovered_share);
         let recovered_secret = recovered_share.recover(&private_key).unwrap();
         assert_eq!(secret, recovered_secret);
@@ -358,13 +358,13 @@ mod test {
         let secret = Secret::generate();
         let private_key = SecretKey::generate();
         let public_key = private_key.public();
-        let share = Share::new(&secret, &public_key).unwrap();
+        let share = SecretShare::new(&secret, &public_key).unwrap();
 
         // Serialize to JSON
         let json = serde_json::to_string(&share).unwrap();
 
         // Deserialize from JSON
-        let recovered_share: Share = serde_json::from_str(&json).unwrap();
+        let recovered_share: SecretShare = serde_json::from_str(&json).unwrap();
 
         // Verify the share is identical
         assert_eq!(share, recovered_share);
@@ -379,13 +379,13 @@ mod test {
         let secret = Secret::generate();
         let private_key = SecretKey::generate();
         let public_key = private_key.public();
-        let share = Share::new(&secret, &public_key).unwrap();
+        let share = SecretShare::new(&secret, &public_key).unwrap();
 
         // Serialize to binary
         let binary = bincode::serialize(&share).unwrap();
 
         // Deserialize from binary
-        let recovered_share: Share = bincode::deserialize(&binary).unwrap();
+        let recovered_share: SecretShare = bincode::deserialize(&binary).unwrap();
 
         // Verify the share is identical
         assert_eq!(share, recovered_share);
@@ -398,14 +398,14 @@ mod test {
     #[test]
     fn test_share_deserialize_invalid_length() {
         // Test with too short data
-        let short_data = vec![0u8; SHARE_SIZE - 1];
-        let result: Result<Share, _> =
+        let short_data = vec![0u8; SECRET_SHARE_SIZE - 1];
+        let result: Result<SecretShare, _> =
             bincode::deserialize(&bincode::serialize(&short_data).unwrap());
         assert!(result.is_err());
 
         // Test with too long data
-        let long_data = vec![0u8; SHARE_SIZE + 1];
-        let result: Result<Share, _> =
+        let long_data = vec![0u8; SECRET_SHARE_SIZE + 1];
+        let result: Result<SecretShare, _> =
             bincode::deserialize(&bincode::serialize(&long_data).unwrap());
         assert!(result.is_err());
     }
@@ -413,13 +413,13 @@ mod test {
     #[test]
     fn test_share_deserialize_exact_size() {
         // Test that exact size data can be deserialized
-        let exact_data = vec![0u8; SHARE_SIZE];
+        let exact_data = vec![0u8; SECRET_SHARE_SIZE];
         let serialized = bincode::serialize(&exact_data).unwrap();
-        let result: Result<Share, _> = bincode::deserialize(&serialized);
+        let result: Result<SecretShare, _> = bincode::deserialize(&serialized);
         assert!(result.is_ok());
 
         let share = result.unwrap();
-        assert_eq!(share.0, [0u8; SHARE_SIZE]);
+        assert_eq!(share.0, [0u8; SECRET_SHARE_SIZE]);
     }
 
     #[test]
@@ -427,16 +427,16 @@ mod test {
         let secret = Secret::generate();
         let private_key = SecretKey::generate();
         let public_key = private_key.public();
-        let original_share = Share::new(&secret, &public_key).unwrap();
+        let original_share = SecretShare::new(&secret, &public_key).unwrap();
 
         // Test JSON roundtrip
         let json = serde_json::to_string(&original_share).unwrap();
-        let json_share: Share = serde_json::from_str(&json).unwrap();
+        let json_share: SecretShare = serde_json::from_str(&json).unwrap();
         assert_eq!(original_share, json_share);
 
         // Test Bincode roundtrip
         let binary = bincode::serialize(&original_share).unwrap();
-        let binary_share: Share = bincode::deserialize(&binary).unwrap();
+        let binary_share: SecretShare = bincode::deserialize(&binary).unwrap();
         assert_eq!(original_share, binary_share);
 
         // Ensure all formats produce the same result

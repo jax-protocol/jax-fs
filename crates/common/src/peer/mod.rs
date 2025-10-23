@@ -9,12 +9,13 @@ use crate::crypto::SecretKey;
 
 mod blobs_store;
 pub mod jax_protocol;
+mod peer_state;
 mod sync;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
 pub use jax_protocol::{
-    announce_to_peer, fetch_bucket, ping_peer, BucketSyncStatus, JaxProtocol,
-    PeerStateProvider, PingRequest, PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
+    announce_to_peer, fetch_bucket, ping_peer, BucketSyncStatus, JaxProtocol, PeerStateProvider,
+    PingRequest, PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
 };
 pub use sync::handle_announce;
 

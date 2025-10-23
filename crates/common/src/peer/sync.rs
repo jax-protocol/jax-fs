@@ -4,7 +4,7 @@ use futures::future::join_all;
 use iroh::Endpoint;
 use uuid::Uuid;
 
-use crate::bucket::Manifest;
+use crate::mount::Manifest;
 use crate::crypto::PublicKey;
 use crate::linked_data::{BlockEncoded, Link};
 
@@ -50,8 +50,16 @@ pub async fn handle_announce(
                 bucket_id
             );
             // Create bucket from peer
-            create_bucket_from_peer(bucket_id, &new_link, &peer_id, &peer_label, blobs, endpoint, &state)
-                .await?;
+            create_bucket_from_peer(
+                bucket_id,
+                &new_link,
+                &peer_id,
+                &peer_label,
+                blobs,
+                endpoint,
+                &state,
+            )
+            .await?;
             return Ok(());
         }
     };
