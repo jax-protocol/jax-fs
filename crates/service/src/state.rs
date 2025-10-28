@@ -51,7 +51,7 @@ impl State {
             temp_dir.path().to_path_buf()
         });
         tracing::debug!("ServiceState::from_config - loading blobs store");
-        let blobs = BlobsStore::load(&blobs_store_path)
+        let blobs = BlobsStore::fs(&blobs_store_path)
             .await
             .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
         tracing::debug!("ServiceState::from_config - blobs store loaded successfully");

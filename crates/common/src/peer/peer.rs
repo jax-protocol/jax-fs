@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::bucket_state_provider::{BucketStateProvider, BucketSyncStatus};
+use crate::bucket_state_provider::{BucketLogProvider, BucketSyncStatus};
 
 use crate::crypto::SecretKey;
 use crate::linked_data::Link;
@@ -13,16 +13,16 @@ use iroh::{protocol::Router, Endpoint, NodeId};
 use tokio::sync::watch::Receiver as WatchReceiver;
 
 pub use super::blobs_store::{BlobsStore, BlobsStoreError};
-pub use super::jax_protocol::{
-    announce_to_peer, fetch_bucket, ping_peer, JaxProtocol, PeerStateProvider, PingRequest,
-    PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
-};
+// pub use super::protocol::{
+//     announce_to_peer, fetch_bucket, ping_peer, JaxProtocol, PeerStateProvider, PingRequest,
+//     PingResponse, ShareInfo, SyncStatus, JAX_ALPN,
+// };
 
 // Re-export iroh types for convenience
 pub use iroh::NodeAddr;
 
 #[derive(Clone, Default)]
-pub struct PeerStateBuilder<BucketStateProvider> {
+pub struct PeerBuilder<BucketStateProvider> {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
     socket_addr: Option<SocketAddr>,
@@ -34,9 +34,9 @@ pub struct PeerStateBuilder<BucketStateProvider> {
 }
 
 // TODO (amiller68): proper errors
-impl<BucketStateProvider> PeerStateBuilder<BucketStateProvider> {
+impl<BucketStateProvider> PeerBuilder<BucketStateProvider> {
     pub fn new() -> Self {
-        PeerStateBuilder {
+        PeerBuilder {
             socket_addr: None,
             secret_key: None,
             blobs_store: None,
@@ -64,7 +64,7 @@ impl<BucketStateProvider> PeerStateBuilder<BucketStateProvider> {
         self
     }
 
-    pub async fn build(self) -> PeerState<BucketStateProvider> {
+    pub async fn build(self) -> Peer<BucketStateProvider> {
         // set the socket port to unspecified if not set
         let socket_addr = self
             .socket_addr
@@ -108,7 +108,7 @@ impl<BucketStateProvider> PeerStateBuilder<BucketStateProvider> {
             .bucket_state_provider
             .expect("bucket_state_provider must be set");
 
-        PeerState {
+        Peer {
             bucket_state_provider,
             socket_address: socket_addr,
             blobs_store,
@@ -121,7 +121,8 @@ impl<BucketStateProvider> PeerStateBuilder<BucketStateProvider> {
 /// Overview of a peer's state, generic over a bucket state provider.
 ///  Provides everything that a peer needs in order to
 ///  load data, interact with peers, and manage buckets.
-pub struct PeerState<BucketStateProvider> {
+#[derive(Debug)]
+pub struct Peer<BucketStateProvider> {
     bucket_state_provider: BucketStateProvider,
     socket_address: SocketAddr,
     blobs_store: BlobsStore,
@@ -129,78 +130,24 @@ pub struct PeerState<BucketStateProvider> {
     endpoint: Endpoint,
 }
 
-impl<BucketStateProvider> PeerState<BucketStateProvider> {
-    // ===== Data Access =====
+impl<BucketStateProvider> Peer<BucketStateProvider> {
+    pub fn bucket_state(&self) -> &BucketStateProvider {
+        &self.bucket_state_provider
+    }
 
-    /// Access to the blobs store
-    fn blobs(&self) -> &BlobsStore {
+    pub fn blobs(&self) -> &BlobsStore {
         &self.blobs_store
     }
 
-    /// Form an endpoint from our key and discovery
-    fn endpoint(&self) -> &Endpoint {
+    pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
     }
 
-    /// Access to the node's secret key
     fn secret(&self) -> &SecretKey {
         &self.secret_key
     }
 
-    // ===== Bucket Queries =====
-    //
-    /// Check the sync status of a bucket given a target link
-    ///
-    /// This compares the target_link against the current state of the bucket:
-    /// - NotFound: The bucket doesn't exist
-    /// - InSync: The target_link matches the current bucket link
-    /// - Ahead: We are ahead of the target_link (target is in our history)
-    /// - Behind: We are behind the target_link (we need to sync)
-    async fn check_bucket_sync(
-        &self,
-        _bucket_id: Uuid,
-        _target_link: &Link,
-    ) -> Result<SyncStatus, anyhow::Error> {
-        todo!()
+    pub fn socket(&self) -> &SocketAddr {
+        &self.socket_address
     }
-
-    // /// Get the current link for a bucket
-    // ///
-    // /// Returns None if the bucket doesn't exist
-    // async fn get_bucket_link(&self, bucket_id: Uuid) -> Result<Option<Link>, anyhow::Error>;
-
-    // /// Get all shares (peers) for a bucket
-    // async fn get_bucket_shares(&self, bucket_id: Uuid) -> Result<Vec<ShareInfo>, anyhow::Error>;
-
-    // // ===== Bucket Mutations =====
-
-    // /// Update the bucket link in storage
-    // async fn update_bucket_link(
-    //     &self,
-    //     bucket_id: Uuid,
-    //     new_link: Link,
-    // ) -> Result<(), anyhow::Error>;
-
-    // /// Update the bucket link and mark as synced (combined operation)
-    // async fn update_bucket_link_and_sync(
-    //     &self,
-    //     bucket_id: Uuid,
-    //     new_link: Link,
-    // ) -> Result<(), anyhow::Error>;
-
-    // /// Update sync status for a bucket
-    // async fn update_sync_status(
-    //     &self,
-    //     bucket_id: Uuid,
-    //     status: BucketSyncStatus,
-    //     error: Option<String>,
-    // ) -> Result<(), anyhow::Error>;
-
-    // /// Create a new bucket from a peer (for first-time sync)
-    // async fn create_bucket(
-    //     &self,
-    //     bucket_id: Uuid,
-    //     name: String,
-    //     link: Link,
-    // ) -> Result<(), anyhow::Error>;
 }

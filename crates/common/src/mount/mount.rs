@@ -742,7 +742,7 @@ mod test {
 
         let secret_key = SecretKey::generate();
         // Generate iroh secret key from random bytes
-        let blobs = BlobsStore::load(&blob_path).await.unwrap();
+        let blobs = BlobsStore::fs(&blob_path).await.unwrap();
 
         let mount = Mount::init(Uuid::new_v4(), "test".to_string(), &secret_key, &blobs)
             .await

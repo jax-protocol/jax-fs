@@ -59,7 +59,7 @@ impl BlobsStore {
     ///     Exposes a peer for the private key used to initiate
     ///     the endpoint.
     #[allow(clippy::doc_overindented_list_items)]
-    pub async fn load(path: &Path) -> Result<Self, BlobsStoreError> {
+    pub async fn fs(path: &Path) -> Result<Self, BlobsStoreError> {
         tracing::debug!("BlobsStore::load called with path: {:?}", path);
         let store = FsStore::load(path).await?;
         tracing::debug!("BlobsStore::load completed loading FsStore");
@@ -70,6 +70,7 @@ impl BlobsStore {
         })
     }
 
+    /// Load a memory blobs store
     pub async fn memory() -> Result<Self, BlobsStoreError> {
         let store = MemStore::new();
         let blobs = BlobsProtocol::new(&store, None);
@@ -348,7 +349,7 @@ mod tests {
 
         // let store = FsStore::load(&blob_path).await.unwrap();
         // let blobs = BlobsProtocol::new(&store, None);
-        let blobs = BlobsStore::load(&blob_path).await.unwrap();
+        let blobs = BlobsStore::fs(&blob_path).await.unwrap();
         (blobs, temp_dir)
     }
 
