@@ -6,7 +6,9 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::crypto::PublicKey;
-use common::peer::{ping_peer, NodeAddr, SyncStatus};
+// FIXME: ping_peer and SyncStatus don't exist yet in common::peer
+// use common::peer::{ping_peer, NodeAddr, SyncStatus};
+use crate::database::models::SyncStatus;
 
 use crate::mount_ops;
 use crate::ServiceState;
@@ -21,14 +23,15 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 }
 
 /// Get status badge styling for a given sync status
-fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
-    match status {
-        SyncStatus::NotFound => ("Not Found", "bg-gray-100 text-gray-800"),
-        SyncStatus::Behind => ("Behind", "bg-yellow-100 text-yellow-800"),
-        SyncStatus::InSync => ("In Sync", "bg-green-100 text-green-800"),
-        SyncStatus::Ahead => ("Ahead", "bg-orange-100 text-orange-800"),
-    }
-}
+// FIXME: Commented out until SyncStatus is properly defined
+// fn status_badge_class(status: &SyncStatus) -> (&'static str, &'static str) {
+//     match status {
+//         SyncStatus::NotFound => ("Not Found", "bg-gray-100 text-gray-800"),
+//         SyncStatus::Behind => ("Behind", "bg-yellow-100 text-yellow-800"),
+//         SyncStatus::InSync => ("In Sync", "bg-green-100 text-green-800"),
+//         SyncStatus::Ahead => ("Ahead", "bg-orange-100 text-orange-800"),
+//     }
+// }
 
 #[derive(Template)]
 #[template(path = "peers_explorer.html")]
@@ -82,7 +85,7 @@ pub async fn handler(
         }
 
         // Parse the public key from hex
-        let pub_key = match PublicKey::from_hex(&share.public_key) {
+        let _pub_key = match PublicKey::from_hex(&share.public_key) {
             Ok(key) => key,
             Err(e) => {
                 tracing::error!("Invalid public key {}: {}", share.public_key, e);
@@ -90,39 +93,9 @@ pub async fn handler(
             }
         };
 
-        // Ping the remote peer
-        let node_addr = NodeAddr::new(*pub_key);
-        let ping_result = ping_peer(
-            state.node().endpoint(),
-            &node_addr,
-            bucket_id,
-            bucket.link.clone(),
-        )
-        .await;
-
-        // Ping with timeout
-        let peer_status = match timeout(Duration::from_secs(3), async { ping_result }).await {
-            Ok(Ok(status)) => {
-                tracing::info!(
-                    "Ping successful for peer {}: {:?}",
-                    share.public_key,
-                    status
-                );
-                let (text, class) = status_badge_class(&status);
-                (text.to_string(), class.to_string())
-            }
-            Ok(Err(e)) => {
-                tracing::error!("Failed to ping peer {}: {}", share.public_key, e);
-                ("Error".to_string(), "bg-red-100 text-red-800".to_string())
-            }
-            Err(_) => {
-                tracing::warn!("Ping timeout for peer {}", share.public_key);
-                (
-                    "Offline".to_string(),
-                    "bg-gray-100 text-gray-800".to_string(),
-                )
-            }
-        };
+        // FIXME: ping_peer and NodeAddr don't exist yet
+        // Temporarily stub out peer pinging functionality
+        let peer_status = ("Unknown".to_string(), "bg-gray-100 text-gray-800".to_string());
 
         peers.push(PeerInfo {
             public_key: share.public_key.clone(),

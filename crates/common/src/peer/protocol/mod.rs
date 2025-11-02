@@ -8,7 +8,7 @@ use iroh::{
 mod messages;
 
 use super::peer::Peer;
-use messages::{Message, Reply};
+use messages::{Message, Ping, PingStatus, Pong, Reply};
 
 // /// Callback type for handling announce messages
 // pub type AnnounceCallback = Arc<
@@ -22,16 +22,103 @@ use messages::{Message, Reply};
 /// ALPN identifier for the JAX protocol
 pub const ALPN: &[u8] = b"/iroh-jax/1";
 
+/// Handle a ping request by checking the bucket log
+async fn handle_ping<L: crate::bucket_log_provider::BucketLogProvider + Clone>(
+    log_provider: L,
+    ping: &Ping,
+) -> PingStatus
+where
+    L::Error: std::fmt::Display,
+{
+    // Get our current height for this bucket
+    let our_height = match log_provider.height(ping.bucket_id).await {
+        Ok(h) => h,
+        Err(e) => {
+            // Check if it's a HeadNotFound error (bucket doesn't exist)
+            match e {
+                crate::bucket_log_provider::BucketLogError::HeadNotFound(_) => {
+                    return PingStatus::NotFound;
+                }
+                _ => {
+                    tracing::error!("Error getting bucket height: {}", e);
+                    return PingStatus::NotFound;
+                }
+            }
+        }
+    };
+
+    // Check if we have the link they're pinging about
+    let link_heights = match log_provider.has(ping.bucket_id, ping.link.clone()).await {
+        Ok(heights) => heights,
+        Err(e) => {
+            tracing::error!("Error checking if we have link: {}", e);
+            return PingStatus::NotFound;
+        }
+    };
+
+    // If we don't have the link at all, we're behind
+    if link_heights.is_empty() {
+        // Get our current head to send back
+        match log_provider.head(ping.bucket_id, our_height).await {
+            Ok(our_head) => return PingStatus::Behind(our_head),
+            Err(e) => {
+                tracing::error!("Error getting our head: {}", e);
+                return PingStatus::NotFound;
+            }
+        }
+    }
+
+    // Check if the link exists at the height they claim
+    if !link_heights.contains(&ping.height) {
+        // We have the link but at different height - out of sync
+        tracing::warn!(
+            "Link {} exists at heights {:?} but peer claims height {}",
+            ping.link,
+            link_heights,
+            ping.height
+        );
+        return PingStatus::OutOfSync;
+    }
+
+    // We have the link at the correct height
+    if ping.height == our_height {
+        // Same height and same link - in sync
+        PingStatus::InSync
+    } else if ping.height < our_height {
+        // They're at a link we have but we're ahead
+        match log_provider.head(ping.bucket_id, our_height).await {
+            Ok(our_head) => PingStatus::Ahead(our_head),
+            Err(e) => {
+                tracing::error!("Error getting our head: {}", e);
+                PingStatus::OutOfSync
+            }
+        }
+    } else {
+        // They claim a higher height than we have - we're behind
+        match log_provider.head(ping.bucket_id, our_height).await {
+            Ok(our_head) => PingStatus::Behind(our_head),
+            Err(e) => {
+                tracing::error!("Error getting our head: {}", e);
+                PingStatus::OutOfSync
+            }
+        }
+    }
+}
+
 // Implement the iroh protocol handler trait
 // This allows the router to accept connections for this protocol
-impl<BucketStateProvider: std::marker::Send + std::marker::Sync + std::fmt::Debug + 'static>
-    ProtocolHandler for Peer<BucketStateProvider>
+impl<L> ProtocolHandler for Peer<L>
+where
+    L: crate::bucket_log_provider::BucketLogProvider + Clone + std::marker::Send + std::marker::Sync + std::fmt::Debug + 'static,
+    L::Error: std::fmt::Display,
 {
     #[allow(refining_impl_trait)]
     fn accept(
         &self,
         conn: iroh::endpoint::Connection,
     ) -> BoxFuture<'static, Result<(), AcceptError>> {
+        let log_provider = self.log_provider().clone();
+
         Box::pin(async move {
             tracing::debug!("new connection from {:?}", conn.remote_node_id());
             let (mut send, mut recv) = conn.accept_bi().await.map_err(|e| {
@@ -41,7 +128,7 @@ impl<BucketStateProvider: std::marker::Send + std::marker::Sync + std::fmt::Debu
             tracing::debug!("bidirectional stream accepted");
 
             // Get remote peer ID for announce handling
-            let remote_node_id = conn.remote_node_id().map(|id| id.to_string());
+            let _remote_node_id = conn.remote_node_id().map(|id| id.to_string());
 
             // NOTE (amiller68): our current request limit is 1MB,
             //  otherwise nodes will communicate over blobs for anything large.
@@ -60,13 +147,36 @@ impl<BucketStateProvider: std::marker::Send + std::marker::Sync + std::fmt::Debu
             match message {
                 Message::Ping(ping_req) => {
                     tracing::info!(
-                        "Received ping request for bucket {} with link {:?}",
+                        "Received ping request for bucket {} with link {:?} at height {}",
                         ping_req.bucket_id,
-                        ping_req.link
+                        ping_req.link,
+                        ping_req.height
                     );
-                    todo!()
+
+                    let status = handle_ping(log_provider.clone(), &ping_req).await;
+                    let reply = Reply::Ping(Pong { status });
+
+                    // Serialize and send response
+                    let reply_bytes = bincode::serialize(&reply).map_err(|e| {
+                        tracing::error!("Failed to serialize reply: {}", e);
+                        let err: Box<dyn std::error::Error + Send + Sync> =
+                            anyhow!("failed to serialize reply: {}", e).into();
+                        AcceptError::from(err)
+                    })?;
+
+                    send.write_all(&reply_bytes).await.map_err(|e| {
+                        tracing::error!("failed to send reply: {}", e);
+                        AcceptError::from(std::io::Error::other(e))
+                    })?;
+
+                    send.finish().map_err(|e| {
+                        tracing::error!("failed to finish stream: {}", e);
+                        AcceptError::from(std::io::Error::other(e))
+                    })?;
                 }
-                _ => todo!(),
+                _ => {
+                    tracing::warn!("Received unhandled message type");
+                }
             }
 
             // // Dispatch based on request type

@@ -4,7 +4,7 @@ mod announce;
 mod ping;
 
 pub use announce::Announce;
-pub use ping::{Ping, Pong};
+pub use ping::{Ping, PingStatus, Pong};
 
 // TODO (amiller68): in an ideal world,
 //  this module describes a generic 'handler'

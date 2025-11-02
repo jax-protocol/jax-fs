@@ -1,3 +1,4 @@
+pub mod bucket_log_provider;
 pub mod models;
 mod sqlite;
 mod types;

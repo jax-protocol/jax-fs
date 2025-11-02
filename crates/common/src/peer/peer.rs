@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::bucket_state_provider::BucketLogProvider;
+use crate::bucket_log_provider::BucketLogProvider;
 
 use crate::crypto::SecretKey;
 use crate::linked_data::Link;
@@ -8,6 +8,7 @@ use crate::linked_data::Link;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
 
+use futures::FutureExt;
 use iroh::discovery::pkarr::dht::DhtDiscovery;
 use iroh::{protocol::Router, Endpoint, NodeId};
 use tokio::sync::watch::Receiver as WatchReceiver;
@@ -22,7 +23,7 @@ pub use super::blobs_store::{BlobsStore, BlobsStoreError};
 pub use iroh::NodeAddr;
 
 #[derive(Clone, Default)]
-pub struct PeerBuilder<BucketStateProvider> {
+pub struct PeerBuilder<L: BucketLogProvider> {
     /// the socket addr to expose the peer on
     ///  if not set, an ephemeral port will be used
     socket_addr: Option<SocketAddr>,
@@ -30,17 +31,17 @@ pub struct PeerBuilder<BucketStateProvider> {
     secret_key: Option<SecretKey>,
     /// pre-loaded blobs store (if provided, blobs_store_path is ignored)
     blobs_store: Option<BlobsStore>,
-    bucket_state_provider: Option<BucketStateProvider>,
+    log_provider: Option<L>,
 }
 
 // TODO (amiller68): proper errors
-impl<BucketStateProvider> PeerBuilder<BucketStateProvider> {
+impl<L: BucketLogProvider> PeerBuilder<L> {
     pub fn new() -> Self {
         PeerBuilder {
             socket_addr: None,
             secret_key: None,
             blobs_store: None,
-            bucket_state_provider: None,
+            log_provider: None,
         }
     }
 
@@ -59,12 +60,12 @@ impl<BucketStateProvider> PeerBuilder<BucketStateProvider> {
         self
     }
 
-    pub fn bucket_state_provider(mut self, bucket_state_provider: BucketStateProvider) -> Self {
-        self.bucket_state_provider = Some(bucket_state_provider);
+    pub fn log_provider(mut self, log_provider: L) -> Self {
+        self.log_provider = Some(log_provider);
         self
     }
 
-    pub async fn build(self) -> Peer<BucketStateProvider> {
+    pub async fn build(self) -> Peer<L> {
         // set the socket port to unspecified if not set
         let socket_addr = self
             .socket_addr
@@ -103,13 +104,13 @@ impl<BucketStateProvider> PeerBuilder<BucketStateProvider> {
             .await
             .expect("failed to bind ephemeral endpoint");
 
-        // get the bucket state provider, must be set
-        let bucket_state_provider = self
-            .bucket_state_provider
-            .expect("bucket_state_provider must be set");
+        // get the log provider, must be set
+        let log_provider = self
+            .log_provider
+            .expect("log_provider must be set");
 
         Peer {
-            bucket_state_provider,
+            log_provider,
             socket_address: socket_addr,
             blobs_store,
             secret_key,
@@ -118,21 +119,69 @@ impl<BucketStateProvider> PeerBuilder<BucketStateProvider> {
     }
 }
 
-/// Overview of a peer's state, generic over a bucket state provider.
+/// Overview of a peer's state, generic over a bucket log provider.
 ///  Provides everything that a peer needs in order to
 ///  load data, interact with peers, and manage buckets.
-#[derive(Debug)]
-pub struct Peer<BucketStateProvider> {
-    bucket_state_provider: BucketStateProvider,
+#[derive(Debug, Clone)]
+pub struct Peer<L: BucketLogProvider> {
+    log_provider: L,
     socket_address: SocketAddr,
     blobs_store: BlobsStore,
     secret_key: SecretKey,
     endpoint: Endpoint,
 }
 
-impl<BucketStateProvider> Peer<BucketStateProvider> {
-    pub fn bucket_state(&self) -> &BucketStateProvider {
-        &self.bucket_state_provider
+impl<L: BucketLogProvider> Peer<L> {
+    /// Create a Peer from a log provider and blobs store path
+    pub fn from_state(log_provider: L, _blobs_store_path: PathBuf) -> Self {
+        // Get necessary components from the bucket state provider
+        // For now, we'll use default values - this should be updated based on the actual state interface
+        let socket_addr = SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0);
+        let secret_key = SecretKey::generate();
+
+        // Setup our discovery mechanism for our peer
+        let mainline_discovery = DhtDiscovery::builder()
+            .secret_key(secret_key.0.clone())
+            .build()
+            .expect("failed to build mainline discovery");
+
+        // Convert the SocketAddr to a SocketAddrV4
+        let addr = SocketAddrV4::new(
+            socket_addr
+                .ip()
+                .to_string()
+                .parse::<Ipv4Addr>()
+                .expect("failed to parse IP address"),
+            socket_addr.port(),
+        );
+
+        // Create the endpoint with our key and discovery
+        let endpoint = Endpoint::builder()
+            .secret_key(secret_key.0.clone())
+            .discovery(mainline_discovery)
+            .bind_addr_v4(addr)
+            .bind()
+            .now_or_never()
+            .expect("failed to bind immediately")
+            .expect("failed to bind ephemeral endpoint");
+
+        // Create blobs store in memory for now
+        let blobs_store = BlobsStore::memory()
+            .now_or_never()
+            .expect("failed to create blobs store immediately")
+            .expect("failed to create blobs store");
+
+        Peer {
+            log_provider,
+            socket_address: socket_addr,
+            blobs_store,
+            secret_key,
+            endpoint,
+        }
+    }
+
+    pub fn log_provider(&self) -> &L {
+        &self.log_provider
     }
 
     pub fn blobs(&self) -> &BlobsStore {
@@ -143,11 +192,15 @@ impl<BucketStateProvider> Peer<BucketStateProvider> {
         &self.endpoint
     }
 
-    fn secret(&self) -> &SecretKey {
+    pub fn secret(&self) -> &SecretKey {
         &self.secret_key
     }
 
     pub fn socket(&self) -> &SocketAddr {
         &self.socket_address
+    }
+
+    pub fn id(&self) -> NodeId {
+        self.endpoint.node_id()
     }
 }

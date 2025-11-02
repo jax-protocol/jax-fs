@@ -3,7 +3,10 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use common::linked_data::Link;
-use common::peer::{Peer, PeerStateProvider};
+// FIXME: PeerStateProvider doesn't exist yet
+// use common::peer::{Peer, PeerStateProvider};
+use crate::peer_state::ServicePeerState;
+use common::peer::Peer;
 
 /// Events that trigger sync operations
 #[derive(Debug, Clone)]
@@ -23,12 +26,12 @@ pub enum SyncEvent {
 /// This replaces the large SyncManager with a simple event loop
 /// that delegates all sync logic to the Peer.
 pub struct SyncCoordinator {
-    peer: Peer,
-    state: Arc<dyn PeerStateProvider>,
+    peer: Peer<crate::database::Database>,
+    state: Arc<ServicePeerState>,
 }
 
 impl SyncCoordinator {
-    pub fn new(peer: Peer, state: Arc<dyn PeerStateProvider>) -> Self {
+    pub fn new(peer: Peer<crate::database::Database>, state: Arc<ServicePeerState>) -> Self {
         Self { peer, state }
     }
 
@@ -42,28 +45,31 @@ impl SyncCoordinator {
         while let Ok(event) = receiver.recv_async().await {
             tracing::debug!("Received sync event: {:?}", event);
 
-            let result = match event {
-                SyncEvent::Pull { bucket_id } => {
-                    self.peer.sync_pull(bucket_id, self.state.clone()).await
-                }
+            // FIXME: sync_pull and sync_push methods don't exist yet on Peer
+            // let result = match event {
+            //     SyncEvent::Pull { bucket_id } => {
+            //         self.peer.sync_pull(bucket_id, self.state.clone()).await
+            //     }
 
-                SyncEvent::Push {
-                    bucket_id,
-                    new_link,
-                } => {
-                    self.peer
-                        .sync_push(bucket_id, new_link, self.state.clone())
-                        .await
-                }
+            //     SyncEvent::Push {
+            //         bucket_id,
+            //         new_link,
+            //     } => {
+            //         self.peer
+            //             .sync_push(bucket_id, new_link, self.state.clone())
+            //             .await
+            //     }
 
-                SyncEvent::Retry { bucket_id } => {
-                    self.peer.sync_pull(bucket_id, self.state.clone()).await
-                }
-            };
+            //     SyncEvent::Retry { bucket_id } => {
+            //         self.peer.sync_pull(bucket_id, self.state.clone()).await
+            //     }
+            // };
 
-            if let Err(e) = result {
-                tracing::error!("Sync error: {}", e);
-            }
+            // if let Err(e) = result {
+            //     tracing::error!("Sync error: {}", e);
+            // }
+
+            tracing::warn!("Sync event received but sync methods are not implemented yet: {:?}", event);
         }
 
         tracing::info!("Sync coordinator stopped");

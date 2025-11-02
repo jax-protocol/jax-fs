@@ -13,7 +13,7 @@ use common::peer::{BlobsStore, Peer};
 #[derive(Clone)]
 pub struct State {
     peer_state: Arc<ServicePeerState>,
-    peer: Peer,
+    peer: Peer<Database>,
     sync_sender: flume::Sender<SyncEvent>,
 }
 
@@ -69,8 +69,8 @@ impl State {
             .map_err(|e| StateSetupError::PeerStateError(e.to_string()))?,
         );
 
-        // 5. Build peer from the state (peer will use the endpoint from state via the protocol handler)
-        let peer = Peer::from_state(peer_state.clone(), blobs_store_path);
+        // 5. Build peer from the database as the log provider
+        let peer = Peer::from_state(database.clone(), blobs_store_path);
 
         // Log the bound addresses
         let bound_addrs = peer.endpoint().bound_sockets();
@@ -84,11 +84,11 @@ impl State {
         })
     }
 
-    pub fn peer(&self) -> &Peer {
+    pub fn peer(&self) -> &Peer<Database> {
         &self.peer
     }
 
-    pub fn node(&self) -> &Peer {
+    pub fn node(&self) -> &Peer<Database> {
         // Alias for backwards compatibility
         &self.peer
     }
@@ -113,8 +113,8 @@ impl State {
     }
 }
 
-impl AsRef<Peer> for State {
-    fn as_ref(&self) -> &Peer {
+impl AsRef<Peer<Database>> for State {
+    fn as_ref(&self) -> &Peer<Database> {
         &self.peer
     }
 }

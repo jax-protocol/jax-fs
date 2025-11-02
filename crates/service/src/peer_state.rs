@@ -5,7 +5,8 @@ use uuid::Uuid;
 use common::mount::Manifest;
 use common::crypto::SecretKey;
 use common::linked_data::{BlockEncoded, Link};
-use common::peer::{BlobsStore, BucketSyncStatus, PeerStateProvider, ShareInfo, SyncStatus};
+// FIXME: BucketSyncStatus, PeerStateProvider, ShareInfo, SyncStatus don't exist yet
+use common::peer::BlobsStore;
 use iroh::Endpoint;
 
 use crate::database::models::SyncStatus as DbSyncStatus;
@@ -165,6 +166,9 @@ impl ServicePeerState {
     }
 }
 
+// FIXME: PeerStateProvider trait doesn't exist yet
+// Commenting out this implementation until the trait is properly defined
+/*
 #[async_trait]
 impl PeerStateProvider for ServicePeerState {
     async fn check_bucket_sync(
@@ -305,3 +309,4 @@ impl PeerStateProvider for ServicePeerState {
         &self.node_secret
     }
 }
+*/

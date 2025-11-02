@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT MAX(height) as \"max_height: i64\"\n            FROM bucket_log\n            WHERE bucket_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "max_height: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "6f2cfe3cf6a74b14ee7be9f06e3df0281bb141a5e02ace9395cef7c4e886ea56"
+}

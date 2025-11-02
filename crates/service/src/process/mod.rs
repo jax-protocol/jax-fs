@@ -85,17 +85,18 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     });
     handles.push(api_handle);
 
-    // spawn a router for the node
-    let node_state = state.clone();
-    let node_rx = shutdown_rx.clone();
-    let node_handle = tokio::spawn(async move {
-        let node = node_state.node();
-        tracing::info!("Starting node");
-        if let Err(e) = node.spawn(node_rx).await {
-            tracing::error!("Node error: {}", e);
-        }
-    });
-    handles.push(node_handle);
+    // FIXME: spawn a router for the node - spawn method doesn't exist yet
+    // let node_state = state.clone();
+    // let node_rx = shutdown_rx.clone();
+    // let node_handle = tokio::spawn(async move {
+    //     let node = node_state.node();
+    //     tracing::info!("Starting node");
+    //     if let Err(e) = node.spawn(node_rx).await {
+    //         tracing::error!("Node error: {}", e);
+    //     }
+    // });
+    // handles.push(node_handle);
+    tracing::warn!("Node spawning is disabled until spawn method is implemented");
 
     // Spawn sync coordinator
     let sync_coordinator = SyncCoordinator::new(state.peer().clone(), state.peer_state().clone());

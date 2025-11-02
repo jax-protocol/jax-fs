@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT current_link as \"current_link!: DCid\"\n            FROM bucket_log\n            WHERE bucket_id = $1 AND height = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "current_link!: DCid",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b16de3803be3ce16436473c9ff8697ad5218d599abd5133b1d8d40e1b9b79901"
+}

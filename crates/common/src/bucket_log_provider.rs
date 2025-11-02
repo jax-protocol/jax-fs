@@ -7,7 +7,7 @@ use crate::linked_data::Link;
 //  with dependency injection over a generic type
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
-enum BucketLogError<T> {
+pub enum BucketLogError<T> {
     /// The bucket log is empty
     #[error("unhandled bucket log provider error: {0}")]
     Provider(#[from] T),

@@ -16,7 +16,8 @@ pub struct IndexTemplate {
 pub async fn handler(State(state): State<ServiceState>) -> askama_axum::Response {
     let node = state.node();
     let node_id = node.id().to_string();
-    let blobs_path = node.blobs_store_path().display().to_string();
+    // FIXME: blobs_store_path method doesn't exist yet on Peer
+    let blobs_path = "N/A".to_string();
 
     let template = IndexTemplate {
         node_id,
