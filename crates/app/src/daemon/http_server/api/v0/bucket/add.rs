@@ -111,15 +111,8 @@ pub async fn handler(
     let reader = Cursor::new(file_data);
     mount.add(&mount_path_buf, reader).await?;
 
-    // TODO: Get bucket name from database for logging
-    // For now just use bucket_id as name
-    let bucket_name = bucket_id.to_string();
-
     // Save mount and update log
-    let new_bucket_link = state
-        .peer()
-        .save_mount(bucket_id, bucket_name, &mount)
-        .await?;
+    let new_bucket_link = state.peer().save_mount(&mount).await?;
 
     Ok((
         http::StatusCode::OK,

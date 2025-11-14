@@ -1,117 +1,16 @@
 use crate::crypto::{PublicKey, SecretKey};
 
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::SocketAddr;
 
 use anyhow::{anyhow, Result};
-use iroh::discovery::pkarr::dht::DhtDiscovery;
 use iroh::{Endpoint, NodeId};
 use uuid::Uuid;
 
 pub use super::blobs_store::BlobsStore;
 
-use crate::bucket_log::{BucketLogError, BucketLogProvider};
+use crate::bucket_log::BucketLogProvider;
 use crate::linked_data::Link;
 use crate::mount::{Manifest, Mount, MountError};
-
-#[derive(Clone, Default)]
-pub struct PeerBuilder<L: BucketLogProvider> {
-    /// the socket addr to expose the peer on
-    ///  if not set, an ephemeral port will be used
-    socket_address: Option<SocketAddr>,
-    /// the identity of the peer, as a SecretKey
-    secret_key: Option<SecretKey>,
-    /// pre-loaded blobs store (if provided, blobs_store_path is ignored)
-    blobs_store: Option<BlobsStore>,
-    log_provider: Option<L>,
-}
-
-// TODO (amiller68): proper errors
-impl<L: BucketLogProvider> PeerBuilder<L> {
-    pub fn new() -> Self {
-        PeerBuilder {
-            socket_address: None,
-            secret_key: None,
-            blobs_store: None,
-            log_provider: None,
-        }
-    }
-
-    pub fn socket_address(mut self, socket_addr: SocketAddr) -> Self {
-        self.socket_address = Some(socket_addr);
-        self
-    }
-
-    pub fn secret_key(mut self, secret_key: SecretKey) -> Self {
-        self.secret_key = Some(secret_key);
-        self
-    }
-
-    pub fn blobs_store(mut self, blobs: BlobsStore) -> Self {
-        self.blobs_store = Some(blobs);
-        self
-    }
-
-    pub fn log_provider(mut self, log_provider: L) -> Self {
-        self.log_provider = Some(log_provider);
-        self
-    }
-
-    pub async fn build(self) -> Peer<L> {
-        // set the socket port to unspecified if not set
-        let socket_addr = self
-            .socket_address
-            .unwrap_or_else(|| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
-        // generate a new secret key if not set
-        let secret_key = self.secret_key.unwrap_or_else(SecretKey::generate);
-
-        // get the blobs store, if not set use in memory
-        let blobs_store = match self.blobs_store {
-            Some(blobs) => blobs,
-            None => BlobsStore::memory().await.unwrap(),
-        };
-
-        // setup our discovery mechanism for our peer
-        let mainline_discovery = DhtDiscovery::builder()
-            .secret_key(secret_key.0.clone())
-            .build()
-            .expect("failed to build mainline discovery");
-
-        // Convert the SocketAddr to a SocketAddrV4
-        let addr = SocketAddrV4::new(
-            socket_addr
-                .ip()
-                .to_string()
-                .parse::<Ipv4Addr>()
-                .expect("failed to parse IP address"),
-            socket_addr.port(),
-        );
-
-        // Create the endpoint with our key and discovery
-        let endpoint = Endpoint::builder()
-            .secret_key(secret_key.0.clone())
-            .discovery(mainline_discovery)
-            .bind_addr_v4(addr)
-            .bind()
-            .await
-            .expect("failed to bind ephemeral endpoint");
-
-        // get the log provider, must be set
-        let log_provider = self.log_provider.expect("log_provider is required");
-
-        // Create the job dispatcher and receiver
-        let (jobs, job_receiver) = super::jobs::JobDispatcher::new();
-
-        Peer {
-            log_provider,
-            socket_address: socket_addr,
-            blobs_store,
-            secret_key,
-            endpoint,
-            jobs,
-            job_receiver: Some(job_receiver),
-        }
-    }
-}
 
 /// Overview of a peer's state, generic over a bucket log provider.
 ///  Provides everything that a peer needs in order to
@@ -145,17 +44,27 @@ where
     }
 }
 
-#[derive(thiserror::Error, Debug)]
-pub enum PeerError<L: BucketLogProvider> {
-    #[error("mount error: {0}")]
-    Mount(#[from] MountError),
-    #[error("bucket log error: {0}")]
-    BucketLog(BucketLogError<L::Error>),
-    #[error("missing link in bucket log: {0}")]
-    MissingLink(Link),
-}
-
 impl<L: BucketLogProvider> Peer<L> {
+    pub fn new(
+        log_provider: L,
+        socket_address: SocketAddr,
+        blobs_store: BlobsStore,
+        secret_key: SecretKey,
+        endpoint: Endpoint,
+        jobs: super::jobs::JobDispatcher,
+        job_receiver: super::jobs::JobReceiver,
+    ) -> Peer<L> {
+        Self {
+            log_provider,
+            socket_address,
+            blobs_store,
+            secret_key,
+            endpoint,
+            jobs,
+            job_receiver: Some(job_receiver),
+        }
+    }
+
     pub fn logs(&self) -> &L {
         &self.log_provider
     }
@@ -226,42 +135,6 @@ impl<L: BucketLogProvider> Peer<L> {
         Mount::load(&link, &self.secret_key, &self.blobs_store).await
     }
 
-    /// Load mount at a specific link
-    ///
-    /// Validates that the link exists in the bucket's history before loading.
-    ///
-    /// # Arguments
-    ///
-    /// * `bucket_id` - The UUID of the bucket
-    /// * `link` - The specific link to load
-    ///
-    /// # Returns
-    ///
-    /// The Mount at the specified link
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Link not found in bucket's log history
-    /// - Failed to load mount from blobs
-    pub async fn mount_at(&self, bucket_id: Uuid, link: Link) -> Result<Mount, PeerError<L>> {
-        // Validate link exists in history
-        let heights = self
-            .log_provider
-            .has(bucket_id, link.clone())
-            .await
-            .map_err(|e| PeerError::BucketLog(e))?;
-
-        if heights.is_empty() {
-            return Err(PeerError::MissingLink(link));
-        }
-
-        // Load mount at the link (height is read from manifest)
-        Mount::load(&link, &self.secret_key, &self.blobs_store)
-            .await
-            .map_err(|e| PeerError::Mount(e))
-    }
-
     /// Save a mount and append it to the bucket's log
     ///
     /// This method:
@@ -284,15 +157,16 @@ impl<L: BucketLogProvider> Peer<L> {
     /// Returns error if:
     /// - Failed to save mount to blobs
     /// - Failed to append to log
-    pub async fn save_mount(
-        &self,
-        bucket_id: Uuid,
-        name: String,
-        mount: &Mount,
-    ) -> Result<Link, MountError> {
+    pub async fn save_mount(&self, mount: &Mount) -> Result<Link, MountError> {
         // Get our own public key to exclude from notifications
         let our_public_key = self.secret_key.public();
         tracing::info!("SAVE_MOUNT: Our public key: {}", our_public_key.to_hex());
+
+        let inner_mount = mount.inner().await;
+        let manifest = inner_mount.manifest();
+
+        let bucket_id = manifest.id().clone();
+        let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
         let (link, previous_link, height) = mount.save(self.blobs()).await?;

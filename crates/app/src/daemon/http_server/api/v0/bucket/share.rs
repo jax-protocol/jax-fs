@@ -55,16 +55,9 @@ pub async fn handler(
         req.peer_public_key
     );
 
-    // TODO: Get bucket name from database for logging
-    // For now just use bucket_id as name
-    let bucket_name = req.bucket_id.to_string();
-
     tracing::info!("SHARE API: Calling save_mount for bucket {}", req.bucket_id);
     // Save mount and update log
-    let new_bucket_link = state
-        .peer()
-        .save_mount(req.bucket_id, bucket_name, &mount)
-        .await?;
+    let new_bucket_link = state.peer().save_mount(&mount).await?;
 
     tracing::info!(
         "SHARE API: Bucket {} shared with peer {}, new link: {}",

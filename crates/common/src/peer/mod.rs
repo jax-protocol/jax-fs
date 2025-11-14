@@ -4,6 +4,7 @@ use tokio::sync::watch::Receiver as WatchReceiver;
 mod blobs_store;
 mod jobs;
 mod peer;
+mod peer_builder;
 mod protocol;
 
 pub use blobs_store::{BlobsStore, BlobsStoreError};
@@ -12,7 +13,8 @@ pub use protocol::ALPN;
 
 pub use iroh::NodeAddr;
 
-pub use crate::peer::peer::{Peer, PeerBuilder};
+pub use peer::Peer;
+pub use peer_builder::PeerBuilder;
 
 /// Spawn the peer with protocol router and background job worker
 ///
