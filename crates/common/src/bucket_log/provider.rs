@@ -32,6 +32,8 @@ pub enum BucketLogError<T> {
 pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     type Error: Display + Debug;
 
+    async fn exists(&self, id: Uuid) -> Result<bool, BucketLogError<Self::Error>>;
+
     /// Get the possible heads for a bucket
     ///  based on passed height
     ///
@@ -96,25 +98,20 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     async fn has(&self, id: Uuid, link: Link) -> Result<Vec<u64>, BucketLogError<Self::Error>>;
 
     /// Get the peers canonical head based on its log entries
-    async fn head(&self, id: Uuid, height: u64) -> Result<Link, BucketLogError<Self::Error>> {
+    async fn head(
+        &self,
+        id: Uuid,
+        height: Option<u64>,
+    ) -> Result<(Link, u64), BucketLogError<Self::Error>> {
+        let height = height.unwrap_or(self.height(id).await?);
         let heads = self.heads(id, height).await?;
-        heads
-            .into_iter()
-            .max()
-            .ok_or(BucketLogError::HeadNotFound(height))
-    }
-
-    /// Get the current head (at max height) for a bucket
-    ///
-    /// # Arguments
-    /// * `id` - The UUID of the bucket
-    ///
-    /// # Returns
-    /// * `Ok(Link)` - The current head link for the bucket
-    /// * `Err(BucketLogError)` - An error occurred (e.g., bucket not found)
-    async fn current_head(&self, id: Uuid) -> Result<Link, BucketLogError<Self::Error>> {
-        let max_height = self.height(id).await?;
-        self.head(id, max_height).await
+        Ok((
+            heads
+                .into_iter()
+                .max()
+                .ok_or(BucketLogError::HeadNotFound(height))?,
+            height,
+        ))
     }
 
     /// List all bucket IDs that have log entries

@@ -60,12 +60,18 @@ impl TestNetwork {
     /// enabling immediate local connections without waiting for DHT propagation.
     pub fn introduce_all_peers(&mut self) -> Result<()> {
         // First, collect all peer info to avoid borrow checker issues
-        let peer_info: Vec<_> = self.peers.iter()
+        let peer_info: Vec<_> = self
+            .peers
+            .iter()
             .map(|(name, peer)| {
                 (
                     name.clone(),
                     peer.id(),
-                    peer.peer().endpoint().bound_sockets().into_iter().collect::<Vec<_>>(),
+                    peer.peer()
+                        .endpoint()
+                        .bound_sockets()
+                        .into_iter()
+                        .collect::<Vec<_>>(),
                 )
             })
             .collect();
@@ -88,10 +94,10 @@ impl TestNetwork {
 
                     // Tell peer A about peer B
                     let peer_a = self.peers.get_mut(peer_a_name).unwrap();
-                    peer_a.peer().endpoint().add_node_addr_with_source(
-                        node_addr,
-                        "testkit",
-                    )?;
+                    peer_a
+                        .peer()
+                        .endpoint()
+                        .add_node_addr_with_source(node_addr, "testkit")?;
 
                     tracing::trace!(
                         "Introduced {} to {} at {:?}",
@@ -159,10 +165,7 @@ impl TestNetwork {
         loop {
             match condition().await {
                 Ok(true) => {
-                    tracing::debug!(
-                        "Eventual condition met after {:?}",
-                        start.elapsed()
-                    );
+                    tracing::debug!("Eventual condition met after {:?}", start.elapsed());
                     return Ok(());
                 }
                 Ok(false) => {
@@ -200,7 +203,10 @@ impl Default for TestNetwork {
 impl Drop for TestNetwork {
     fn drop(&mut self) {
         // Peers will be dropped and send shutdown signals
-        tracing::debug!("TestNetwork dropped, {} peers will be cleaned up", self.peers.len());
+        tracing::debug!(
+            "TestNetwork dropped, {} peers will be cleaned up",
+            self.peers.len()
+        );
     }
 }
 

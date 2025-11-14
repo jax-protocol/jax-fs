@@ -9,29 +9,67 @@ description = "End-to-end encrypted storage buckets with peer-to-peer synchroniz
 keywords.workspace = true
 categories.workspace = true
 readme = "../../README.md"
+build = "build.rs"
 
 [[bin]]
 name = "jax"
 path = "src/main.rs"
 
 [dependencies]
+# Workspace crates
 common = { package = "jax-common", version = "^0.1.1", path = "../common" }
-service = { package = "jax-service", version = "^0.1.2", path = "../service", features = ["clap"] }
 
+# iroh for peer networking
+iroh = { workspace = true }
+
+# CLI
 clap = { workspace = true }
-anyhow = { workspace = true }
+
+# web + service
+axum = { workspace = true, features = ["macros", "multipart"] }
+axum-extra = { version = "^0.10", features = ["typed-header"] }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "cors", "trace"] }
+
+# observability
+tracing-appender = { version = "^0.2" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# async
 tokio = { workspace = true }
-async-trait = { workspace = true }
+async-trait = "0.1"
+flume = "0.11"
+
+# http
+askama = { workspace = true }
+askama_axum = { workspace = true }
+rust-embed = "8.5"
+
+# sql
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "macros", "uuid"] }
+time = { workspace = true }
+
+# core
+anyhow = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 url = { workspace = true }
+http = { workspace = true }
+futures = { workspace = true }
+reqwest = { workspace = true, features = ["json", "multipart"] }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true }
+base64 = "0.22"
+tempfile = { workspace = true }
+mime_guess = { workspace = true }
 directories = { workspace = true }
 dirs = { workspace = true }
 toml = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
-base64 = "0.22"
-uuid = { workspace = true }
-reqwest = { workspace = true, features = ["multipart"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 
 [build-dependencies]
 chrono = { workspace = true }

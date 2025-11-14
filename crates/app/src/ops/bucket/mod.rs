@@ -7,8 +7,8 @@ pub mod list;
 pub mod ls;
 pub mod share;
 
+use crate::daemon::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
 use crate::op::Op;
-use service::http_server::api::v0::bucket::{CreateRequest, ListRequest, ShareRequest};
 
 crate::command_enum! {
     (Create, CreateRequest),

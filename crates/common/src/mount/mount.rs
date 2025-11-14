@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use parking_lot::Mutex;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
@@ -34,6 +34,8 @@ pub struct MountInner {
     pub entry: Node,
     // the loaded pins
     pub pins: Pins,
+    // convenience pointer to the height of the mount
+    pub height: u64,
 }
 
 impl MountInner {
@@ -48,6 +50,9 @@ impl MountInner {
     }
     pub fn pins(&self) -> &Pins {
         &self.pins
+    }
+    pub fn height(&self) -> u64 {
+        self.height
     }
 }
 
@@ -79,37 +84,51 @@ pub enum MountError {
 }
 
 impl Mount {
-    pub fn inner(&self) -> MountInner {
-        self.0.lock().clone()
+    pub async fn inner(&self) -> MountInner {
+        self.0.lock().await.clone()
     }
 
     pub fn blobs(&self) -> BlobsStore {
         self.1.clone()
     }
 
-    pub fn link(&self) -> Link {
-        let inner = self.0.lock();
+    pub async fn link(&self) -> Link {
+        let inner = self.0.lock().await;
         inner.link.clone()
     }
 
     /// Save the current mount state to the blobs store
-    #[allow(clippy::await_holding_lock)]
-    pub async fn save(&self, blobs: &BlobsStore) -> Result<Link, MountError> {
-        let mut inner = self.0.lock();
+    pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
+        // Clone data we need before any async operations
+        let (entry_node, mut pins, previous_link, previous_height, manifest_template) = {
+            let inner = self.0.lock().await;
+            (
+                inner.entry.clone(),
+                inner.pins.clone(),
+                inner.link.clone(),
+                inner.height,
+                inner.manifest.clone(),
+            )
+        };
+
+        // Increment the height of the mount
+        let height = previous_height + 1;
+
         // Create a new secret for the updated root
         let secret = Secret::generate();
-        // get the now previous link to the bucket
-        let previous = inner.link.clone();
+
         // Put the current root node into blobs with the new secret
-        let entry = Self::_put_node_in_blobs(&inner.entry, &secret, blobs).await?;
+        let entry = Self::_put_node_in_blobs(&entry_node, &secret, blobs).await?;
+
         // Serialize current pins to blobs
         // put the new root link into the pins, as well as the previous link
-        inner.pins.insert(entry.clone().hash());
-        inner.pins.insert(previous.hash());
-        let pins_link = Self::_put_pins_in_blobs(&inner.pins, blobs).await?;
+        pins.insert(entry.clone().hash());
+        pins.insert(previous_link.hash());
+        let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
+
         // Update the bucket's share with the new root link
         // (add_share creates the Share internally)
-        let mut manifest = inner.manifest.clone();
+        let mut manifest = manifest_template;
         let _m = manifest.clone();
         let shares = _m.shares();
         manifest.unset_shares();
@@ -117,17 +136,22 @@ impl Mount {
             let public_key = share.principal().identity;
             manifest.add_share(public_key, secret.clone())?;
         }
-        // Update the bucket's pins field
         manifest.set_pins(pins_link.clone());
-        manifest.set_previous(previous);
+        manifest.set_previous(previous_link.clone());
         manifest.set_entry(entry.clone());
+        manifest.set_height(height);
+
         // Put the updated manifest into blobs to determine the new link
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
-        // update the internal state
-        inner.manifest = manifest;
+        // Update the internal state
+        {
+            let mut inner = self.0.lock().await;
+            inner.manifest = manifest;
+            inner.height = height;
+        }
 
-        Ok(link)
+        Ok((link, previous_link, height))
     }
 
     pub async fn init(
@@ -157,6 +181,7 @@ impl Mount {
             share,
             entry_link.clone(),
             pins_link.clone(),
+            0, // initial height is 0
         );
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
@@ -167,6 +192,7 @@ impl Mount {
                 manifest,
                 entry,
                 pins,
+                height: 0,
             })),
             blobs.clone(),
         ))
@@ -194,31 +220,28 @@ impl Mount {
             Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret), blobs)
                 .await?;
 
+        // Read height from the manifest
+        let height = manifest.height();
+
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
                 link: link.clone(),
                 manifest,
                 entry,
                 pins,
+                height,
             })),
             blobs.clone(),
         ))
     }
 
-    #[allow(clippy::await_holding_lock)]
     pub async fn share(&mut self, peer: PublicKey) -> Result<(), MountError> {
-        let mut inner = self.0.lock();
+        let mut inner = self.0.lock().await;
         inner.manifest.add_share(peer, Secret::default())?;
         Ok(())
     }
 
-    #[allow(clippy::await_holding_lock)]
-    pub async fn add<R>(
-        &mut self,
-        path: &Path,
-        data: R,
-        blobs: &BlobsStore,
-    ) -> Result<(), MountError>
+    pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>
     where
         R: Read + Send + Sync + 'static + Unpin,
     {
@@ -240,47 +263,63 @@ impl Mount {
             Ok::<_, std::io::Error>(Bytes::from(encrypted_bytes))
         }));
 
-        let hash = blobs.put_stream(stream).await?;
+        let hash = self.1.put_stream(stream).await?;
 
         let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
 
         let node_link = NodeLink::new_data_from_path(link.clone(), secret, path);
 
-        let mut inner = self.0.lock();
-        let root_node = inner.entry.clone();
+        let root_node = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
+
         let (updated_link, node_hashes) =
-            Self::_set_node_link_at_path(root_node, node_link, path, blobs).await?;
+            Self::_set_node_link_at_path(root_node, node_link, path, &self.1).await?;
 
-        // Track pins: data blob + all created node hashes
-        inner.pins.insert(hash);
-        inner.pins.extend(node_hashes);
-
-        if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
-            inner.entry = Self::_get_node_from_blobs(
-                &NodeLink::Dir(new_root_link.clone(), new_secret),
-                blobs,
+        // Update entry if needed
+        let new_entry = if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
+            Some(
+                Self::_get_node_from_blobs(
+                    &NodeLink::Dir(new_root_link.clone(), new_secret),
+                    &self.1,
+                )
+                .await?,
             )
-            .await?;
+        } else {
+            None
+        };
+
+        // Update inner state
+        {
+            let mut inner = self.0.lock().await;
+            // Track pins: data blob + all created node hashes
+            inner.pins.insert(hash);
+            inner.pins.extend(node_hashes);
+
+            if let Some(entry) = new_entry {
+                inner.entry = entry;
+            }
         }
 
         Ok(())
     }
 
-    #[allow(clippy::await_holding_lock)]
-    pub async fn rm(&mut self, path: &Path, blobs: &BlobsStore) -> Result<(), MountError> {
+    pub async fn rm(&mut self, path: &Path) -> Result<(), MountError> {
         let path = clean_path(path);
         let parent_path = path
             .parent()
             .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot remove root")))?;
 
-        let inner = self.0.lock();
-        let entry = inner.entry.clone();
-        drop(inner);
+        let entry = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
 
         let mut parent_node = if parent_path == Path::new("") {
             entry.clone()
         } else {
-            Self::_get_node_at_path(&entry, parent_path, blobs).await?
+            Self::_get_node_at_path(&entry, parent_path, &self.1).await?
         };
 
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -291,57 +330,60 @@ impl Mount {
 
         if parent_path == Path::new("") {
             let secret = Secret::generate();
-            let link = Self::_put_node_in_blobs(&parent_node, &secret, blobs).await?;
+            let link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
 
-            let mut inner = self.0.lock();
+            let mut inner = self.0.lock().await;
             // Track the new root node hash
             inner.pins.insert(link.hash());
             inner.entry = parent_node;
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
-            let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, blobs).await?;
+            let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
             let node_link = NodeLink::new_dir(parent_link.clone(), secret);
 
-            let mut inner = self.0.lock();
             // Convert parent_path back to absolute for _set_node_link_at_path
             let abs_parent_path = Path::new("/").join(parent_path);
             let (updated_link, node_hashes) =
-                Self::_set_node_link_at_path(entry, node_link, &abs_parent_path, blobs).await?;
+                Self::_set_node_link_at_path(entry, node_link, &abs_parent_path, &self.1).await?;
 
+            let new_entry = if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
+                Some(
+                    Self::_get_node_from_blobs(
+                        &NodeLink::Dir(new_root_link.clone(), new_secret),
+                        &self.1,
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
+
+            let mut inner = self.0.lock().await;
             // Track the parent node hash and all created node hashes
             inner.pins.insert(parent_link.hash());
             inner.pins.extend(node_hashes);
 
-            if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
-                inner.entry = Self::_get_node_from_blobs(
-                    &NodeLink::Dir(new_root_link.clone(), new_secret),
-                    blobs,
-                )
-                .await?;
+            if let Some(new_entry) = new_entry {
+                inner.entry = new_entry;
             }
         }
 
         Ok(())
     }
 
-    #[allow(clippy::await_holding_lock)]
-    pub async fn ls(
-        &self,
-        path: &Path,
-        blobs: &BlobsStore,
-    ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
+    pub async fn ls(&self, path: &Path) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let mut items = BTreeMap::new();
         let path = clean_path(path);
 
-        let inner = self.0.lock();
+        let inner = self.0.lock().await;
         let root_node = inner.entry.clone();
         drop(inner);
 
         let node = if path == Path::new("") {
             root_node
         } else {
-            match Self::_get_node_at_path(&root_node, &path, blobs).await {
+            match Self::_get_node_at_path(&root_node, &path, &self.1).await {
                 Ok(node) => node,
                 Err(MountError::LinkNotFound(_)) => {
                     return Err(MountError::PathNotNode(path.to_path_buf()))
@@ -359,25 +401,20 @@ impl Mount {
         Ok(items)
     }
 
-    pub async fn ls_deep(
-        &self,
-        path: &Path,
-        blobs: &BlobsStore,
-    ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
+    pub async fn ls_deep(&self, path: &Path) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let base_path = clean_path(path);
-        self._ls_deep(path, &base_path, blobs).await
+        self._ls_deep(path, &base_path).await
     }
 
     async fn _ls_deep(
         &self,
         path: &Path,
         base_path: &Path,
-        blobs: &BlobsStore,
     ) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let mut all_items = BTreeMap::new();
 
         // get the initial items at the given path
-        let items = self.ls(path, blobs).await?;
+        let items = self.ls(path).await?;
 
         for (item_path, link) in items {
             // Make path relative to the base_path
@@ -394,7 +431,7 @@ impl Mount {
             if link.is_dir() {
                 // Recurse using the absolute path
                 let abs_item_path = Path::new("/").join(&item_path);
-                let sub_items = Box::pin(self._ls_deep(&abs_item_path, base_path, blobs)).await?;
+                let sub_items = Box::pin(self._ls_deep(&abs_item_path, base_path)).await?;
 
                 // Sub items already have correct relative paths from base_path
                 for (sub_path, sub_link) in sub_items {
@@ -407,10 +444,10 @@ impl Mount {
     }
 
     #[allow(clippy::await_holding_lock)]
-    pub async fn cat(&self, path: &Path, blobs: &BlobsStore) -> Result<Vec<u8>, MountError> {
+    pub async fn cat(&self, path: &Path) -> Result<Vec<u8>, MountError> {
         let path = clean_path(path);
 
-        let inner = self.0.lock();
+        let inner = self.0.lock().await;
         let root_node = inner.entry.clone();
         drop(inner);
 
@@ -426,7 +463,7 @@ impl Mount {
         let parent_node = if parent_path == Path::new("") {
             root_node
         } else {
-            Self::_get_node_at_path(&root_node, parent_path, blobs).await?
+            Self::_get_node_at_path(&root_node, parent_path, &self.1).await?
         };
 
         let link = parent_node
@@ -435,7 +472,7 @@ impl Mount {
 
         match link {
             NodeLink::Data(link, secret, _) => {
-                let encrypted_data = blobs.get(&link.hash()).await?;
+                let encrypted_data = self.1.get(&link.hash()).await?;
                 let data = secret.decrypt(&encrypted_data)?;
                 Ok(data)
             }
@@ -445,10 +482,10 @@ impl Mount {
 
     /// Get the NodeLink for a file at a given path
     #[allow(clippy::await_holding_lock)]
-    pub async fn get(&self, path: &Path, blobs: &BlobsStore) -> Result<NodeLink, MountError> {
+    pub async fn get(&self, path: &Path) -> Result<NodeLink, MountError> {
         let path = clean_path(path);
 
-        let inner = self.0.lock();
+        let inner = self.0.lock().await;
         let root_node = inner.entry.clone();
         drop(inner);
 
@@ -464,7 +501,7 @@ impl Mount {
         let parent_node = if parent_path == Path::new("") {
             root_node
         } else {
-            Self::_get_node_at_path(&root_node, parent_path, blobs).await?
+            Self::_get_node_at_path(&root_node, parent_path, &self.1).await?
         };
 
         parent_node
@@ -595,7 +632,7 @@ impl Mount {
         Ok(bucket_data)
     }
 
-    async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, MountError> {
+    pub async fn _get_pins_from_blobs(link: &Link, blobs: &BlobsStore) -> Result<Pins, MountError> {
         tracing::debug!("_get_pins_from_blobs: Checking for pins at link {:?}", link);
         let hash = link.hash();
         tracing::debug!("_get_pins_from_blobs: Pins hash: {}", hash);
@@ -747,12 +784,9 @@ mod test {
         let data = b"Hello, world!";
         let path = PathBuf::from("/test.txt");
 
-        mount
-            .add(&path, Cursor::new(data.to_vec()), &blobs)
-            .await
-            .unwrap();
+        mount.add(&path, Cursor::new(data.to_vec())).await.unwrap();
 
-        let result = mount.cat(&path, &blobs).await.unwrap();
+        let result = mount.cat(&path).await.unwrap();
         assert_eq!(result, data);
     }
 
@@ -763,12 +797,9 @@ mod test {
         let data = b"{ \"key\": \"value\" }";
         let path = PathBuf::from("/data.json");
 
-        mount
-            .add(&path, Cursor::new(data.to_vec()), &blobs)
-            .await
-            .unwrap();
+        mount.add(&path, Cursor::new(data.to_vec())).await.unwrap();
 
-        let items = mount.ls(&PathBuf::from("/"), &blobs).await.unwrap();
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
         assert_eq!(items.len(), 1);
 
         let (file_path, link) = items.iter().next().unwrap();
@@ -787,38 +818,29 @@ mod test {
         let (mut mount, blobs, _, _temp) = setup_test_env().await;
 
         mount
-            .add(
-                &PathBuf::from("/file1.txt"),
-                Cursor::new(b"data1".to_vec()),
-                &blobs,
-            )
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
             .await
             .unwrap();
         mount
-            .add(
-                &PathBuf::from("/file2.txt"),
-                Cursor::new(b"data2".to_vec()),
-                &blobs,
-            )
+            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
             .await
             .unwrap();
         mount
             .add(
                 &PathBuf::from("/dir/file3.txt"),
                 Cursor::new(b"data3".to_vec()),
-                &blobs,
             )
             .await
             .unwrap();
 
-        let items = mount.ls(&PathBuf::from("/"), &blobs).await.unwrap();
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
         assert_eq!(items.len(), 3);
 
         assert!(items.contains_key(&PathBuf::from("file1.txt")));
         assert!(items.contains_key(&PathBuf::from("file2.txt")));
         assert!(items.contains_key(&PathBuf::from("dir")));
 
-        let sub_items = mount.ls(&PathBuf::from("/dir"), &blobs).await.unwrap();
+        let sub_items = mount.ls(&PathBuf::from("/dir")).await.unwrap();
         assert_eq!(sub_items.len(), 1);
         assert!(sub_items.contains_key(&PathBuf::from("dir/file3.txt")));
     }
@@ -828,22 +850,17 @@ mod test {
         let (mut mount, blobs, _, _temp) = setup_test_env().await;
 
         mount
-            .add(&PathBuf::from("/a.txt"), Cursor::new(b"a".to_vec()), &blobs)
+            .add(&PathBuf::from("/a.txt"), Cursor::new(b"a".to_vec()))
             .await
             .unwrap();
         mount
-            .add(
-                &PathBuf::from("/dir1/b.txt"),
-                Cursor::new(b"b".to_vec()),
-                &blobs,
-            )
+            .add(&PathBuf::from("/dir1/b.txt"), Cursor::new(b"b".to_vec()))
             .await
             .unwrap();
         mount
             .add(
                 &PathBuf::from("/dir1/dir2/c.txt"),
                 Cursor::new(b"c".to_vec()),
-                &blobs,
             )
             .await
             .unwrap();
@@ -851,12 +868,11 @@ mod test {
             .add(
                 &PathBuf::from("/dir1/dir2/dir3/d.txt"),
                 Cursor::new(b"d".to_vec()),
-                &blobs,
             )
             .await
             .unwrap();
 
-        let all_items = mount.ls_deep(&PathBuf::from("/"), &blobs).await.unwrap();
+        let all_items = mount.ls_deep(&PathBuf::from("/")).await.unwrap();
 
         assert!(all_items.contains_key(&PathBuf::from("a.txt")));
         assert!(all_items.contains_key(&PathBuf::from("dir1")));
@@ -872,36 +888,25 @@ mod test {
         let (mut mount, blobs, _, _temp) = setup_test_env().await;
 
         mount
-            .add(
-                &PathBuf::from("/file1.txt"),
-                Cursor::new(b"data1".to_vec()),
-                &blobs,
-            )
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
             .await
             .unwrap();
         mount
-            .add(
-                &PathBuf::from("/file2.txt"),
-                Cursor::new(b"data2".to_vec()),
-                &blobs,
-            )
+            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
             .await
             .unwrap();
 
-        let items = mount.ls(&PathBuf::from("/"), &blobs).await.unwrap();
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
         assert_eq!(items.len(), 2);
 
-        mount
-            .rm(&PathBuf::from("/file1.txt"), &blobs)
-            .await
-            .unwrap();
+        mount.rm(&PathBuf::from("/file1.txt")).await.unwrap();
 
-        let items = mount.ls(&PathBuf::from("/"), &blobs).await.unwrap();
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
         assert_eq!(items.len(), 1);
         assert!(items.contains_key(&PathBuf::from("file2.txt")));
         assert!(!items.contains_key(&PathBuf::from("file1.txt")));
 
-        let result = mount.cat(&PathBuf::from("/file1.txt"), &blobs).await;
+        let result = mount.cat(&PathBuf::from("/file1.txt")).await;
         assert!(result.is_err());
     }
 
@@ -921,28 +926,26 @@ mod test {
 
         for (path, data) in &files {
             mount
-                .add(&PathBuf::from(path), Cursor::new(data.to_vec()), &blobs)
+                .add(&PathBuf::from(path), Cursor::new(data.to_vec()))
                 .await
                 .unwrap();
         }
 
         for (path, expected_data) in &files {
-            let data = mount.cat(&PathBuf::from(path), &blobs).await.unwrap();
+            let data = mount.cat(&PathBuf::from(path)).await.unwrap();
             assert_eq!(data, expected_data.to_vec());
         }
 
         mount
-            .rm(&PathBuf::from("/src/tests/unit.rs"), &blobs)
+            .rm(&PathBuf::from("/src/tests/unit.rs"))
             .await
             .unwrap();
 
-        let result = mount
-            .cat(&PathBuf::from("/src/tests/unit.rs"), &blobs)
-            .await;
+        let result = mount.cat(&PathBuf::from("/src/tests/unit.rs")).await;
         assert!(result.is_err());
 
         let data = mount
-            .cat(&PathBuf::from("/src/tests/integration.rs"), &blobs)
+            .cat(&PathBuf::from("/src/tests/integration.rs"))
             .await
             .unwrap();
         assert_eq!(data, b"integration");
@@ -965,11 +968,11 @@ mod test {
 
         for (path, expected_mime) in test_files {
             mount
-                .add(&PathBuf::from(path), Cursor::new(b"test".to_vec()), &blobs)
+                .add(&PathBuf::from(path), Cursor::new(b"test".to_vec()))
                 .await
                 .unwrap();
 
-            let items = mount.ls(&PathBuf::from("/"), &blobs).await.unwrap();
+            let items = mount.ls(&PathBuf::from("/")).await.unwrap();
             let link = items.values().find(|l| l.is_data()).unwrap();
 
             if let Some(data_info) = link.data() {
@@ -977,7 +980,7 @@ mod test {
                 assert_eq!(data_info.mime().unwrap().as_ref(), expected_mime);
             }
 
-            mount.rm(&PathBuf::from(path), &blobs).await.unwrap();
+            mount.rm(&PathBuf::from(path)).await.unwrap();
         }
     }
 
@@ -985,12 +988,10 @@ mod test {
     async fn test_error_cases() {
         let (mount, blobs, _, _temp) = setup_test_env().await;
 
-        let result = mount
-            .cat(&PathBuf::from("/does_not_exist.txt"), &blobs)
-            .await;
+        let result = mount.cat(&PathBuf::from("/does_not_exist.txt")).await;
         assert!(result.is_err());
 
-        let result = mount.ls(&PathBuf::from("/does_not_exist"), &blobs).await;
+        let result = mount.ls(&PathBuf::from("/does_not_exist")).await;
         assert!(result.is_err() || result.unwrap().is_empty());
 
         let (mut mount, blobs, _, _temp) = setup_test_env().await;
@@ -998,19 +999,20 @@ mod test {
             .add(
                 &PathBuf::from("/dir/file.txt"),
                 Cursor::new(b"data".to_vec()),
-                &blobs,
             )
             .await
             .unwrap();
 
-        let result = mount.cat(&PathBuf::from("/dir"), &blobs).await;
+        let result = mount.cat(&PathBuf::from("/dir")).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_save_load() {
         let (mount, blobs, secret_key, _temp) = setup_test_env().await;
-        let link = mount.save(&blobs).await.unwrap();
-        let _mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
+        let (link, _previous_link, height) = mount.save(&blobs).await.unwrap();
+        assert_eq!(height, 1); // Height should be 1 after first save
+        let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
+        assert_eq!(loaded_mount.inner().await.height(), 1);
     }
 }

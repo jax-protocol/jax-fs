@@ -56,24 +56,26 @@ where
     tracing::info!(peer_id = %node_id, "Starting peer");
 
     // Extract the job receiver (can only be done once)
-    let job_receiver = peer.take_job_receiver()
-        .expect("job receiver already consumed - peer::spawn can only be called once per peer instance");
+    let job_receiver = peer.take_job_receiver().expect(
+        "job receiver already consumed - peer::spawn can only be called once per peer instance",
+    );
 
-    // Clone peer for the worker task
-    let worker_peer = peer.clone();
+    // Extract what we need for the router before moving peer into worker
+    let inner_blobs = peer.blobs().inner.clone();
+    let endpoint = peer.endpoint().clone();
+    let peer_for_router = peer.clone();
 
-    // Spawn the background job worker
+    // Spawn the background job worker (use the peer directly, no clone needed)
     let worker_handle = tokio::spawn(async move {
         tracing::info!(peer_id = %node_id, "Starting background job worker");
-        worker_peer.run_worker(job_receiver).await;
-        tracing::info!(peer_id = %node_id, "Background job worker stopped");
+        peer.run_worker(job_receiver).await;
+        tracing::info!(peer_id = %node_id, "Background job worker stopped normally");
     });
 
     // Build the protocol router with iroh-blobs and our custom protocol
-    let inner_blobs = peer.blobs().inner.clone();
-    let router_builder = Router::builder(peer.endpoint().clone())
+    let router_builder = Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, inner_blobs)
-        .accept(ALPN, peer.clone());
+        .accept(ALPN, peer_for_router);
 
     let router = router_builder.spawn();
 
@@ -84,14 +86,15 @@ where
     tracing::info!(peer_id = %node_id, "Shutdown signal received, stopping peer");
 
     // Shutdown the router (this closes the endpoint and stops accepting connections)
-    router.shutdown().await.map_err(|e| PeerError::RouterShutdown(e.into()))?;
+    router
+        .shutdown()
+        .await
+        .map_err(|e| PeerError::RouterShutdown(e.into()))?;
 
     // Wait for the worker to finish (it will stop when the job dispatcher is dropped)
     // We give it a reasonable timeout to finish processing current jobs
-    let worker_result = tokio::time::timeout(
-        std::time::Duration::from_secs(30),
-        worker_handle,
-    ).await;
+    let worker_result =
+        tokio::time::timeout(std::time::Duration::from_secs(30), worker_handle).await;
 
     match worker_result {
         Ok(Ok(())) => {

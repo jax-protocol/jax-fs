@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 pub use super::blobs_store::BlobsStore;
 
-use crate::bucket_log::BucketLogProvider;
+use crate::bucket_log::{BucketLogError, BucketLogProvider};
 use crate::linked_data::Link;
-use crate::mount::Manifest;
+use crate::mount::{Manifest, Mount, MountError};
 
 #[derive(Clone, Default)]
 pub struct PeerBuilder<L: BucketLogProvider> {
@@ -145,6 +145,16 @@ where
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum PeerError<L: BucketLogProvider> {
+    #[error("mount error: {0}")]
+    Mount(#[from] MountError),
+    #[error("bucket log error: {0}")]
+    BucketLog(BucketLogError<L::Error>),
+    #[error("missing link in bucket log: {0}")]
+    MissingLink(Link),
+}
+
 impl<L: BucketLogProvider> Peer<L> {
     pub fn logs(&self) -> &L {
         &self.log_provider
@@ -178,7 +188,164 @@ impl<L: BucketLogProvider> Peer<L> {
     ///
     /// This can only be called once. Subsequent calls will return None.
     pub(super) fn take_job_receiver(&mut self) -> Option<super::jobs::JobReceiver> {
-        self.job_receiver.take()
+        let receiver = self.job_receiver.take();
+        if receiver.is_some() {
+            tracing::info!("PEER: Successfully extracted job_receiver (was Some)");
+        } else {
+            tracing::warn!(
+                "PEER: Failed to extract job_receiver (was None) - likely called on a clone"
+            );
+        }
+        receiver
+    }
+
+    /// Load mount at the current head of a bucket
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket to load
+    ///
+    /// # Returns
+    ///
+    /// The Mount at the current head of the bucket's log
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Bucket not found in log
+    /// - Failed to load mount from blobs
+    pub async fn mount(&self, bucket_id: Uuid) -> Result<Mount, MountError> {
+        // Get current head link from log
+        let (link, _height) = self
+            .log_provider
+            .head(bucket_id, None)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to get current head: {}", e)))?;
+
+        // Load mount at that link (height is read from manifest)
+        Mount::load(&link, &self.secret_key, &self.blobs_store).await
+    }
+
+    /// Load mount at a specific link
+    ///
+    /// Validates that the link exists in the bucket's history before loading.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket
+    /// * `link` - The specific link to load
+    ///
+    /// # Returns
+    ///
+    /// The Mount at the specified link
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Link not found in bucket's log history
+    /// - Failed to load mount from blobs
+    pub async fn mount_at(&self, bucket_id: Uuid, link: Link) -> Result<Mount, PeerError<L>> {
+        // Validate link exists in history
+        let heights = self
+            .log_provider
+            .has(bucket_id, link.clone())
+            .await
+            .map_err(|e| PeerError::BucketLog(e))?;
+
+        if heights.is_empty() {
+            return Err(PeerError::MissingLink(link));
+        }
+
+        // Load mount at the link (height is read from manifest)
+        Mount::load(&link, &self.secret_key, &self.blobs_store)
+            .await
+            .map_err(|e| PeerError::Mount(e))
+    }
+
+    /// Save a mount and append it to the bucket's log
+    ///
+    /// This method:
+    /// 1. Saves the mount to blobs, getting a new link
+    /// 2. Appends the new link to the bucket's log
+    /// 3. Dispatches sync jobs to notify peers
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket
+    /// * `name` - The name of the bucket (for log metadata)
+    /// * `mount` - The mount to save
+    ///
+    /// # Returns
+    ///
+    /// The new link where the mount was saved
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Failed to save mount to blobs
+    /// - Failed to append to log
+    pub async fn save_mount(
+        &self,
+        bucket_id: Uuid,
+        name: String,
+        mount: &Mount,
+    ) -> Result<Link, MountError> {
+        // Get our own public key to exclude from notifications
+        let our_public_key = self.secret_key.public();
+        tracing::info!("SAVE_MOUNT: Our public key: {}", our_public_key.to_hex());
+
+        // Get shares from the mount manifest
+        let (link, previous_link, height) = mount.save(self.blobs()).await?;
+        let inner = mount.inner().await;
+        let shares = inner.manifest().shares();
+        tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());
+
+        // Append to log
+        self.log_provider
+            .append(bucket_id, name, link.clone(), Some(previous_link), height)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to append to log: {}", e)))?;
+
+        // Dispatch ping jobs for each peer (except ourselves)
+        let mut notified_count = 0;
+        for (peer_key_hex, _share) in shares.iter() {
+            tracing::info!("SAVE_MOUNT: Checking share for peer: {}", peer_key_hex);
+
+            // Parse the peer's public key
+            if let Ok(peer_public_key) = PublicKey::from_hex(peer_key_hex) {
+                // Skip ourselves
+                if peer_public_key == our_public_key {
+                    tracing::info!("SAVE_MOUNT: Skipping ourselves: {}", peer_key_hex);
+                    continue;
+                }
+
+                tracing::info!(
+                    "SAVE_MOUNT: Dispatching PingPeer job for bucket {} to peer {}",
+                    bucket_id,
+                    peer_key_hex
+                );
+                // Dispatch a ping job for this peer
+                // Ignore errors - if we can't notify a peer, they'll catch up on their next ping
+                let _ = self.jobs.dispatch(super::jobs::Job::PingPeer {
+                    bucket_id,
+                    peer_id: peer_public_key,
+                });
+                notified_count += 1;
+            } else {
+                tracing::warn!(
+                    "SAVE_MOUNT: Failed to parse peer public key: {}",
+                    peer_key_hex
+                );
+            }
+        }
+
+        tracing::info!(
+            "SAVE_MOUNT: Dispatched {} PingPeer jobs for bucket {}",
+            notified_count,
+            bucket_id
+        );
+
+        Ok(link)
     }
 
     // ========================================
@@ -193,8 +360,8 @@ impl<L: BucketLogProvider> Peer<L> {
     pub async fn sync_from_peer(
         &self,
         bucket_id: Uuid,
-        target_link: Link,
-        target_height: u64,
+        link: Link,
+        height: u64,
         peer_id: &PublicKey,
     ) -> Result<()>
     where
@@ -204,152 +371,71 @@ impl<L: BucketLogProvider> Peer<L> {
             "Syncing bucket {} from peer {} to link {:?} at height {}",
             bucket_id,
             peer_id.to_hex(),
-            target_link,
-            target_height
+            link,
+            height
         );
 
-        // Check if we have this bucket
-        match self.log_provider.height(bucket_id).await {
-            Ok(_height) => {
-                // We have the bucket, sync it
-                tracing::debug!("Bucket exists locally, performing update sync");
-                self.sync_existing_bucket(bucket_id, target_link, peer_id)
-                    .await
-            }
-            Err(crate::bucket_log::BucketLogError::HeadNotFound(_)) => {
-                // We don't have the bucket, clone it
-                tracing::debug!("Bucket not found locally, cloning from peer");
-                self.clone_bucket_from_peer(bucket_id, target_link, peer_id)
-                    .await
-            }
-            Err(e) => {
-                tracing::error!("Error checking bucket height: {}", e);
-                Err(anyhow!("Failed to check bucket height: {}", e))
-            }
-        }
-    }
+        let exists: bool = self.log_provider.exists(bucket_id).await?;
 
-    /// Sync an existing bucket from a peer
-    ///
-    /// Downloads the manifest chain, finds common ancestor, and appends missing entries
-    async fn sync_existing_bucket(
-        &self,
-        bucket_id: Uuid,
-        target_link: Link,
-        peer_id: &PublicKey,
-    ) -> Result<()>
-    where
-        L::Error: std::error::Error + Send + Sync + 'static,
-    {
-        tracing::info!(
-            "Syncing existing bucket {} to link {:?}",
-            bucket_id,
-            target_link
-        );
+        let common_ancestor = if exists {
+            // find a common ancestor between our log and the
+            //  link the peer advertised to us
+            self.find_common_ancestor(bucket_id, &link, peer_id).await?
+        } else {
+            None
+        };
 
-        // Get our current state
-        let our_height = self.log_provider.height(bucket_id).await?;
-        let our_head = self.log_provider.head(bucket_id, our_height).await?;
+        // TODO (amiller68): between finding the common ancestor and downloading the manifest chain
+        //  there are redundant operations. We should optimize this.
 
-        tracing::debug!(
-            "Our current state: height={}, head={:?}",
-            our_height,
-            our_head
-        );
-
-        // Download manifest chain from peer (from target back to common ancestor)
-        let manifests = self
-            .download_manifest_chain(&target_link, peer_id, Some(&our_head))
-            .await?;
-
-        if manifests.is_empty() {
-            tracing::info!("No new manifests to sync, already up to date");
+        // if we know the bucket exists, but we did not find a common ancestor
+        //  then we have diverged / are not talking about the same bucket
+        // for now just log a warning and do nothing
+        if exists && common_ancestor.is_none() {
+            tracing::warn!("Bucket {} diverged from peer {:?}", bucket_id, peer_id);
             return Ok(());
         }
 
-        tracing::info!("Downloaded {} manifests from peer", manifests.len());
+        // Determine between what links we should download manifests for
+        let stop_link = if let Some(ancestor) = common_ancestor {
+            Some(&ancestor.0.clone())
+        } else {
+            // No common ancestor - we'll sync everything from the target back to genesis
+            tracing::info!(
+                "No common ancestor for bucket {}, syncing from genesis",
+                bucket_id
+            );
+            None
+        };
 
-        // Find common ancestor in our log
-        let common_ancestor = self.find_common_ancestor(bucket_id, &manifests).await?;
+        // now we know there is a valid list of manifests we should
+        //  fetch and apply to our log
 
-        match common_ancestor {
-            Some(ancestor_link) => {
-                tracing::debug!("Found common ancestor: {:?}", ancestor_link);
-
-                // Verify it's at our current head (single-hop update)
-                if ancestor_link != our_head {
-                    return Err(anyhow!(
-                        "Fork detected: common ancestor {:?} != our head {:?}",
-                        ancestor_link,
-                        our_head
-                    ));
-                }
-
-                // Append manifests that come after the ancestor
-                self.apply_manifest_chain(bucket_id, &manifests, our_height)
-                    .await?;
-
-                tracing::info!("Successfully synced bucket {} from peer", bucket_id);
-                Ok(())
-            }
-            None => {
-                // No common ancestor found - this might be a fork or completely different chain
-                Err(anyhow!(
-                    "No common ancestor found for bucket {}. This might be a fork.",
-                    bucket_id
-                ))
-            }
-        }
-    }
-
-    /// Clone a bucket from a peer that we don't have locally
-    ///
-    /// Downloads the full manifest chain and verifies provenance before cloning
-    async fn clone_bucket_from_peer(
-        &self,
-        bucket_id: Uuid,
-        target_link: Link,
-        peer_id: &PublicKey,
-    ) -> Result<()>
-    where
-        L::Error: std::error::Error + Send + Sync + 'static,
-    {
-        tracing::info!(
-            "Cloning bucket {} from peer {} with link {:?}",
-            bucket_id,
-            peer_id.to_hex(),
-            target_link
-        );
-
-        // Download the full manifest chain (all the way to genesis)
+        // Download manifest chain from peer (from target back to common ancestor)
         let manifests = self
-            .download_manifest_chain(&target_link, peer_id, None)
+            .download_manifest_chain(&link, stop_link, peer_id)
             .await?;
 
+        // TODO (amiller68): maybe theres an optimization here in that we should know
+        //  we can exit earlier by virtue of finding a common ancestor which is just
+        //  our current head
         if manifests.is_empty() {
-            return Err(anyhow!("No manifests downloaded from peer"));
+            tracing::info!("No new manifests to sync, already up to date");
+            return Ok(());
+        };
+
+        // Just check we are still included in the shares at the end of this,
+        //  if not we wouldn't have gotten the ping, but we might as well just
+        //  check
+        if !self.verify_provenance(&manifests.last().unwrap().0)? {
+            tracing::warn!("Provenance verification failed: our key not in bucket shares");
+            return Ok(());
         }
 
-        tracing::info!("Downloaded {} manifests from peer", manifests.len());
+        // apply the updates to the bucket
+        self.apply_manifest_chain(bucket_id, &manifests).await?;
 
-        // Get the latest manifest to verify provenance
-        let latest_manifest = manifests
-            .last()
-            .ok_or_else(|| anyhow!("No manifests in chain"))?;
-
-        // Verify we're in the shares (provenance check)
-        if !self.verify_provenance(&latest_manifest.0)? {
-            return Err(anyhow!(
-                "Provenance verification failed: our key not in bucket shares"
-            ));
-        }
-
-        tracing::debug!("Provenance verified, our key is in bucket shares");
-
-        // Append entire chain starting from genesis (height 0)
-        self.apply_manifest_chain(bucket_id, &manifests, 0).await?;
-
-        tracing::info!("Successfully cloned bucket {} from peer", bucket_id);
+        // tracing::info!("Successfully cloned bucket {} from peer", bucket_id);
         Ok(())
     }
 
@@ -362,27 +448,28 @@ impl<L: BucketLogProvider> Peer<L> {
     async fn download_manifest_chain(
         &self,
         start_link: &Link,
+        stop_link: Option<&Link>,
+        // TODO (amiller68): this could use multi-peer download
         peer_id: &PublicKey,
-        stop_at: Option<&Link>,
-    ) -> Result<Vec<(Manifest, Link, u64)>> {
+    ) -> Result<Vec<(Manifest, Link)>> {
         tracing::debug!(
             "Downloading manifest chain from {:?}, stop_at: {:?}",
             start_link,
-            stop_at
+            stop_link
         );
 
         let mut manifests = Vec::new();
         let mut current_link = start_link.clone();
-        let mut current_height = 0u64; // Will be calculated in reverse
 
         // Download manifests walking backwards
         loop {
             // Download the manifest blob from peer
-            // Convert our PublicKey to iroh's PublicKey, then to NodeId
-            let iroh_pub_key: iroh::PublicKey = (*peer_id).into();
-            let node_id = NodeId::from(iroh_pub_key);
             self.blobs_store
-                .download_hash(current_link.hash().clone(), vec![node_id], &self.endpoint)
+                .download_hash(
+                    current_link.hash().clone(),
+                    vec![peer_id.clone()],
+                    &self.endpoint,
+                )
                 .await
                 .map_err(|e| {
                     anyhow!(
@@ -395,22 +482,20 @@ impl<L: BucketLogProvider> Peer<L> {
             // Read and decode the manifest
             let manifest: Manifest = self.blobs_store.get_cbor(&current_link.hash()).await?;
 
-            // Store manifest with its link and height
-            manifests.push((manifest.clone(), current_link.clone(), current_height));
-
             // Check if we should stop
-            if let Some(stop_link) = stop_at {
+            if let Some(stop_link) = stop_link {
                 if &current_link == stop_link {
                     tracing::debug!("Reached stop_at link, stopping download");
                     break;
                 }
             }
 
+            manifests.push((manifest.clone(), current_link.clone()));
+
             // Check for previous link
             match manifest.previous() {
                 Some(prev_link) => {
                     current_link = prev_link.clone();
-                    current_height += 1;
                 }
                 None => {
                     // Reached genesis, stop
@@ -420,61 +505,114 @@ impl<L: BucketLogProvider> Peer<L> {
             }
         }
 
-        // Reverse to get oldest-to-newest order and recalculate heights
+        // Reverse to get oldest-to-newest order
         manifests.reverse();
-        let base_height = if manifests.is_empty() {
-            0
-        } else {
-            current_height
-        };
-
-        // Fix heights to be correct (oldest is lowest)
-        for (i, (_, _, height)) in manifests.iter_mut().enumerate() {
-            *height = base_height - i as u64;
-        }
 
         tracing::debug!("Downloaded {} manifests", manifests.len());
         Ok(manifests)
     }
 
-    /// Find common ancestor between peer's manifests and our local log
+    /// Find common ancestor by downloading manifests from peer
     ///
-    /// Iterates through peer manifests from oldest to newest and checks if each
-    /// link exists in our log. Returns the first (oldest) link found.
+    /// Starting from `start_link`, walks backwards through the peer's manifest chain,
+    /// downloading each manifest and checking if it exists in our local log.
+    /// Returns the first (most recent) link and height found in our log.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The bucket to check against our local log
+    /// * `link` - The starting point on the peer's chain (typically their head)
+    /// * `peer_id` - The peer to download manifests from
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Some((link, height)))` - Found common ancestor with its link and height
+    /// * `Ok(None)` - No common ancestor found (reached genesis without intersection)
+    /// * `Err(_)` - Download or log access error
     async fn find_common_ancestor(
         &self,
         bucket_id: Uuid,
-        peer_manifests: &[(Manifest, Link, u64)],
-    ) -> Result<Option<Link>>
+        link: &Link,
+        peer_id: &PublicKey,
+    ) -> Result<Option<(Link, u64)>>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
         tracing::debug!(
-            "Finding common ancestor for {} peer manifests",
-            peer_manifests.len()
+            "Finding common ancestor starting from {:?} with peer {}",
+            link,
+            peer_id.to_hex()
         );
 
-        for (_manifest, link, _height) in peer_manifests.iter() {
-            // Check if this link exists in our log
-            match self.log_provider.has(bucket_id, link.clone()).await {
+        let mut current_link = link.clone();
+        let mut manifests_checked = 0;
+
+        loop {
+            manifests_checked += 1;
+            tracing::debug!(
+                "Checking manifest {} at link {:?}",
+                manifests_checked,
+                current_link
+            );
+
+            // TODO (amiller68): this should build in memory
+            //  but for now we just download it
+            // Download the manifest from peer
+            self.blobs_store
+                .download_hash(
+                    current_link.hash().clone(),
+                    vec![peer_id.clone()],
+                    &self.endpoint,
+                )
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to download manifest {:?} from peer: {}",
+                        current_link,
+                        e
+                    )
+                })?;
+
+            // Read and decode the manifest
+            let manifest: Manifest = self.blobs_store.get_cbor(&current_link.hash()).await?;
+            let height = manifest.height();
+
+            // Check if this link exists in our local log
+            match self.log_provider.has(bucket_id, current_link.clone()).await {
                 Ok(heights) if !heights.is_empty() => {
-                    tracing::debug!("Found common ancestor at heights {:?}: {:?}", heights, link);
-                    return Ok(Some(link.clone()));
+                    tracing::info!(
+                        "Found common ancestor at link {:?} with height {} (in our log at heights {:?})",
+                        current_link,
+                        height,
+                        heights
+                    );
+                    return Ok(Some((current_link, height)));
                 }
                 Ok(_) => {
-                    // Link not in our log, continue searching
-                    continue;
+                    // Link not in our log, check previous
+                    tracing::debug!("Link {:?} not in our log, checking previous", current_link);
                 }
                 Err(e) => {
                     tracing::warn!("Error checking for link in log: {}", e);
-                    continue;
+                    // Continue checking previous links despite error
+                }
+            }
+
+            // Move to previous link
+            match manifest.previous() {
+                Some(prev_link) => {
+                    current_link = prev_link.clone();
+                }
+                None => {
+                    // Reached genesis without finding common ancestor
+                    tracing::debug!(
+                        "Reached genesis after checking {} manifests, no common ancestor found",
+                        manifests_checked
+                    );
+                    return Ok(None);
                 }
             }
         }
-
-        // No common ancestor found
-        tracing::debug!("No common ancestor found in peer manifests");
-        Ok(None)
     }
 
     /// Apply a chain of manifests to the log
@@ -483,23 +621,18 @@ impl<L: BucketLogProvider> Peer<L> {
     async fn apply_manifest_chain(
         &self,
         bucket_id: Uuid,
-        manifests: &[(Manifest, Link, u64)],
-        start_height: u64,
+        manifests: &[(Manifest, Link)],
     ) -> Result<()>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
-        tracing::info!(
-            "Applying {} manifests to log starting at height {}",
-            manifests.len(),
-            start_height
-        );
+        tracing::info!("Applying {} manifests to log", manifests.len(),);
 
-        for (i, (manifest, link, _expected_height)) in manifests.iter().enumerate() {
-            let height = start_height + i as u64 + 1;
+        for (_i, (manifest, link)) in manifests.iter().enumerate() {
             let previous = manifest.previous().clone();
+            let height = manifest.height();
 
-            tracing::debug!(
+            tracing::info!(
                 "Appending manifest to log: height={}, link={:?}, previous={:?}",
                 height,
                 link,
@@ -516,6 +649,14 @@ impl<L: BucketLogProvider> Peer<L> {
                 )
                 .await
                 .map_err(|e| anyhow!("Failed to append manifest at height {}: {}", height, e))?;
+
+            let pins_link = manifest.pins().clone();
+            let peer_ids = manifest
+                .shares()
+                .iter()
+                .map(|share| share.1.principal().identity.clone())
+                .collect();
+            return self.jobs.dispatch_download_pins(pins_link, peer_ids);
         }
 
         tracing::info!("Successfully applied {} manifests to log", manifests.len());
@@ -568,11 +709,7 @@ impl<L: BucketLogProvider> Peer<L> {
         // For each bucket, dispatch pings to peers in shares
         for bucket_id in bucket_ids {
             if let Err(e) = self.ping_bucket_peers(bucket_id).await {
-                tracing::warn!(
-                    "Failed to ping peers for bucket {}: {}",
-                    bucket_id,
-                    e
-                );
+                tracing::warn!("Failed to ping peers for bucket {}: {}", bucket_id, e);
             }
         }
     }
@@ -583,11 +720,17 @@ impl<L: BucketLogProvider> Peer<L> {
         L::Error: std::error::Error + Send + Sync + 'static,
     {
         // Get current head link
-        let head_link = self.log_provider.current_head(bucket_id).await
+        let (head_link, _) = self
+            .log_provider
+            .head(bucket_id, None)
+            .await
             .map_err(|e| anyhow!("Failed to get head for bucket {}: {}", bucket_id, e))?;
 
         // Load manifest from blobs store
-        let manifest_bytes = self.blobs_store.get(&head_link.hash()).await
+        let manifest_bytes = self
+            .blobs_store
+            .get(&head_link.hash())
+            .await
             .map_err(|e| anyhow!("Failed to load manifest: {}", e))?;
 
         let manifest: crate::prelude::Manifest = serde_ipld_dagcbor::from_slice(&manifest_bytes)
@@ -606,10 +749,10 @@ impl<L: BucketLogProvider> Peer<L> {
                 .map_err(|e| anyhow!("Invalid peer key in shares: {}", e))?;
 
             // Dispatch ping job
-            if let Err(e) = self.jobs.dispatch(super::jobs::Job::PingPeer {
-                bucket_id,
-                peer_id,
-            }) {
+            if let Err(e) = self
+                .jobs
+                .dispatch(super::jobs::Job::PingPeer { bucket_id, peer_id })
+            {
                 tracing::warn!(
                     "Failed to dispatch ping job for bucket {} peer {}: {}",
                     bucket_id,
@@ -623,16 +766,16 @@ impl<L: BucketLogProvider> Peer<L> {
     }
 
     /// Handle a ping peer job by sending a ping and processing the response
-    async fn handle_ping_peer(&self, bucket_id: Uuid, peer_id: crate::crypto::PublicKey)
+    async fn handle_ping_peer(&self, bucket_id: Uuid, peer_id: PublicKey)
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
-        use super::protocol::{Ping, PingHandler};
         use super::protocol::bidirectional::BidirectionalHandler;
+        use super::protocol::{Ping, PingMessage};
 
         // Get our bucket state
-        let our_link = match self.log_provider.current_head(bucket_id).await {
-            Ok(link) => link,
+        let (our_link, our_height) = match self.log_provider.head(bucket_id, None).await {
+            Ok((link, height)) => (link, height),
             Err(e) => {
                 tracing::warn!(
                     "Failed to get head for bucket {} when pinging peer {}: {}",
@@ -644,49 +787,23 @@ impl<L: BucketLogProvider> Peer<L> {
             }
         };
 
-        let our_height = match self.log_provider.height(bucket_id).await {
-            Ok(height) => height,
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to get height for bucket {} when pinging peer {}: {}",
-                    bucket_id,
-                    peer_id.to_hex(),
-                    e
-                );
-                return;
-            }
-        };
-
         // Construct ping
-        let ping = Ping {
+        let ping = PingMessage {
             bucket_id,
             link: our_link,
             height: our_height,
-            requester_id: crate::crypto::PublicKey::from(*self.secret_key.public()),
         };
 
-        // Convert peer_id to NodeAddr
-        let iroh_node_id: iroh::NodeId = peer_id.into();
-        let node_addr = iroh::NodeAddr::new(iroh_node_id);
-
         // Send ping
-        match PingHandler::send_to_peer::<L>(&self.endpoint, &node_addr, ping).await {
+        tracing::info!("Sending ping to peer {}", peer_id.to_hex());
+        match Ping::send::<L>(&self, &peer_id, ping).await {
             Ok(pong) => {
-                tracing::debug!(
-                    "Received pong from peer {} for bucket {}",
+                tracing::info!(
+                    "Received pong from peer {} for bucket {} | {:?}",
                     peer_id.to_hex(),
-                    bucket_id
+                    bucket_id,
+                    pong
                 );
-
-                // Handle response (dispatches sync jobs if needed)
-                if let Err(e) = PingHandler::handle_response(self, &pong).await {
-                    tracing::error!(
-                        "Failed to handle pong from peer {} for bucket {}: {}",
-                        peer_id.to_hex(),
-                        bucket_id,
-                        e
-                    );
-                }
             }
             Err(e) => {
                 tracing::debug!(
@@ -723,13 +840,16 @@ impl<L: BucketLogProvider> Peer<L> {
         use futures::StreamExt;
         use tokio::time::{interval, Duration};
 
-        tracing::info!("Starting background job worker for peer {}", self.id());
+        tracing::error!(
+            "RUN_WORKER CALLED for peer {} - receiver is being held here",
+            self.id()
+        );
 
         // Convert to async stream for efficient async processing
         let mut stream = job_receiver.into_async();
 
         // Create interval timer for periodic pings (every 60 seconds)
-        let mut ping_interval = interval(Duration::from_secs(60));
+        let mut ping_interval = interval(Duration::from_secs(5));
         ping_interval.tick().await; // Skip first immediate tick
 
         loop {
@@ -737,6 +857,14 @@ impl<L: BucketLogProvider> Peer<L> {
                 // Process incoming jobs from the queue
                 Some(job) = stream.next() => {
                     match job {
+                        Job::DownloadPins {
+                            pins_link,
+                            peer_ids,
+                        } => {
+                            if let Err(e) = self.blobs().download_hash_list(pins_link.hash(), peer_ids, self.endpoint()).await {
+                                tracing::error!("Failed to download pins: {}", e);
+                            }
+                        },
                         Job::SyncBucket {
                             bucket_id,
                             target_link,
@@ -769,19 +897,24 @@ impl<L: BucketLogProvider> Peer<L> {
                             }
                         }
                         Job::PingPeer { bucket_id, peer_id } => {
-                            tracing::debug!(
-                                "Processing ping job: bucket_id={}, peer_id={}",
+                            tracing::info!(
+                                "JOB_WORKER: Processing PingPeer job: bucket_id={}, peer_id={}",
                                 bucket_id,
                                 peer_id.to_hex()
                             );
                             self.handle_ping_peer(bucket_id, peer_id).await;
+                            tracing::info!(
+                                "JOB_WORKER: Completed PingPeer job for bucket {} to peer {}",
+                                bucket_id,
+                                peer_id.to_hex()
+                            );
                         }
                     }
                 }
 
                 // Periodic ping scheduler
                 _ = ping_interval.tick() => {
-                    tracing::debug!("Running periodic ping scheduler");
+                    tracing::info!("Running periodic ping scheduler");
                     self.schedule_periodic_pings().await;
                 }
 

@@ -8,27 +8,10 @@ fn report_build_profile() {
     );
 }
 
-#[allow(unexpected_cfgs)]
 fn report_enabled_features() {
     let mut enabled_features: Vec<&str> = Vec::new();
 
-    #[cfg(feature = "serde")]
-    enabled_features.push("serde");
-
-    #[cfg(feature = "async")]
-    enabled_features.push("async");
-
-    #[cfg(feature = "tokio")]
-    enabled_features.push("tokio");
-
-    #[cfg(feature = "tracing")]
-    enabled_features.push("tracing");
-
-    #[cfg(feature = "http")]
-    enabled_features.push("http");
-
-    #[cfg(feature = "cli")]
-    enabled_features.push("cli");
+    // TODO (amiller68): actually report those
 
     if enabled_features.is_empty() {
         enabled_features.push("none");

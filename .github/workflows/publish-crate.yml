@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "jax-common-v*"
-      - "jax-service-v*"
       - "jax-bucket-v*"
     branches:
       - main
@@ -61,19 +60,6 @@ jobs:
               echo "Publishing jax-common v$COMMON_VERSION..."
               cd crates/common
               cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-common already published or failed"
-              cd ../..
-              echo "Waiting 30s for crates.io to index..."
-              sleep 30
-            fi
-          fi
-
-          # Check if jax-service tag exists and needs publishing
-          if git tag -l | grep -q "jax-service-v"; then
-            SERVICE_VERSION=$(git describe --tags --match "jax-service-v*" --abbrev=0 2>/dev/null | sed 's/jax-service-v//')
-            if [ -n "$SERVICE_VERSION" ]; then
-              echo "Publishing jax-service v$SERVICE_VERSION..."
-              cd crates/service
-              cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-service already published or failed"
               cd ../..
               echo "Waiting 30s for crates.io to index..."
               sleep 30

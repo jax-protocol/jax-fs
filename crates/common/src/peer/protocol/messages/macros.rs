@@ -9,14 +9,13 @@
 ///
 /// ```rust,ignore
 /// register_handlers! {
-///     Ping(PingHandler),
-///     FetchBucket(FetchBucketHandler),
+///     Ping(Ping),
 /// }
 /// ```
 ///
 /// This generates:
-/// - `Message::Ping(Ping)` and `Message::FetchBucket(FetchBucket)` variants
-/// - Automatic dispatch to `PingHandler::process_peer_request()`
+/// - `Message::Ping(Ping)` variants
+/// - Automatic dispatch to `PingHandler::_handle_request()`
 /// - All the routing boilerplate
 macro_rules! register_handlers {
     (
@@ -34,7 +33,7 @@ macro_rules! register_handlers {
         pub enum Message {
             $(
                 #[doc = concat!("Message variant for ", stringify!($variant))]
-                $variant(<$handler as crate::peer::protocol::bidirectional::BidirectionalHandler>::Request),
+                $variant(<$handler as crate::peer::protocol::bidirectional::BidirectionalHandler>::Message),
             )*
         }
 
@@ -45,6 +44,7 @@ macro_rules! register_handlers {
             pub async fn dispatch<L>(
                 self,
                 peer: &crate::peer::Peer<L>,
+                sender_node_id: &crate::crypto::PublicKey,
                 send: iroh::endpoint::SendStream,
             ) -> Result<(), iroh::protocol::AcceptError>
             where
@@ -53,9 +53,9 @@ macro_rules! register_handlers {
             {
                 match self {
                     $(
-                        Message::$variant(request) => {
-                            tracing::debug!(concat!("Dispatching ", stringify!($variant), " request"));
-                            <$handler>::process_peer_request(peer, request, send).await
+                        Message::$variant(message) => {
+                            tracing::debug!(concat!("Dispatching ", stringify!($variant), " message"));
+                            <$handler>::_handle_message(peer, sender_node_id, message, send).await
                         }
                     )*
                 }
@@ -69,7 +69,7 @@ macro_rules! register_handlers {
         pub enum Reply {
             $(
                 #[doc = concat!("Reply variant for ", stringify!($variant))]
-                $variant(<$handler as crate::peer::protocol::bidirectional::BidirectionalHandler>::Response),
+                $variant(<$handler as crate::peer::protocol::bidirectional::BidirectionalHandler>::Reply),
             )*
         }
     };

@@ -1,7 +1,7 @@
+use crate::daemon::http_server::api::client::ApiError;
+use crate::daemon::http_server::api::v0::bucket::cat::{CatRequest, CatResponse};
 use base64::Engine;
 use clap::Args;
-use service::http_server::api::client::ApiError;
-use service::http_server::api::v0::bucket::cat::{CatRequest, CatResponse};
 use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]

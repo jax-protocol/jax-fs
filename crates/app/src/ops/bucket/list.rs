@@ -1,5 +1,5 @@
-use service::http_server::api::client::ApiError;
-use service::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
+use crate::daemon::http_server::api::client::ApiError;
+use crate::daemon::http_server::api::v0::bucket::list::{ListRequest, ListResponse};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BucketListError {

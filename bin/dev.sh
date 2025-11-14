@@ -62,10 +62,10 @@ tmux new-session -d -s jax-dev -n "jax-nodes"
 tmux split-window -h -t jax-dev:0
 
 # Run node1 in left pane with cargo watch
-tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 service'" C-m
+tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
 
 # Run node2 in right pane with cargo watch
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 service'" C-m
+tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"
@@ -91,7 +91,7 @@ echo "  2: api        - API testing window"
 echo ""
 echo "Ports:"
 echo "  Node1: API=3000, UI=8080, PEER=9000"
-echo "  Node2: API=3001, UI=8081, PEER=9001"
+echo "  Node2: API=3001, UI=8081, PEER=9005"
 echo ""
 echo -e "${BLUE}Attaching to session...${NC}"
 

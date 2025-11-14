@@ -1,7 +1,7 @@
+use crate::daemon::http_server::api::client::ApiError;
+use crate::daemon::http_server::api::v0::bucket::add::AddResponse;
 use clap::Args;
 use reqwest::multipart;
-use service::http_server::api::client::ApiError;
-use service::http_server::api::v0::bucket::add::AddResponse;
 use std::env;
 use std::path::PathBuf;
 use uuid::Uuid;

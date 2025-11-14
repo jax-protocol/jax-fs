@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   jax-node1:
@@ -11,9 +11,9 @@ services:
         HTML_PORT: 8080
         PEER_PORT: 9000
     ports:
-      - "3000:3000"  # API
-      - "8080:8080"  # HTML UI
-      - "9000:9000"  # Peer
+      - "3000:" # API
+      - "8080:8080" # HTML UI
+      - "9000:9000" # Peer
     volumes:
       - node1-data:/data
     environment:
@@ -30,9 +30,9 @@ services:
         HTML_PORT: 8081
         PEER_PORT: 9001
     ports:
-      - "3001:3001"  # API
-      - "8081:8081"  # HTML UI
-      - "9001:9001"  # Peer
+      - "3001:3001" # API
+      - "8081:8081" # HTML UI
+      - "9001:9001" # Peer
     volumes:
       - node2-data:/data
     environment:

@@ -1,17 +1,24 @@
+// CLI modules
 mod args;
 mod op;
 mod ops;
 mod state;
 
+// Daemon/service modules (HTTP server, database, P2P sync)
+mod daemon;
+
+// Re-export types that daemon modules need
+pub use daemon::ServiceState;
+
 use args::Args;
 use clap::{Parser, Subcommand};
 use op::Op;
-use ops::{Bucket, Init, Service, Version};
+use ops::{Bucket, Daemon, Init, Version};
 
 command_enum! {
     (Bucket, Bucket),
+    (Daemon, Daemon),
     (Init, Init),
-    (Service, Service),
     (Version, Version),
 }
 

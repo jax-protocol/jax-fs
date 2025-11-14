@@ -17,7 +17,10 @@ use iroh_blobs::{
     BlobsProtocol, Hash,
 };
 
-use crate::linked_data::{BlockEncoded, CodecError, DagCborCodec};
+use crate::{
+    crypto::PublicKey,
+    linked_data::{BlockEncoded, CodecError, DagCborCodec},
+};
 
 // TODO (amiller68): maybe at some point it would make sense
 //  to implement some sort of `BlockStore` trait over BlobStore
@@ -149,7 +152,7 @@ impl BlobsStore {
     pub async fn download_hash(
         &self,
         hash: Hash,
-        peer_ids: Vec<NodeId>,
+        peer_ids: Vec<PublicKey>,
         endpoint: &Endpoint,
     ) -> Result<(), BlobsStoreError> {
         tracing::debug!("download_hash: Checking if hash {} exists locally", hash);
@@ -174,7 +177,12 @@ impl BlobsStore {
         let downloader = Downloader::new(self.inner.store(), endpoint);
 
         // Create content discovery with shuffled peers
-        let discovery = Shuffled::new(peer_ids.clone());
+        let discovery = Shuffled::new(
+            peer_ids
+                .iter()
+                .map(|peer_id| NodeId::from(*peer_id))
+                .collect(),
+        );
 
         tracing::debug!(
             "download_hash: Starting download of hash {} with downloader",
@@ -224,7 +232,7 @@ impl BlobsStore {
     pub async fn download_hash_list(
         &self,
         hash_list_hash: Hash,
-        peer_ids: Vec<NodeId>,
+        peer_ids: Vec<PublicKey>,
         endpoint: &Endpoint,
     ) -> Result<(), BlobsStoreError> {
         tracing::debug!(

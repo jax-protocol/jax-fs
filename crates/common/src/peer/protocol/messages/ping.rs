@@ -2,29 +2,27 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::bucket_log::BucketLogProvider;
 use crate::crypto::PublicKey;
 use crate::linked_data::Link;
-
-use crate::bucket_log::BucketLogProvider;
 use crate::peer::protocol::bidirectional::BidirectionalHandler;
+use crate::peer::protocol::messages::Message;
 use crate::peer::Peer;
 
 /// Request to ping a peer and check bucket sync status
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ping {
+pub struct PingMessage {
     /// The bucket ID to check
     pub bucket_id: Uuid,
     /// The current link the requesting peer has for this bucket
     pub link: Link,
     /// The height of the link we are responding to
     pub height: u64,
-    /// The public key of the peer making the request
-    pub requester_id: PublicKey,
 }
 
 /// Sync status between two peers for a bucket
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum PPong {
+pub enum PingReplyStatus {
     /// The peer does not have this bucket at all
     NotFound,
     /// We are ahead of the current peer's history,
@@ -38,49 +36,43 @@ pub enum PPong {
 
 /// Response to a ping request
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Pong {
+pub struct PingReply {
     /// The bucket ID being responded to
     pub bucket_id: Uuid,
     /// The sync status
-    pub status: PPong,
-    /// The public key of the peer responding
-    pub responder_id: PublicKey,
+    pub status: PingReplyStatus,
 }
 
-impl Pong {
+impl PingReply {
     /// Create a new pong message indicating bucket not found
-    pub fn not_found(bucket_id: Uuid, responder_id: PublicKey) -> Self {
+    pub fn not_found(bucket_id: Uuid) -> Self {
         Self {
             bucket_id,
-            status: PPong::NotFound,
-            responder_id,
+            status: PingReplyStatus::NotFound,
         }
     }
 
     /// Create a new pong message indicating we are ahead
-    pub fn ahead(bucket_id: Uuid, link: Link, height: u64, responder_id: PublicKey) -> Self {
+    pub fn ahead(bucket_id: Uuid, link: Link, height: u64) -> Self {
         Self {
             bucket_id,
-            status: PPong::Ahead(link, height),
-            responder_id,
+            status: PingReplyStatus::Ahead(link, height),
         }
     }
 
     /// Create a new pong message indicating we are behind
-    pub fn behind(bucket_id: Uuid, link: Link, height: u64, responder_id: PublicKey) -> Self {
+    pub fn behind(bucket_id: Uuid, link: Link, height: u64) -> Self {
         Self {
             bucket_id,
-            status: PPong::Behind(link, height),
-            responder_id,
+            status: PingReplyStatus::Behind(link, height),
         }
     }
 
     /// Create a new pong message indicating we are in sync
-    pub fn in_sync(bucket_id: Uuid, responder_id: PublicKey) -> Self {
+    pub fn in_sync(bucket_id: Uuid) -> Self {
         Self {
             bucket_id,
-            status: PPong::InSync,
-            responder_id,
+            status: PingReplyStatus::InSync,
         }
     }
 }
@@ -90,53 +82,48 @@ impl Pong {
 /// This demonstrates the complete protocol flow in one place:
 /// - Responder: what to send back + side effects after sending
 /// - Initiator: what to do with the response
-pub struct PingHandler;
+pub struct Ping;
 
-impl BidirectionalHandler for PingHandler {
-    type Request = Ping;
-    type Response = Pong;
+impl BidirectionalHandler for Ping {
+    type Message = PingMessage;
+    type Reply = PingReply;
+
+    /// Wrap the request in the Message enum for proper serialization
+    fn wrap_request(request: Self::Message) -> Message {
+        Message::Ping(request)
+    }
 
     // ========================================
     // RESPONDER SIDE: When we receive a ping
     // ========================================
 
     /// Generate response: compare our state with peer's state
-    async fn handle_request<L: BucketLogProvider>(peer: &Peer<L>, ping: &Ping) -> Pong {
+    async fn handle_message<L: BucketLogProvider>(
+        peer: &Peer<L>,
+        _sender_node_id: &PublicKey,
+        ping: &PingMessage,
+    ) -> PingReply {
         let logs = peer.logs();
         let bucket_id = ping.bucket_id;
-        let our_pub_key = PublicKey::from(*peer.secret().public());
 
-        // Get our current height for this bucket
-        let our_height = match logs.height(bucket_id).await {
-            Ok(h) => h,
-            Err(e) => {
-                // Check if it's a HeadNotFound error (bucket doesn't exist)
-                match e {
-                    crate::bucket_log::BucketLogError::HeadNotFound(_) => {
-                        return Pong::not_found(bucket_id, our_pub_key);
-                    }
-                    _ => {
-                        tracing::error!("Unexpected error getting bucket height: {}", e);
-                        panic!("Unexpected error getting bucket height: {}", e);
-                    }
-                }
+        // Try to get our head for this bucket
+        let (link, height) = match logs.head(bucket_id, None).await {
+            Ok((link, height)) => (link, height),
+            Err(_) => {
+                // We don't have this bucket, return NotFound
+                return PingReply::not_found(bucket_id);
             }
         };
 
-        let head = logs
-            .head(bucket_id, our_height)
-            .await
-            .expect("failed to get bucket head");
-
         // Compare heights and determine sync status
-        if our_height < ping.height {
-            Pong::behind(bucket_id, head, our_height, our_pub_key)
-        } else if our_height == ping.height {
+        if height < ping.height {
+            PingReply::behind(bucket_id, link, height)
+        } else if height == ping.height {
             // At same height, we're in sync
-            Pong::in_sync(bucket_id, our_pub_key)
+            PingReply::in_sync(bucket_id)
         } else {
             // We're ahead of the remote peer
-            Pong::ahead(bucket_id, head, our_height, our_pub_key)
+            PingReply::ahead(bucket_id, link, height)
         }
     }
 
@@ -144,16 +131,17 @@ impl BidirectionalHandler for PingHandler {
     ///
     /// This is called AFTER we've sent the pong back to the peer.
     /// Use this to trigger background operations without blocking the response.
-    async fn after_response_sent<L: BucketLogProvider>(
+    async fn handle_message_side_effect<L: BucketLogProvider>(
         peer: &Peer<L>,
-        ping: &Ping,
-        pong: &Pong,
+        sender_node_id: &PublicKey,
+        ping: &PingMessage,
+        pong: &PingReply,
     ) -> Result<()>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
         match &pong.status {
-            PPong::Behind(_, our_height) => {
+            PingReplyStatus::Behind(_, our_height) => {
                 // We told them we're behind, so we should dispatch a sync job
                 tracing::info!(
                     "We're behind peer for bucket {} (our height: {}, their height: {}), dispatching sync job",
@@ -167,12 +155,12 @@ impl BidirectionalHandler for PingHandler {
                     ping.bucket_id,
                     ping.link.clone(),
                     ping.height,
-                    ping.requester_id.clone(),
+                    *sender_node_id,
                 ) {
                     tracing::error!("Failed to dispatch sync job: {}", e);
                 }
             }
-            PPong::Ahead(_, our_height) => {
+            PingReplyStatus::Ahead(_, our_height) => {
                 // We told them we're ahead, they might fetch from us
                 tracing::debug!(
                     "We're ahead of peer for bucket {} (our height: {}, their height: {})",
@@ -182,16 +170,26 @@ impl BidirectionalHandler for PingHandler {
                 );
                 // Nothing to do - they'll fetch from us if they want
             }
-            PPong::InSync => {
+            PingReplyStatus::InSync => {
                 tracing::debug!("In sync with peer for bucket {}", ping.bucket_id);
                 // All good, nothing to do
             }
-            PPong::NotFound => {
+            PingReplyStatus::NotFound => {
                 tracing::debug!(
                     "We don't have bucket {} that peer is asking about",
                     ping.bucket_id
                 );
-                // They might announce the bucket to us or we might want to clone it
+                // TODO (amiller68): there should probably be a share message instead
+                //  of this
+                // Dispatch sync job to background worker
+                if let Err(e) = peer.jobs().dispatch_sync(
+                    ping.bucket_id,
+                    ping.link.clone(),
+                    ping.height,
+                    *sender_node_id,
+                ) {
+                    tracing::error!("Failed to dispatch sync job: {}", e);
+                }
             }
         }
         Ok(())
@@ -202,25 +200,29 @@ impl BidirectionalHandler for PingHandler {
     // ========================================
 
     /// Handle pong response: decide what to do based on sync status
-    async fn handle_response<L: BucketLogProvider>(peer: &Peer<L>, pong: &Pong) -> Result<()>
+    async fn handle_reply<L: BucketLogProvider>(
+        peer: &Peer<L>,
+        recipient_node_id: &PublicKey,
+        pong: &PingReply,
+    ) -> Result<()>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
         match &pong.status {
-            PPong::NotFound => {
+            PingReplyStatus::NotFound => {
                 tracing::info!(
                     "Remote peer {} doesn't have bucket {}",
-                    pong.responder_id.to_hex(),
+                    recipient_node_id.to_hex(),
                     pong.bucket_id
                 );
                 // TODO: Could trigger an announce to share our bucket with them
                 // e.g., announce_to_peer(...).await?;
             }
-            PPong::Ahead(link, height) => {
+            PingReplyStatus::Ahead(link, height) => {
                 // Remote peer is ahead, dispatch a sync job
                 tracing::info!(
                     "Remote peer {} is ahead for bucket {} at height {} with link {:?}, dispatching sync job",
-                    pong.responder_id.to_hex(),
+                    recipient_node_id.to_hex(),
                     pong.bucket_id,
                     height,
                     link
@@ -231,15 +233,15 @@ impl BidirectionalHandler for PingHandler {
                     pong.bucket_id,
                     link.clone(),
                     *height,
-                    pong.responder_id.clone(),
+                    recipient_node_id.clone(),
                 ) {
                     tracing::error!("Failed to dispatch sync job: {}", e);
                 }
             }
-            PPong::Behind(link, height) => {
+            PingReplyStatus::Behind(link, height) => {
                 tracing::info!(
                     "Remote peer {} is behind for bucket {} at height {} with link {:?}",
-                    pong.responder_id.to_hex(),
+                    recipient_node_id.to_hex(),
                     pong.bucket_id,
                     height,
                     link
@@ -247,10 +249,10 @@ impl BidirectionalHandler for PingHandler {
                 // Remote peer is behind, they might fetch from us
                 // Nothing to do on our side
             }
-            PPong::InSync => {
+            PingReplyStatus::InSync => {
                 tracing::info!(
                     "In sync with peer {} for bucket {}",
-                    pong.responder_id.to_hex(),
+                    recipient_node_id.to_hex(),
                     pong.bucket_id
                 );
                 // All good

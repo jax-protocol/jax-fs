@@ -27,6 +27,18 @@ pub enum Job {
         peer_id: PublicKey,
     },
 
+    // TODO (amiller68): multipeer
+    /// Download pins from a remote peer
+    ///
+    /// This job will download pins from a remote peer, verifying their provenance
+    /// and updating the local pin store.
+    DownloadPins {
+        /// The bucket to download pins for
+        pins_link: Link,
+        /// The peers to download pins from
+        peer_ids: Vec<PublicKey>,
+    },
+
     /// Ping a peer to check bucket sync status
     ///
     /// This sends a ping to a peer for a specific bucket. The peer will respond
@@ -38,10 +50,6 @@ pub enum Job {
         /// The peer to ping
         peer_id: PublicKey,
     },
-    // Future job types can be added here:
-    // DownloadBlobs { ... },
-    // AnnounceToNetwork { ... },
-    // GarbageCollect { ... },
 }
 
 /// Job dispatcher that can be cloned and shared across tasks
@@ -67,9 +75,20 @@ impl JobDispatcher {
     ///
     /// This is non-blocking and will succeed unless the receiver has been dropped.
     pub fn dispatch(&self, job: Job) -> Result<()> {
+        tracing::info!("JOB_DISPATCHER: Dispatching job: {:?}", job);
         self.tx
             .send(job)
             .map_err(|_| anyhow::anyhow!("job receiver has been dropped"))
+    }
+
+    /// Dispatch a download pins job
+    ///
+    /// Convenience method for dispatching download pins jobs without constructing the Job enum manually.
+    pub fn dispatch_download_pins(&self, pins_link: Link, peer_ids: Vec<PublicKey>) -> Result<()> {
+        self.dispatch(Job::DownloadPins {
+            pins_link,
+            peer_ids,
+        })
     }
 
     /// Dispatch a sync job

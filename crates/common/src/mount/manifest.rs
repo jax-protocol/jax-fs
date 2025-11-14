@@ -70,6 +70,8 @@ pub struct Manifest {
     pins: Link,
     // and a point to the previous version of the bucket
     previous: Option<Link>,
+    // the height of this manifest in the bucket's version chain
+    height: u64,
     // specify the software version as a sanity check
     version: Version,
 }
@@ -85,6 +87,7 @@ impl Manifest {
         share: SecretShare,
         entry: Link,
         pins: Link,
+        height: u64,
     ) -> Self {
         Manifest {
             id,
@@ -102,6 +105,7 @@ impl Manifest {
             entry,
             pins,
             previous: None,
+            height,
             version: Version::default(),
         }
     }
@@ -163,6 +167,14 @@ impl Manifest {
 
     pub fn previous(&self) -> &Option<Link> {
         &self.previous
+    }
+
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    pub fn set_height(&mut self, height: u64) {
+        self.height = height;
     }
 }
 

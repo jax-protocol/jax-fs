@@ -49,6 +49,17 @@ impl Default for MemoryBucketLogProvider {
 impl BucketLogProvider for MemoryBucketLogProvider {
     type Error = MemoryBucketLogProviderError;
 
+    async fn exists(&self, id: Uuid) -> Result<bool, BucketLogError<Self::Error>> {
+        let inner = self.inner.read().map_err(|e| {
+            BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
+                "failed to acquire read lock: {}",
+                e
+            )))
+        })?;
+
+        Ok(inner.entries.contains_key(&id))
+    }
+
     async fn heads(&self, id: Uuid, height: u64) -> Result<Vec<Link>, BucketLogError<Self::Error>> {
         let inner = self.inner.read().map_err(|e| {
             BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
@@ -97,7 +108,11 @@ impl BucketLogProvider for MemoryBucketLogProvider {
         if let Some(prev_link) = &previous {
             // If there's a previous link, it should exist at height - 1
             if height == 0 {
-                return Err(BucketLogError::InvalidAppend(current, prev_link.clone(), height));
+                return Err(BucketLogError::InvalidAppend(
+                    current,
+                    prev_link.clone(),
+                    height,
+                ));
             }
 
             let expected_prev_height = height - 1;
@@ -231,9 +246,7 @@ mod tests {
             .unwrap();
 
         // Same link at same height should conflict
-        let result = provider
-            .append(id, "test".to_string(), link, None, 0)
-            .await;
+        let result = provider.append(id, "test".to_string(), link, None, 0).await;
         assert!(matches!(result, Err(BucketLogError::Conflict)));
     }
 
@@ -254,7 +267,10 @@ mod tests {
         let result = provider
             .append(id, "test".to_string(), link2.clone(), Some(link2), 1)
             .await;
-        assert!(matches!(result, Err(BucketLogError::InvalidAppend(_, _, _))));
+        assert!(matches!(
+            result,
+            Err(BucketLogError::InvalidAppend(_, _, _))
+        ));
     }
 
     #[tokio::test]

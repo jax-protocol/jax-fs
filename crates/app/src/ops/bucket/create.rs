@@ -1,5 +1,5 @@
-use service::http_server::api::client::ApiError;
-use service::http_server::api::v0::bucket::create::{CreateRequest, CreateResponse};
+use crate::daemon::http_server::api::client::ApiError;
+use crate::daemon::http_server::api::v0::bucket::create::{CreateRequest, CreateResponse};
 
 #[derive(Debug, thiserror::Error)]
 pub enum BucketCreateError {

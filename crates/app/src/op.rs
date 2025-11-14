@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use url::Url;
 
-use service::http_server::api::client::{ApiClient, ApiError};
+use crate::daemon::http_server::api::client::{ApiClient, ApiError};
 
 #[derive(Clone)]
 pub struct OpContext {

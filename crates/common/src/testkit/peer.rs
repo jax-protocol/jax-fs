@@ -256,11 +256,7 @@ impl TestPeer {
     // ========================================
 
     /// Sync a bucket from another peer
-    pub async fn sync_from(
-        &self,
-        other: &TestPeer,
-        bucket_id: Uuid,
-    ) -> Result<()> {
+    pub async fn sync_from(&self, other: &TestPeer, bucket_id: Uuid) -> Result<()> {
         // Get the other peer's current state
         let target_height = other.bucket_height(bucket_id).await?;
         let target_link = other.bucket_head(bucket_id, target_height).await?;
@@ -276,12 +272,7 @@ impl TestPeer {
 
         // Use the peer's sync_from_peer method
         self.peer
-            .sync_from_peer(
-                bucket_id,
-                target_link,
-                target_height,
-                &other.public_key(),
-            )
+            .sync_from_peer(bucket_id, target_link, target_height, &other.public_key())
             .await?;
 
         tracing::info!("[{}] Sync completed successfully", self.name);
@@ -290,11 +281,7 @@ impl TestPeer {
     }
 
     /// Download a specific blob from another peer
-    pub async fn download_blob_from(
-        &self,
-        other: &TestPeer,
-        link: &Link,
-    ) -> Result<()> {
+    pub async fn download_blob_from(&self, other: &TestPeer, link: &Link) -> Result<()> {
         tracing::debug!(
             "[{}] Downloading blob {} from [{}]",
             self.name,
@@ -313,7 +300,7 @@ impl TestPeer {
         // Just use the existing download_hash method but it should work with direct peer discovery
         // The DHT discovery is built in, so this should work now
         self.blobs()
-            .download_hash(link.hash(), vec![other.id()], self.peer.endpoint())
+            .download_hash(link.hash(), vec![other.public_key()], self.peer.endpoint())
             .await?;
 
         Ok(())

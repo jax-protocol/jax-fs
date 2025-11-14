@@ -1,6 +1,6 @@
+use crate::daemon::http_server::api::client::ApiError;
+use crate::daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse};
 use clap::Args;
-use service::http_server::api::client::ApiError;
-use service::http_server::api::v0::bucket::ls::{LsRequest, LsResponse};
 use uuid::Uuid;
 
 #[derive(Args, Debug, Clone)]
