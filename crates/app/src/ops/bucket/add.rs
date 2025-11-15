@@ -68,7 +68,7 @@ impl crate::op::Op for Add {
         // Build multipart form
         let form = multipart::Form::new()
             .text("bucket_id", bucket_id.to_string())
-            .text("mount_path", self.mount_path.clone())
+            .text("path", self.mount_path.clone())
             .part("file", multipart::Part::bytes(file_data));
 
         // Send multipart request
@@ -88,10 +88,19 @@ impl crate::op::Op for Add {
 
         let response: AddResponse = response.json().await?;
 
-        Ok(format!(
-            "Added file to bucket at {} (link: {})",
-            response.mount_path,
-            response.link.hash()
-        ))
+        if response.failed_files > 0 {
+            Ok(format!(
+                "Uploaded {} file(s) successfully, {} failed (bucket link: {})",
+                response.successful_files,
+                response.failed_files,
+                response.bucket_link.hash()
+            ))
+        } else {
+            Ok(format!(
+                "Uploaded {} file(s) successfully (bucket link: {})",
+                response.successful_files,
+                response.bucket_link.hash()
+            ))
+        }
     }
 }

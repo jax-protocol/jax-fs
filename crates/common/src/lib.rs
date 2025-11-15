@@ -37,8 +37,8 @@ pub mod version;
  *
  * Available in tests and when the "testkit" feature is enabled.
  */
-#[cfg(any(test, feature = "testkit"))]
-pub mod testkit;
+// #[cfg(any(test, feature = "testkit"))]
+// pub mod testkit;
 
 pub mod prelude {
     pub use crate::crypto::{PublicKey, SecretKey};

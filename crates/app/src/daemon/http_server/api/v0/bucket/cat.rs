@@ -1,4 +1,4 @@
-use axum::extract::{Json, State};
+use axum::extract::{Json, Query, State};
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use reqwest::{Client, RequestBuilder, Url};
@@ -19,6 +19,16 @@ pub struct CatRequest {
     /// Path in bucket to read
     #[arg(long)]
     pub path: String,
+
+    /// Optional: specific version hash to read from
+    #[arg(long)]
+    #[serde(default)]
+    pub at: Option<String>,
+
+    /// Optional: force download (attachment) instead of inline display
+    #[arg(long)]
+    #[serde(default)]
+    pub download: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,12 +40,89 @@ pub struct CatResponse {
     pub mime_type: String,
 }
 
+// JSON POST handler (original)
 pub async fn handler(
     State(state): State<ServiceState>,
     Json(req): Json<CatRequest>,
 ) -> Result<impl IntoResponse, CatError> {
-    // Load mount at current head
-    let mount = state.peer().mount(req.bucket_id).await?;
+    let response = handle_cat_request(state, req).await?;
+    Ok((http::StatusCode::OK, Json(response)).into_response())
+}
+
+// Query GET handler (for viewing/downloading)
+pub async fn handler_get(
+    State(state): State<ServiceState>,
+    Query(req): Query<CatRequest>,
+) -> Result<Response, CatError> {
+    let is_download = req.download.unwrap_or(false);
+    let cat_response = handle_cat_request(state, req).await?;
+
+    // Decode base64 content back to bytes
+    let content_bytes = base64::engine::general_purpose::STANDARD
+        .decode(&cat_response.content)
+        .map_err(|e| CatError::InvalidPath(format!("Failed to decode content: {}", e)))?;
+
+    // Determine Content-Disposition header (inline for viewing, attachment for download)
+    let disposition = if is_download {
+        format!(
+            "attachment; filename=\"{}\"",
+            std::path::Path::new(&cat_response.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("download")
+        )
+    } else {
+        format!(
+            "inline; filename=\"{}\"",
+            std::path::Path::new(&cat_response.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+        )
+    };
+
+    // Return as binary with appropriate headers
+    Ok((
+        http::StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                cat_response.mime_type.as_str(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                disposition.as_str(),
+            ),
+        ],
+        content_bytes,
+    )
+        .into_response())
+}
+
+async fn handle_cat_request(state: ServiceState, req: CatRequest) -> Result<CatResponse, CatError> {
+    // Load mount - either from specific link or current state
+    let mount = if let Some(hash_str) = &req.at {
+        // Parse the hash string and create a Link
+        match hash_str.parse::<common::linked_data::Hash>() {
+            Ok(hash) => {
+                let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
+                match common::mount::Mount::load(&link, state.peer().secret(), state.peer().blobs())
+                    .await
+                {
+                    Ok(mount) => mount,
+                    Err(e) => {
+                        tracing::error!("Failed to load mount from link: {}", e);
+                        return Err(CatError::Mount(e));
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(CatError::InvalidPath(format!("Invalid hash format: {}", e)));
+            }
+        }
+    } else {
+        state.peer().mount(req.bucket_id).await?
+    };
 
     let path_buf = std::path::PathBuf::from(&req.path);
     if !path_buf.is_absolute() {
@@ -57,16 +144,12 @@ pub async fn handler(
     let content = base64::engine::general_purpose::STANDARD.encode(&data);
     let size = data.len();
 
-    Ok((
-        http::StatusCode::OK,
-        Json(CatResponse {
-            path: req.path,
-            content,
-            size,
-            mime_type,
-        }),
-    )
-        .into_response())
+    Ok(CatResponse {
+        path: req.path,
+        content,
+        size,
+        mime_type,
+    })
 }
 
 #[derive(Debug, thiserror::Error)]

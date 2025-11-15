@@ -1,34 +1,20 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/explorer.html" %}
 
 {% block title %}{{ bucket_name }} - History - Jax{% endblock %}
 
-{% block content %}
-<div class="max-w-6xl mx-auto space-y-6">
-    <!-- Breadcrumb navigation -->
-    <nav aria-label="Breadcrumb">
-        <ol class="flex items-center gap-2 text-sm">
-            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
-            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
-            <li><a href="/buckets/{{ bucket_id }}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
-            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
-            <li>History</li>
-        </ol>
-    </nav>
+{% block sidebar %}
+    {% include "components/explorer_sidebar.html" %}
+{% endblock %}
 
-    <div class="flex justify-between items-center">
-        <div>
-            <h1 class="text-3xl font-bold">
-                <i class="fas fa-history mr-2"></i>{{ bucket_name }} - History
-            </h1>
-            <p class="text-sm text-muted-foreground mt-2">
-                Viewing {{ total_entries }} log entries
-            </p>
-        </div>
-        <div class="flex gap-2">
-            <a href="/buckets/{{ bucket_id }}" class="button">
-                <i class="fas fa-arrow-left"></i> Back to Bucket
-            </a>
-        </div>
+{% block content %}
+<div class="px-8 py-6 space-y-6">
+    <div>
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-history mr-2"></i>{{ bucket_name }} - History
+        </h1>
+        <p class="text-sm text-muted-foreground mt-2">
+            Viewing {{ total_entries }} log entries
+        </p>
     </div>
 
     {% if entries.is_empty() %}
@@ -122,5 +108,37 @@
         </div>
     </div>
     {% endif %}
+</div>
+
+{% include "components/share_modal.html" %}
+
+{% include "components/manifest_modal.html" %}
+
+<!-- Upload Modal -->
+<div id="upload-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Upload File</h2>
+        <form id="uploadForm" class="space-y-4">
+            <div>
+                <label for="uploadFile" class="block text-sm font-medium mb-2">Select File</label>
+                <input
+                    type="file"
+                    id="uploadFile"
+                    name="file"
+                    class="uk-input"
+                    required
+                >
+            </div>
+            <div id="uploadStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 {% endblock %}

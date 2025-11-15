@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
+
     <title>{% block title %}Jax Tracker{% endblock %}</title>
-    
+
     <!-- Inter font -->
     <link rel="preconnect" href="https://rsms.me/" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-    
+
     <style>
       :root {
         font-family: Inter, sans-serif;
@@ -46,10 +46,10 @@
     </script>
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/core.iife.js"></script>
-    
+
     <!-- Font Awesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-    
+
     <!-- Custom styles -->
     <link rel="stylesheet" href="/static/style.css">
 
@@ -71,19 +71,79 @@
 </head>
 <body class="bg-background text-foreground flex flex-col min-h-screen">
     <nav class="border-b bg-background">
-        <div class="px-8 py-4">
+        <div class="px-8 py-4 flex items-center justify-between">
             <a href="/" class="flex items-center gap-2 text-primary font-bold text-xl text-decoration-none">
                 <i class="fas fa-database"></i>
                 <span>jax</span>
             </a>
+            <button id="mobile-menu-toggle" class="mobile-menu-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
         </div>
     </nav>
 
-    <main class="flex-1">
-        {% block content %}{% endblock %}
+    <main class="flex-1 explorer-layout">
+        <!-- Mobile Menu Overlay -->
+        <div id="mobile-menu-overlay" class="mobile-menu-overlay">
+            <div class="mobile-menu-content">
+                <div class="mobile-menu-header">
+                    <h2 class="text-lg font-semibold">Menu</h2>
+                    <button id="mobile-menu-close" class="mobile-menu-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="mobile-menu-body">
+                    {% block sidebar %}{% endblock %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar (Desktop) -->
+        <aside class="explorer-sidebar">
+            {% block sidebar %}{% endblock %}
+        </aside>
+
+        <!-- Main Content -->
+        <div class="explorer-main">
+            {% block content %}{% endblock %}
+        </div>
     </main>
+
+    <script>
+    // Mobile menu toggle
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleBtn = document.getElementById('mobile-menu-toggle');
+        const closeBtn = document.getElementById('mobile-menu-close');
+        const overlay = document.getElementById('mobile-menu-overlay');
+
+        function openMobileMenu() {
+            overlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeMobileMenu() {
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', openMobileMenu);
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeMobileMenu);
+        }
+
+        // Close on overlay click
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                closeMobileMenu();
+            }
+        });
+    });
+    </script>
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
     <script src="/static/app.js"></script>
 </body>
-</html> 
+</html>

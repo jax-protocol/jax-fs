@@ -145,6 +145,45 @@ impl Database {
             .collect())
     }
 
+    /// Get all bucket log entries for a specific bucket (unpaginated, for tree view)
+    pub async fn get_all_bucket_logs(
+        &self,
+        bucket_id: &Uuid,
+    ) -> Result<Vec<BucketLogEntry>, sqlx::Error> {
+        let bucket_id_str = bucket_id.to_string();
+
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                bucket_id as "bucket_id!",
+                name as "name!",
+                current_link as "current_link!: DCid",
+                previous_link as "previous_link: DCid",
+                height as "height!",
+                created_at as "created_at!"
+            FROM bucket_log
+            WHERE bucket_id = ?1
+            ORDER BY height ASC
+            "#,
+            bucket_id_str
+        )
+        .fetch_all(&**self)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| BucketLogEntry {
+                bucket_id: Uuid::parse_str(&r.bucket_id)
+                    .expect("invalid bucket_id UUID in database"),
+                name: r.name,
+                current_link: r.current_link.into(),
+                previous_link: r.previous_link.map(Into::into),
+                height: r.height as u64,
+                created_at: r.created_at,
+            })
+            .collect())
+    }
+
     /// Get total count of log entries for a bucket
     pub async fn get_bucket_log_count(&self, bucket_id: &Uuid) -> Result<i64, sqlx::Error> {
         let bucket_id_str = bucket_id.to_string();

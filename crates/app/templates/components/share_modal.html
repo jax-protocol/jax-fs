@@ -1,0 +1,262 @@
+<!-- Share Modal -->
+<div id="share-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body" style="max-width: 600px;">
+        <button class="uk-modal-close-default" type="button" uk-close></button>
+        <h2 class="uk-modal-title">
+            <i class="fas fa-share-alt mr-2"></i>Share Bucket
+        </h2>
+
+        <!-- Educational Section -->
+        <div class="share-info-section">
+            <div class="share-info-card">
+                <div class="share-info-header">
+                    <i class="fas fa-info-circle"></i>
+                    <span>What is a Peer?</span>
+                </div>
+                <p class="share-info-text">
+                    A peer is another Jax instance that can sync and collaborate on buckets with you.
+                    When you share a bucket with a peer, they can read and write files, and changes
+                    will sync between both instances.
+                </p>
+            </div>
+
+            <div class="share-info-card">
+                <div class="share-info-header">
+                    <i class="fas fa-fingerprint"></i>
+                    <span>Finding Your Peer ID</span>
+                </div>
+                <p class="share-info-text">
+                    Your peer ID (public key) is displayed on the <a href="/" class="share-link">home page</a>.
+                    Share your peer ID with others so they can add you to their buckets.
+                </p>
+            </div>
+        </div>
+
+        <!-- Share Form -->
+        <form id="shareForm" class="share-form">
+            <div class="share-form-field">
+                <label for="peerPublicKeyInput" class="share-label">
+                    <i class="fas fa-key"></i> Peer Public Key
+                </label>
+                <input
+                    type="text"
+                    id="peerPublicKeyInput"
+                    name="peer_public_key"
+                    class="share-input"
+                    placeholder="Enter 64-character hexadecimal public key"
+                    required
+                    pattern="[a-fA-F0-9]{64}"
+                    title="Public key must be a 64-character hexadecimal string"
+                >
+                <p class="share-hint">
+                    <i class="fas fa-lightbulb"></i>
+                    Ask the peer for their public key (64 hex characters)
+                </p>
+            </div>
+
+            <div id="shareStatus" class="share-status hidden"></div>
+
+            <div class="share-actions">
+                <button class="button button-secondary uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-share-alt"></i> Share Bucket
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+/* Share Modal Styles */
+.share-info-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.share-info-card {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(96, 165, 250, 0.05) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.dark .share-info-card {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%);
+    border-color: rgba(96, 165, 250, 0.2);
+}
+
+.share-info-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: #3b82f6;
+    margin-bottom: 0.5rem;
+}
+
+.dark .share-info-header {
+    color: #60a5fa;
+}
+
+.share-info-text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #4b5563;
+    margin: 0;
+}
+
+.dark .share-info-text {
+    color: #9ca3af;
+}
+
+.share-link {
+    color: #3b82f6;
+    text-decoration: underline;
+    font-weight: 500;
+}
+
+.share-link:hover {
+    color: #2563eb;
+}
+
+.dark .share-link {
+    color: #60a5fa;
+}
+
+.dark .share-link:hover {
+    color: #93c5fd;
+}
+
+.share-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.share-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.share-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.dark .share-label {
+    color: #e5e7eb;
+}
+
+.share-input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.share-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.dark .share-input {
+    background: rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #e5e7eb;
+}
+
+.dark .share-input:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+}
+
+.share-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: #6b7280;
+    margin: 0;
+}
+
+.dark .share-hint {
+    color: #9ca3af;
+}
+
+.share-hint i {
+    color: #f59e0b;
+}
+
+.share-status {
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+}
+
+.share-status.hidden {
+    display: none;
+}
+
+.share-status.success {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #059669;
+}
+
+.dark .share-status.success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.share-status.error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #dc2626;
+}
+
+.dark .share-status.error {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+.share-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.button-secondary {
+    background: rgba(0, 0, 0, 0.05);
+    color: #374151;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.button-secondary:hover {
+    background: rgba(0, 0, 0, 0.1);
+}
+
+.dark .button-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e5e7eb;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .button-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+</style>

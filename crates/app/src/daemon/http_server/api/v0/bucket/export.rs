@@ -40,7 +40,9 @@ pub async fn handler(
     let logs = state.peer().logs();
 
     // Check if bucket exists first
-    let exists = logs.exists(req.bucket_id).await
+    let exists = logs
+        .exists(req.bucket_id)
+        .await
         .map_err(|e| ExportError::BucketLog(e.to_string()))?;
 
     if !exists {
@@ -69,13 +71,8 @@ pub async fn handler(
 
     // Export all files from the mount to the filesystem
     let mut hash_map = PathHashMap::new();
-    let files_exported = export_mount_to_filesystem(
-        &mount,
-        &req.target_dir,
-        blobs,
-        &mut hash_map,
-    )
-    .await?;
+    let files_exported =
+        export_mount_to_filesystem(&mount, &req.target_dir, blobs, &mut hash_map).await?;
 
     tracing::info!(
         "EXPORT: Successfully exported {} files from bucket {}",
@@ -123,15 +120,19 @@ async fn export_mount_to_filesystem(
                 }
 
                 // Get encrypted blob
-                let encrypted_data = blobs.get(&link.hash()).await
+                let encrypted_data = blobs
+                    .get(&link.hash())
+                    .await
                     .map_err(|e| ExportError::BlobStore(e.to_string()))?;
 
                 // Extract plaintext hash without full decryption (for hash map)
-                let plaintext_hash = secret.extract_plaintext_hash(&encrypted_data)
+                let plaintext_hash = secret
+                    .extract_plaintext_hash(&encrypted_data)
                     .map_err(|e| ExportError::Decryption(e.to_string()))?;
 
                 // Decrypt and write file
-                let decrypted_data = secret.decrypt(&encrypted_data)
+                let decrypted_data = secret
+                    .decrypt(&encrypted_data)
                     .map_err(|e| ExportError::Decryption(e.to_string()))?;
 
                 std::fs::write(&target_path, decrypted_data)?;

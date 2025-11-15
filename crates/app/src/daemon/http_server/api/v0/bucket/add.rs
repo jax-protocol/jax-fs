@@ -21,10 +21,21 @@ pub struct AddRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AddResponse {
+pub struct FileUploadResult {
     pub mount_path: String,
-    pub link: Link,
     pub mime_type: String,
+    pub size: usize,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddResponse {
+    pub bucket_link: Link,
+    pub files: Vec<FileUploadResult>,
+    pub total_files: usize,
+    pub successful_files: usize,
+    pub failed_files: usize,
 }
 
 pub async fn handler(
@@ -32,8 +43,8 @@ pub async fn handler(
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, AddError> {
     let mut bucket_id: Option<Uuid> = None;
-    let mut mount_path: Option<String> = None;
-    let mut file_data: Option<Vec<u8>> = None;
+    let mut base_path: Option<String> = None;
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
     // Parse multipart form data
     while let Some(field) = multipart
@@ -54,22 +65,28 @@ pub async fn handler(
                         .map_err(|_| AddError::InvalidRequest("Invalid bucket_id".into()))?,
                 );
             }
-            "mount_path" => {
-                mount_path = Some(
+            "path" => {
+                base_path = Some(
                     field
                         .text()
                         .await
                         .map_err(|e| AddError::MultipartError(e.to_string()))?,
                 );
             }
-            "file" => {
-                file_data = Some(
-                    field
-                        .bytes()
-                        .await
-                        .map_err(|e| AddError::MultipartError(e.to_string()))?
-                        .to_vec(),
-                );
+            "file" | "files" => {
+                // Get filename from the field
+                let filename = field
+                    .file_name()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "unnamed".to_string());
+
+                let file_data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| AddError::MultipartError(e.to_string()))?
+                    .to_vec();
+
+                files.push((filename, file_data));
             }
             _ => {}
         }
@@ -77,49 +94,108 @@ pub async fn handler(
 
     let bucket_id =
         bucket_id.ok_or_else(|| AddError::InvalidRequest("bucket_id is required".into()))?;
-    let mount_path =
-        mount_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
-    let file_data = file_data.ok_or_else(|| AddError::InvalidRequest("file is required".into()))?;
+    let base_path = base_path.ok_or_else(|| AddError::InvalidRequest("path is required".into()))?;
 
-    // Validate mount path
-    let mount_path_buf = PathBuf::from(&mount_path);
-    if !mount_path_buf.is_absolute() {
-        return Err(AddError::InvalidPath("Mount path must be absolute".into()));
+    if files.is_empty() {
+        return Err(AddError::InvalidRequest(
+            "At least one file is required".into(),
+        ));
     }
 
-    // Detect MIME type from file extension
-    let mime_type = mime_guess::from_path(&mount_path_buf)
-        .first_or_octet_stream()
-        .to_string();
-
     tracing::info!(
-        "Adding file to bucket {} at {} ({})",
+        "Uploading {} file(s) to bucket {} at path {}",
+        files.len(),
         bucket_id,
-        mount_path,
-        mime_type
+        base_path
     );
-
-    // Detect MIME type from file extension
-    let mime_type = mime_guess::from_path(&mount_path_buf)
-        .first_or_octet_stream()
-        .to_string();
 
     // Load mount at current head
     let mut mount = state.peer().mount(bucket_id).await?;
 
-    // Add file to mount
-    let reader = Cursor::new(file_data);
-    mount.add(&mount_path_buf, reader).await?;
+    let mut results = Vec::new();
+    let mut successful = 0;
+    let mut failed = 0;
 
-    // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount).await?;
+    // Process each file
+    for (filename, file_data) in files {
+        // Construct full path
+        let full_path = if base_path == "/" {
+            format!("/{}", filename)
+        } else {
+            format!("{}/{}", base_path.trim_end_matches('/'), filename)
+        };
+
+        let mount_path_buf = PathBuf::from(&full_path);
+
+        // Validate mount path
+        if !mount_path_buf.is_absolute() {
+            results.push(FileUploadResult {
+                mount_path: full_path.clone(),
+                mime_type: String::new(),
+                size: file_data.len(),
+                success: false,
+                error: Some("Mount path must be absolute".to_string()),
+            });
+            failed += 1;
+            continue;
+        }
+
+        // Detect MIME type from file extension
+        let mime_type = mime_guess::from_path(&mount_path_buf)
+            .first_or_octet_stream()
+            .to_string();
+
+        let file_size = file_data.len();
+
+        // Try to add file to mount
+        match mount.add(&mount_path_buf, Cursor::new(file_data)).await {
+            Ok(_) => {
+                tracing::info!(
+                    "Added file {} ({} bytes, {})",
+                    full_path,
+                    file_size,
+                    mime_type
+                );
+                results.push(FileUploadResult {
+                    mount_path: full_path,
+                    mime_type,
+                    size: file_size,
+                    success: true,
+                    error: None,
+                });
+                successful += 1;
+            }
+            Err(e) => {
+                tracing::error!("Failed to add file {}: {}", full_path, e);
+                results.push(FileUploadResult {
+                    mount_path: full_path,
+                    mime_type,
+                    size: file_size,
+                    success: false,
+                    error: Some(e.to_string()),
+                });
+                failed += 1;
+            }
+        }
+    }
+
+    // Save mount and update log only if at least one file succeeded
+    let bucket_link = if successful > 0 {
+        state.peer().save_mount(&mount).await?
+    } else {
+        return Err(AddError::InvalidRequest(
+            "All files failed to upload".into(),
+        ));
+    };
 
     Ok((
         http::StatusCode::OK,
         axum::Json(AddResponse {
-            mount_path,
-            link: new_bucket_link,
-            mime_type,
+            bucket_link,
+            files: results,
+            total_files: successful + failed,
+            successful_files: successful,
+            failed_files: failed,
         }),
     )
         .into_response())
@@ -127,8 +203,6 @@ pub async fn handler(
 
 #[derive(Debug, thiserror::Error)]
 pub enum AddError {
-    #[error("Invalid path: {0}")]
-    InvalidPath(String),
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
     #[error("Multipart error: {0}")]
@@ -140,9 +214,7 @@ pub enum AddError {
 impl IntoResponse for AddError {
     fn into_response(self) -> Response {
         match self {
-            AddError::InvalidPath(msg)
-            | AddError::InvalidRequest(msg)
-            | AddError::MultipartError(msg) => (
+            AddError::InvalidRequest(msg) | AddError::MultipartError(msg) => (
                 http::StatusCode::BAD_REQUEST,
                 format!("Bad request: {}", msg),
             )

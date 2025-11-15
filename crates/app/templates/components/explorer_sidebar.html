@@ -1,0 +1,146 @@
+<!-- Bucket Info Section -->
+<div class="sidebar-section">
+    <div class="sidebar-bucket-header">
+        <i class="fas fa-folder-open text-primary"></i>
+        <h2 class="sidebar-bucket-name">{{ bucket_name }}</h2>
+    </div>
+    <div class="sidebar-bucket-id">
+        <div class="sidebar-id-label">Bucket ID</div>
+        <div class="sidebar-link-row">
+            <code class="sidebar-hash sidebar-id-value" title="{{ bucket_id }}">
+                {{ bucket_id_short }}
+            </code>
+            <button onclick="copySidebarId('{{ bucket_id }}')" class="sidebar-copy-btn" title="Copy bucket ID">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+    </div>
+    <div class="sidebar-bucket-link">
+        <div class="sidebar-link-row">
+            <code class="sidebar-hash" title="{{ bucket_link }}">
+                {{ bucket_link_short }}
+            </code>
+            <button onclick="copySidebarLink('{{ bucket_link }}')" class="sidebar-copy-btn" title="Copy bucket link">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+    </div>
+    <div class="sidebar-bucket-meta">
+        <button uk-toggle="target: #bucket-data-modal" class="sidebar-details-btn">
+            <i class="fas fa-file-code"></i> Manifest
+        </button>
+    </div>
+</div>
+
+<script>
+function copySidebarId(id) {
+    navigator.clipboard.writeText(id).then(() => {
+        const btn = event.target.closest('button');
+        const row = btn.closest('.sidebar-link-row');
+        const icon = btn.querySelector('i');
+        const originalClass = icon.className;
+        const originalBg = row.style.background;
+
+        // Change icon to checkmark
+        icon.className = 'fas fa-check';
+
+        // Highlight the entire row with green
+        row.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)';
+        row.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        row.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        btn.style.background = 'rgba(16, 185, 129, 0.2)';
+        btn.style.color = '#10b981';
+        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+
+        setTimeout(() => {
+            icon.className = originalClass;
+            row.style.background = originalBg;
+            row.style.borderColor = '';
+            row.style.border = '';
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+
+function copySidebarLink(link) {
+    navigator.clipboard.writeText(link).then(() => {
+        const btn = event.target.closest('button');
+        const row = btn.closest('.sidebar-link-row');
+        const icon = btn.querySelector('i');
+        const originalClass = icon.className;
+        const originalBg = row.style.background;
+
+        // Change icon to checkmark
+        icon.className = 'fas fa-check';
+
+        // Highlight the entire row with green
+        row.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)';
+        row.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        row.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        btn.style.background = 'rgba(16, 185, 129, 0.2)';
+        btn.style.color = '#10b981';
+        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+
+        setTimeout(() => {
+            icon.className = originalClass;
+            row.style.background = originalBg;
+            row.style.borderColor = '';
+            row.style.border = '';
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+</script>
+
+<!-- Navigation Section -->
+<div class="sidebar-section">
+    <div class="sidebar-section-title">Navigation</div>
+    <nav class="sidebar-nav">
+        <a href="/buckets" class="sidebar-nav-item">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Buckets</span>
+        </a>
+        <a href="/buckets/{{ bucket_id }}/logs" class="sidebar-nav-item">
+            <i class="fas fa-history"></i>
+            <span>History</span>
+        </a>
+        <a href="/buckets/{{ bucket_id }}/peers" class="sidebar-nav-item">
+            <i class="fas fa-users"></i>
+            <span>Peers</span>
+        </a>
+        {% if !read_only %}
+        <button uk-toggle="target: #share-modal" class="sidebar-nav-item sidebar-nav-button">
+            <i class="fas fa-share-alt"></i>
+            <span>Share</span>
+        </button>
+        {% endif %}
+    </nav>
+</div>
+
+<!-- Current Path Section -->
+{% if current_path != "/" %}
+<div class="sidebar-section">
+    <div class="sidebar-section-title">Current Path</div>
+    <div class="sidebar-current-path">
+        {{ current_path }}
+    </div>
+</div>
+{% endif %}
+
+<!-- Upload Action (Bottom) -->
+{% if !read_only %}
+<div class="sidebar-upload-section">
+    <button uk-toggle="target: #upload-modal" class="sidebar-upload-btn">
+        <i class="fas fa-upload"></i>
+        <span>Upload File</span>
+    </button>
+</div>
+{% endif %}

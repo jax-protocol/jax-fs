@@ -200,7 +200,10 @@ impl Secret {
     /// - Data is too short to contain a nonce
     /// - Authentication tag verification fails (data was tampered with or wrong key)
     /// - Decrypted data is too short to contain the hash header
-    pub fn extract_plaintext_hash(&self, data: &[u8]) -> Result<[u8; BLAKE3_HASH_SIZE], SecretError> {
+    pub fn extract_plaintext_hash(
+        &self,
+        data: &[u8],
+    ) -> Result<[u8; BLAKE3_HASH_SIZE], SecretError> {
         if data.len() < NONCE_SIZE {
             return Err(anyhow::anyhow!("data too short for nonce").into());
         }

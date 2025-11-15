@@ -1,17 +1,22 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/explorer.html" %}
 
 {% block title %}{{ bucket_name }} - Jax{% endblock %}
 
+{% block sidebar %}
+    {% include "components/explorer_sidebar.html" %}
+{% endblock %}
+
 {% block content %}
-<div class="max-w-6xl mx-auto space-y-6">
+<div class="px-8 py-6 space-y-6">
     <!-- Historical version banner -->
+    {% if viewing_history %}
     {% include "components/historical_banner.html" %}
+    {% endif %}
 
     <!-- Breadcrumb navigation -->
+    {% if !path_segments.is_empty() %}
     <nav aria-label="Breadcrumb">
         <ol class="flex items-center gap-2 text-sm">
-            <li><a href="/buckets" class="text-primary hover:underline">Buckets</a></li>
-            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
             <li><a href="/buckets/{{ bucket_id }}{% if viewing_history %}?at={{ bucket_link }}{% endif %}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
             {% for segment in path_segments %}
             <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
@@ -19,223 +24,41 @@
             {% endfor %}
         </ol>
     </nav>
+    {% endif %}
 
-    <div class="flex justify-between items-center">
-        <div>
-            <h1 class="text-3xl font-bold">
-                <i class="fas fa-folder-open mr-2"></i>{{ bucket_name }}
-            </h1>
-            <div class="mt-2 space-y-1">
-                <div class="flex items-center gap-2">
-                    <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
-                          onclick="navigator.clipboard.writeText('{{ bucket_link }}')"
-                          title="{{ bucket_link }} (click to copy)">
-                        Bucket: {{ bucket_link_short }}
-                    </code>
-                    <button uk-toggle="target: #bucket-data-modal" class="text-xs text-primary hover:underline">
-                        <i class="fas fa-info-circle"></i> Details
-                    </button>
-                </div>
-                {% if previous_link.is_some() %}
-                <div>
-                    <code class="inline-block text-xs bg-muted px-2 py-1 rounded font-mono cursor-pointer hover:bg-gray-200"
-                          onclick="navigator.clipboard.writeText('{{ previous_link_full }}')"
-                          title="{{ previous_link_full }} (click to copy)">
-                        Previous: {{ previous_link_short }}
-                    </code>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        <div class="flex gap-2">
-            {% if !read_only %}
-            <button uk-toggle="target: #new-file-modal" class="button button-primary">
-                <i class="fas fa-file-plus"></i> New File
-            </button>
-            <button uk-toggle="target: #upload-modal" class="button">
-                <i class="fas fa-upload"></i> Upload
-            </button>
-            {% endif %}
-            <a href="/buckets/{{ bucket_id }}/logs" class="button">
-                <i class="fas fa-history"></i> History
-            </a>
-            <a href="/buckets/{{ bucket_id }}/pins" class="button">
-                <i class="fas fa-thumbtack"></i> Pins
-            </a>
-            <a href="/buckets/{{ bucket_id }}/peers" class="button">
-                <i class="fas fa-users"></i> Peers
-            </a>
-            {% if !read_only %}
-            <button uk-toggle="target: #share-modal" class="button">
-                <i class="fas fa-share-alt"></i> Share
-            </button>
-            {% endif %}
+    <!-- File browser toolbar -->
+    <div class="browser-toolbar">
+        <div class="toolbar-left">
             {% if current_path != "/" %}
             <a href="{{ parent_path_url }}" class="button">
                 <i class="fas fa-arrow-up"></i> Up
             </a>
             {% endif %}
         </div>
-    </div>
-
-    <!-- New File Modal -->
-    {% if !read_only %}
-    <div id="new-file-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body">
-            <h2 class="uk-modal-title">Create New File</h2>
-            <form id="newFileForm" class="space-y-4">
-                <div>
-                    <label for="newFileName" class="block text-sm font-medium mb-2">File Name</label>
-                    <input type="text" id="newFileName" name="filename" class="uk-input"
-                           placeholder="example.txt or example.md" required>
-                    <p class="text-xs text-muted-foreground mt-1">Supported: .txt and .md files</p>
-                </div>
-                <div>
-                    <label for="newFileContent" class="block text-sm font-medium mb-2">Initial Content (Optional)</label>
-                    <textarea id="newFileContent" name="content" class="uk-input" rows="6"
-                              placeholder="Start typing or leave empty..."></textarea>
-                </div>
-                <div id="newFileStatus" class="hidden"></div>
-                <div class="flex gap-4 justify-end mt-4">
-                    <button class="button button-danger uk-modal-close" type="button">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="button button-primary">
-                        <i class="fas fa-check"></i> Create & Edit
-                    </button>
-                </div>
-            </form>
+        <div class="toolbar-right">
+            {% if !read_only %}
+            <button uk-toggle="target: #new-folder-modal" class="button">
+                <i class="fas fa-folder-plus"></i>
+            </button>
+            <button uk-toggle="target: #upload-modal" class="button">
+                <i class="fas fa-upload"></i>
+            </button>
+            <a href="/buckets/{{ bucket_id }}/edit?path={{ current_path }}&new=true" class="button">
+                <i class="fas fa-plus"></i>
+            </a>
+            {% endif %}
         </div>
     </div>
 
-    <!-- Upload Modal -->
-    <div id="upload-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body">
-            <h2 class="uk-modal-title">Upload File</h2>
-            <form id="uploadForm" class="space-y-4">
-                <div>
-                    <label for="fileInput" class="block text-sm font-medium mb-2">Select File</label>
-                    <input type="file" id="fileInput" name="file" class="uk-input" required>
-                </div>
-                <div>
-                    <label for="pathInput" class="block text-sm font-medium mb-2">Destination Directory</label>
-                    <input type="text" id="pathInput" name="path" class="uk-input" value="{{ current_path }}">
-                    <p class="text-xs text-muted-foreground mt-1">File will be uploaded to this directory</p>
-                </div>
-                <div id="uploadStatus" class="hidden"></div>
-                <div class="flex gap-4 justify-end mt-4">
-                    <button class="button button-danger uk-modal-close" type="button">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="button button-primary">
-                        <i class="fas fa-upload"></i> Upload
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Share Modal -->
-    <div id="share-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body">
-            <h2 class="uk-modal-title">Share Bucket</h2>
-            <form id="shareForm" class="space-y-4">
-                <div>
-                    <label for="peerPublicKeyInput" class="block text-sm font-medium mb-2">Peer Public Key</label>
-                    <input
-                        type="text"
-                        id="peerPublicKeyInput"
-                        name="peer_public_key"
-                        class="uk-input"
-                        placeholder="Enter peer's public key (hex)"
-                        required
-                        pattern="[a-fA-F0-9]{64}"
-                        title="Public key must be a 64-character hexadecimal string"
-                    >
-                    <p class="text-xs text-muted-foreground mt-1">
-                        The peer's public key in hexadecimal format (64 characters)
-                    </p>
-                </div>
-                <div id="shareStatus" class="hidden"></div>
-                <div class="flex gap-4 justify-end mt-4">
-                    <button class="button button-danger uk-modal-close" type="button">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="button button-primary">
-                        <i class="fas fa-share-alt"></i> Share
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Rename Modal -->
-    <div id="rename-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body">
-            <h2 class="uk-modal-title">Rename <span id="renameItemType"></span></h2>
-            <form id="renameForm" class="space-y-4">
-                <input type="hidden" id="renameOldPath" name="old_path">
-                <div>
-                    <label for="renameNewName" class="block text-sm font-medium mb-2">New Name</label>
-                    <input type="text" id="renameNewName" name="new_name" class="uk-input" required>
-                </div>
-                <div id="renameStatus" class="hidden"></div>
-                <div class="flex gap-4 justify-end mt-4">
-                    <button class="button button-danger uk-modal-close" type="button">
-                        <i class="fas fa-times"></i> Cancel
-                    </button>
-                    <button type="submit" class="button button-primary">
-                        <i class="fas fa-check"></i> Rename
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div id="delete-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body">
-            <h2 class="uk-modal-title">Delete <span id="deleteItemType"></span></h2>
-            <p>Are you sure you want to delete <strong id="deleteItemName"></strong>?</p>
-            <p class="text-sm text-muted-foreground">This action cannot be undone.</p>
-            <input type="hidden" id="deleteItemPath">
-            <div id="deleteStatus" class="hidden"></div>
-            <div class="flex gap-4 justify-end mt-4">
-                <button class="button uk-modal-close" type="button">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
-                <button onclick="confirmDelete()" class="button button-danger">
-                    <i class="fas fa-trash"></i> Delete
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Bucket Data Modal -->
-    <div id="bucket-data-modal" uk-modal>
-        <div class="uk-modal-dialog uk-modal-body" style="max-width: 800px;">
-            <button class="uk-modal-close-default" type="button" uk-close></button>
-            <h2 class="uk-modal-title">Bucket Data</h2>
-            <div class="space-y-4">
-                <div>
-                    <h3 class="text-sm font-semibold mb-2">Formatted Bucket Data:</h3>
-                    <pre class="bg-muted p-4 rounded text-xs overflow-auto max-h-96 font-mono">{{ bucket_data_formatted }}</pre>
-                    <button onclick="navigator.clipboard.writeText(document.querySelector('#bucket-data-modal pre').textContent)"
-                            class="button button-sm mt-2">
-                        <i class="fas fa-copy"></i> Copy to Clipboard
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
+    <!-- File list -->
     {% if items.is_empty() %}
     <div class="card">
         <div class="p-8 text-center text-muted-foreground">
             <i class="fas fa-folder-open text-4xl mb-4"></i>
-            <p>This bucket is empty</p>
-            <p class="text-sm">Add files using the CLI to get started</p>
+            <p>This directory is empty</p>
+            {% if !read_only %}
+            <p class="text-sm">Upload files or create new ones to get started</p>
+            {% endif %}
         </div>
     </div>
     {% else %}
@@ -244,9 +67,9 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
                     <th>Type</th>
-                    <th>MIME Type</th>
-                    <th>Link</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -254,45 +77,58 @@
                 {% for item in items %}
                 <tr>
                     <td>
-                        {% if item.is_dir %}
-                        <a href="/buckets/{{ bucket_id }}?path={{ item.path }}" class="text-primary font-semibold hover:underline">
-                            <i class="fas fa-folder text-yellow-500 mr-2"></i>{{ item.name }}
-                        </a>
-                        {% else %}
-                        <span class="font-semibold">
-                            <i class="fas fa-file text-blue-500 mr-2"></i>{{ item.name }}
-                        </span>
-                        {% endif %}
-                    </td>
-                    <td class="text-sm text-muted-foreground">
-                        {% if item.is_dir %}
-                        <span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded">Directory</span>
-                        {% else %}
-                        <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded">File</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-xs text-muted-foreground">{{ item.mime_type }}</td>
-                    <td><code class="text-xs text-muted-foreground">{{ item.link }}</code></td>
-                    <td>
-                        <div class="flex gap-2 flex-wrap">
+                        <div class="flex items-center gap-2">
                             {% if item.is_dir %}
-                            <a href="/buckets/{{ bucket_id }}?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="button button-sm">
-                                <i class="fas fa-folder-open"></i> Open
+                            <i class="fas fa-folder file-icon-dir"></i>
+                            <a href="/buckets/{{ bucket_id }}?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary font-medium hover:underline">
+                                {{ item.name }}
                             </a>
                             {% else %}
-                            <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="button button-sm button-primary">
-                                <i class="fas fa-eye"></i> View
+                            {# Icon based on MIME type #}
+                            {% if item.mime_type.starts_with("image/") %}
+                            <i class="fas fa-file-image file-icon-image"></i>
+                            {% else if item.mime_type.starts_with("video/") %}
+                            <i class="fas fa-file-video file-icon-video"></i>
+                            {% else if item.mime_type.starts_with("audio/") %}
+                            <i class="fas fa-file-audio file-icon-audio"></i>
+                            {% else if item.mime_type.starts_with("text/") || item.mime_type == "application/json" || item.mime_type == "application/xml" %}
+                            <i class="fas fa-file-alt file-icon-text"></i>
+                            {% else if item.mime_type == "text/markdown" || item.name.ends_with(".md") %}
+                            <i class="fab fa-markdown file-icon-markdown"></i>
+                            {% else if item.mime_type == "application/pdf" %}
+                            <i class="fas fa-file-pdf file-icon-pdf"></i>
+                            {% else if item.mime_type.starts_with("application/zip") || item.mime_type.starts_with("application/x-") %}
+                            <i class="fas fa-file-archive file-icon-archive"></i>
+                            {% else if item.mime_type == "application/vnd.ms-excel" || item.mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" %}
+                            <i class="fas fa-file-excel file-icon-excel"></i>
+                            {% else if item.mime_type == "application/msword" || item.mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" %}
+                            <i class="fas fa-file-word file-icon-word"></i>
+                            {% else if item.mime_type == "application/vnd.ms-powerpoint" || item.mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation" %}
+                            <i class="fas fa-file-powerpoint file-icon-powerpoint"></i>
+                            {% else %}
+                            <i class="fas fa-file file-icon-default"></i>
+                            {% endif %}
+                            <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary font-medium hover:underline">
+                                {{ item.name }}
                             </a>
                             {% endif %}
-                            {% if !read_only %}
-                            <button onclick="openRenameModal('{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})" class="button button-sm">
-                                <i class="fas fa-i-cursor"></i> Rename
-                            </button>
-                            <button onclick="openDeleteModal('{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})" class="button button-sm button-danger">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                            {% endif %}
                         </div>
+                    </td>
+                    <td class="text-sm text-muted-foreground">{{ item.file_size }}</td>
+                    <td class="text-sm text-muted-foreground">{{ item.modified_at }}</td>
+                    <td class="text-xs">
+                        <span class="file-type-badge{% if item.is_dir %} file-type-dir{% endif %}">
+                            {{ item.mime_type }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if !read_only %}
+                        <div class="relative">
+                            <button class="button button-sm" onclick="toggleActionMenu(event, '{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})">
+                                <i class="fas fa-ellipsis-h"></i>
+                            </button>
+                        </div>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -301,6 +137,142 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Modals -->
+{% if !read_only %}
+<!-- New Folder Modal -->
+<div id="new-folder-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Create New Folder</h2>
+        <form id="newFolderForm" class="space-y-4">
+            <div>
+                <label for="newFolderName" class="block text-sm font-medium mb-2">Folder Name</label>
+                <input type="text" id="newFolderName" name="foldername" class="uk-input"
+                       placeholder="my-folder" required>
+                <p class="text-xs text-muted-foreground mt-1">Enter a name for the new folder</p>
+            </div>
+            <div id="newFolderStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Create
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- New File Modal -->
+<div id="new-file-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Create New File</h2>
+        <form id="newFileForm" class="space-y-4">
+            <div>
+                <label for="newFileName" class="block text-sm font-medium mb-2">File Name</label>
+                <input type="text" id="newFileName" name="filename" class="uk-input"
+                       placeholder="example.txt or example.md" required>
+                <p class="text-xs text-muted-foreground mt-1">Supported: .txt and .md files</p>
+            </div>
+            <div>
+                <label for="newFileContent" class="block text-sm font-medium mb-2">Initial Content (Optional)</label>
+                <textarea id="newFileContent" name="content" class="uk-input" rows="6"
+                          placeholder="Start typing or leave empty..."></textarea>
+            </div>
+            <div id="newFileStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Create & Edit
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Upload Files</h2>
+        <form id="uploadForm" class="space-y-4">
+            <div>
+                <label for="fileInput" class="block text-sm font-medium mb-2">Select Files</label>
+                <input type="file" id="fileInput" name="files" class="uk-input" multiple required>
+                <p class="text-xs text-muted-foreground mt-1">You can select multiple files to upload at once</p>
+            </div>
+            <div id="fileList" class="hidden">
+                <div class="text-sm font-medium mb-2">Selected files:</div>
+                <div id="fileListContent" class="space-y-1 max-h-48 overflow-y-auto"></div>
+            </div>
+            <div id="uploadStatus" class="hidden"></div>
+            <div id="uploadProgress" class="hidden">
+                <div class="text-sm font-medium mb-2">Upload Progress</div>
+                <div id="uploadProgressBar" class="w-full bg-muted rounded-full h-2">
+                    <div id="uploadProgressFill" class="bg-primary h-2 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+                <div id="uploadProgressText" class="text-xs text-muted-foreground mt-1"></div>
+            </div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button" id="uploadCancelBtn">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary" id="uploadSubmitBtn">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% include "components/share_modal.html" %}
+
+<!-- Rename Modal -->
+<div id="rename-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Rename <span id="renameItemType"></span></h2>
+        <form id="renameForm" class="space-y-4">
+            <input type="hidden" id="renameOldPath" name="old_path">
+            <div>
+                <label for="renameNewName" class="block text-sm font-medium mb-2">New Name</label>
+                <input type="text" id="renameNewName" name="new_name" class="uk-input" required>
+            </div>
+            <div id="renameStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Rename
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Delete <span id="deleteItemType"></span></h2>
+        <p>Are you sure you want to delete <strong id="deleteItemName"></strong>?</p>
+        <p class="text-sm text-muted-foreground">This action cannot be undone.</p>
+        <input type="hidden" id="deleteItemPath">
+        <div id="deleteStatus" class="hidden"></div>
+        <div class="flex gap-4 justify-end mt-4">
+            <button class="button uk-modal-close" type="button">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button onclick="confirmDelete()" class="button button-danger">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+{% include "components/manifest_modal.html" %}
+{% endif %}
 {% endblock %}
 
 {% block head %}
@@ -309,4 +281,291 @@ window.JAX_API_URL = '{{ api_url }}';
 window.JAX_BUCKET_ID = '{{ bucket_id }}';
 window.JAX_CURRENT_PATH = '{{ current_path }}';
 </script>
+
+<script>
+// New Folder functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const newFolderForm = document.getElementById('newFolderForm');
+
+    if (newFolderForm) {
+        newFolderForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const folderNameInput = document.getElementById('newFolderName');
+            const statusDiv = document.getElementById('newFolderStatus');
+            const submitBtn = this.querySelector('button[type="submit"]');
+
+            const folderName = folderNameInput.value.trim();
+
+            if (!folderName) {
+                showStatus(statusDiv, 'Please enter a folder name', 'error');
+                return;
+            }
+
+            // Validate folder name (no slashes, no dots at start)
+            if (folderName.includes('/') || folderName.startsWith('.')) {
+                showStatus(statusDiv, 'Invalid folder name. Cannot contain slashes or start with a dot.', 'error');
+                return;
+            }
+
+            // Construct the full path
+            let fullPath;
+            if (window.JAX_CURRENT_PATH === '/') {
+                fullPath = '/' + folderName;
+            } else {
+                fullPath = window.JAX_CURRENT_PATH + '/' + folderName;
+            }
+
+            // Disable submit button
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+
+            try {
+                const response = await fetch(window.JAX_API_URL + '/api/v0/bucket/mkdir', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        bucket_id: window.JAX_BUCKET_ID,
+                        path: fullPath
+                    })
+                });
+
+                if (response.ok) {
+                    showStatus(statusDiv, 'Folder created successfully!', 'success');
+
+                    // Reload the page after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    const error = await response.json();
+                    showStatus(statusDiv, 'Error: ' + (error.error || 'Failed to create folder'), 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-check"></i> Create';
+                }
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                showStatus(statusDiv, 'Error: ' + error.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-check"></i> Create';
+            }
+        });
+    }
+});
+
+function showStatus(element, message, type) {
+    let colorClass;
+    if (type === 'success') {
+        colorClass = 'bg-green-100 text-green-800';
+    } else if (type === 'warning') {
+        colorClass = 'bg-yellow-100 text-yellow-800';
+    } else {
+        colorClass = 'bg-red-100 text-red-800';
+    }
+    element.className = 'p-3 rounded text-sm ' + colorClass;
+    element.textContent = message;
+    element.classList.remove('hidden');
+}
+
+// Action menu functionality
+let currentActionMenu = null;
+
+function toggleActionMenu(event, path, name, isDir) {
+    event.stopPropagation();
+
+    // Close any existing menu
+    if (currentActionMenu) {
+        currentActionMenu.remove();
+        currentActionMenu = null;
+    }
+
+    // Create menu
+    const menu = document.createElement('div');
+    menu.className = 'action-menu';
+    menu.innerHTML = `
+        <button onclick="openRenameModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item">
+            <i class="fas fa-i-cursor"></i> Rename
+        </button>
+        <button onclick="openDeleteModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item action-menu-item-danger">
+            <i class="fas fa-trash"></i> Delete
+        </button>
+    `;
+
+    // Position menu
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = rect.bottom + 5 + 'px';
+    menu.style.left = rect.left + 'px';
+
+    document.body.appendChild(menu);
+    currentActionMenu = menu;
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', closeActionMenu);
+    }, 0);
+}
+
+function closeActionMenu() {
+    if (currentActionMenu) {
+        currentActionMenu.remove();
+        currentActionMenu = null;
+    }
+    document.removeEventListener('click', closeActionMenu);
+}
+
+// File upload functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadForm = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const fileListContent = document.getElementById('fileListContent');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadProgressFill = document.getElementById('uploadProgressFill');
+    const uploadProgressText = document.getElementById('uploadProgressText');
+    const uploadSubmitBtn = document.getElementById('uploadSubmitBtn');
+
+    // Show file list when files are selected
+    fileInput.addEventListener('change', function() {
+        const files = Array.from(fileInput.files);
+        if (files.length > 0) {
+            fileListContent.innerHTML = files.map((file, idx) => `
+                <div class="flex items-center gap-2 text-xs p-2 bg-muted rounded">
+                    <i class="fas fa-file"></i>
+                    <span class="flex-1">${file.name}</span>
+                    <span class="text-muted-foreground">${formatFileSize(file.size)}</span>
+                </div>
+            `).join('');
+            fileList.classList.remove('hidden');
+        } else {
+            fileList.classList.add('hidden');
+        }
+    });
+
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const files = fileInput.files;
+        if (files.length === 0) {
+            showStatus(uploadStatus, 'Please select at least one file', 'error');
+            return;
+        }
+
+        // Disable submit button and show progress
+        uploadSubmitBtn.disabled = true;
+        uploadSubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+        uploadProgress.classList.remove('hidden');
+        uploadStatus.classList.add('hidden');
+
+        // Build form data
+        const formData = new FormData();
+        formData.append('bucket_id', window.JAX_BUCKET_ID);
+        formData.append('path', window.JAX_CURRENT_PATH);
+
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
+
+        try {
+            uploadProgressFill.style.width = '50%';
+            uploadProgressText.textContent = `Uploading ${files.length} file(s)...`;
+
+            const response = await fetch(window.JAX_API_URL + '/api/v0/bucket/add', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                uploadProgressFill.style.width = '100%';
+
+                // Show results
+                const successMsg = `Successfully uploaded ${result.successful_files} file(s)`;
+                const failMsg = result.failed_files > 0 ? `, ${result.failed_files} failed` : '';
+                showStatus(uploadStatus, successMsg + failMsg, result.failed_files > 0 ? 'warning' : 'success');
+
+                // Show detailed results if there were failures
+                if (result.failed_files > 0) {
+                    const failedFiles = result.files.filter(f => !f.success);
+                    const failedList = failedFiles.map(f => `${f.mount_path}: ${f.error}`).join('\\n');
+                    console.error('Failed uploads:\\n', failedList);
+                }
+
+                // Reload page after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            } else {
+                const error = await response.json();
+                showStatus(uploadStatus, 'Error: ' + (error.error || 'Failed to upload files'), 'error');
+                uploadSubmitBtn.disabled = false;
+                uploadSubmitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+                uploadProgress.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            showStatus(uploadStatus, 'Error: ' + error.message, 'error');
+            uploadSubmitBtn.disabled = false;
+            uploadSubmitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+            uploadProgress.classList.add('hidden');
+        }
+    });
+});
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+</script>
+
+<style>
+.action-menu {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 1000;
+    min-width: 150px;
+    padding: 0.25rem;
+}
+
+.action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
+}
+
+.action-menu-item:hover {
+    background: hsl(var(--muted));
+}
+
+.action-menu-item-danger {
+    color: #dc2626;
+}
+
+.action-menu-item-danger:hover {
+    background: #fee2e2;
+}
+
+.dark .action-menu-item-danger:hover {
+    background: rgba(220, 38, 38, 0.1);
+}
+</style>
 {% endblock %}

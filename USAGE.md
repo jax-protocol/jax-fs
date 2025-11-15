@@ -8,27 +8,94 @@ Before using JaxBucket, make sure you have:
 
 1. **Installed JaxBucket** - See [INSTALL.md](INSTALL.md)
 2. **Initialized configuration** - Run `jax init`
-3. **Started the service** - Run `jax service`
+3. **Started the daemon** - Run `jax daemon`
 
 ## CLI Overview
 
-The `jax` CLI provides commands for managing buckets and interacting with the service:
+The `jax` CLI provides commands for managing buckets and interacting with the daemon:
 
 ```bash
 jax [OPTIONS] <COMMAND>
 
 Commands:
-  bucket   # Bucket operations (create, list, add, ls, cat, mount, share)
+  bucket   # Bucket operations (create, list, add, ls, cat, clone, sync, share)
+  daemon   # Start the JaxBucket daemon (HTTP server + P2P sync)
   init     # Initialize configuration
-  service  # Start the JaxBucket service
   version  # Show version information
 ```
 
 **Global Options:**
 - `--remote <URL>` - API endpoint (default: `http://localhost:3000`)
-- `--config-path <PATH>` - Custom config directory (default: `~/.config/jax`)
+- `--config-path <PATH>` - Custom config directory (default: `~/.jax`)
+
+## Core Commands
+
+### Initialize Configuration
+
+Before first use, initialize the JaxBucket configuration:
+
+```bash
+# Initialize with default settings
+jax init
+
+# Customize server addresses and ports
+jax init --html-addr 0.0.0.0:8080 --api-addr 0.0.0.0:3000 --peer-port 9000
+```
+
+**Options:**
+- `--html-addr <STRING>` - HTML server listen address (default: `0.0.0.0:8080`)
+- `--api-addr <STRING>` - API server listen address (default: `0.0.0.0:3000`)
+- `--peer-port <u16>` - P2P node listen port (default: ephemeral port)
+
+This command creates:
+- Configuration directory (`~/.jax` by default)
+- SQLite database for metadata
+- Keypair for P2P identity
+- Blob storage directory
+- Configuration file with server settings
+
+### Start the Daemon
+
+Start the JaxBucket daemon to run the HTTP server and P2P sync:
+
+```bash
+# Start with default settings
+jax daemon
+
+# Start with read-only web UI
+jax daemon --ui-read-only
+
+# Specify custom API hostname for web UI links
+jax daemon --api-hostname http://myserver.local:3000
+```
+
+**Options:**
+- `--ui-read-only` - Run the HTML UI in read-only mode (hides write operations)
+- `--api-hostname <STRING>` - API hostname to use in HTML UI (default: `http://localhost:<api_port>`)
+
+The daemon runs:
+- HTTP API server (default: `http://localhost:3000`)
+- Web UI server (default: `http://localhost:8080`)
+- P2P sync node (Iroh-based networking)
+- Background bucket synchronization
+
+### Show Version
+
+Display version information:
+
+```bash
+jax version
+```
 
 ## Bucket Operations
+
+### Bucket Identifiers
+
+Most bucket commands accept either a bucket name or bucket ID:
+- `--name <STRING>` - Use the human-readable bucket name
+- `--bucket-id <UUID>` - Use the bucket's UUID directly
+
+These options are mutually exclusive. Use `--name` for convenience, or `--bucket-id` when you need to reference a specific bucket by its UUID.
 
 ### Create a Bucket
 
@@ -46,21 +113,39 @@ View all buckets:
 
 ```bash
 jax bucket list
+
+# Filter by name prefix
+jax bucket list --prefix my-
+
+# Limit number of results
+jax bucket list --limit 10
 ```
 
-Returns a JSON array of buckets with their IDs, names, and metadata.
+**Options:**
+- `--prefix <STRING>` - Filter buckets by name prefix
+- `--limit <u32>` - Limit number of results
+
+Returns a formatted text list of buckets with their names, IDs, and current link hashes.
 
 ### Add Files to a Bucket
 
-Add a file or directory to a bucket:
+Add a file to a bucket:
 
 ```bash
-# Add a single file
-jax bucket add --name my-bucket --path /local/path/to/file.txt
+# Add a single file by bucket name
+jax bucket add --name my-bucket --path /local/path/to/file.txt --mount-path /file.txt
 
-# Add a directory
-jax bucket add --name my-bucket --path /local/path/to/directory
+# Add to a subdirectory in the bucket
+jax bucket add --name my-bucket --path /local/path/to/file.txt --mount-path /docs/file.txt
+
+# Add a file by bucket ID
+jax bucket add --bucket-id a1b2c3d4-5678-90ab-cdef-1234567890ab --path /local/path/to/file.txt --mount-path /file.txt
 ```
+
+**Options:**
+- `--name <STRING>` or `--bucket-id <UUID>` - Bucket identifier (one required)
+- `--path <STRING>` - Absolute path to file on local filesystem (required)
+- `--mount-path <STRING>` - Path in bucket where file should be stored (required)
 
 Files are automatically encrypted and stored in the bucket.
 
@@ -69,28 +154,57 @@ Files are automatically encrypted and stored in the bucket.
 View the contents of a bucket:
 
 ```bash
+# List root of bucket
 jax bucket ls --name my-bucket
+
+# List specific path in bucket
+jax bucket ls --name my-bucket --path /docs
+
+# List recursively (deep)
+jax bucket ls --name my-bucket --deep
+
+# Use bucket ID instead of name
+jax bucket ls --bucket-id a1b2c3d4-5678-90ab-cdef-1234567890ab
 ```
 
-Shows the directory tree of the bucket.
+**Options:**
+- `--name <STRING>` or `--bucket-id <UUID>` - Bucket identifier (one required)
+- `--path <STRING>` - Path in bucket to list (optional, defaults to root)
+- `--deep` - List recursively (optional)
+
+Shows the directory tree of the bucket with file paths, types, and link hashes.
 
 ### View File Contents
 
 Download and view a file from a bucket:
 
 ```bash
+# View a text file by bucket name
 jax bucket cat --name my-bucket --path /path/in/bucket/file.txt
+
+# View a file by bucket ID
+jax bucket cat --bucket-id a1b2c3d4-5678-90ab-cdef-1234567890ab --path /file.txt
 ```
 
-The file is decrypted and output to stdout.
+**Options:**
+- `--name <STRING>` or `--bucket-id <UUID>` - Bucket identifier (one required)
+- `--path <STRING>` - Path to file in bucket (required)
+
+The file is decrypted and displayed. Text files are output directly; binary files are shown as hexadecimal.
 
 ### Share a Bucket
 
 Share a bucket with another peer:
 
 ```bash
-jax bucket share --bucket-id <bucket-id> --peer-public-key <recipient-node-id>
+jax bucket share --bucket-id a1b2c3d4-5678-90ab-cdef-1234567890ab --peer-public-key <hex-encoded-public-key>
 ```
+
+**Options:**
+- `--bucket-id <UUID>` - Bucket ID to share (required)
+- `--peer-public-key <STRING>` - Hex-encoded public key of the recipient peer (required)
+
+The bucket's encryption key will be shared with the specified peer, allowing them to access the bucket.
 
 ## Web UI
 
@@ -134,10 +248,10 @@ The Node ID is displayed in the format: `<hex-encoded-public-key>`
 
 ### Share a Bucket with Another Peer
 
-1. **Get recipient's Node ID** from them (out-of-band, e.g., via email, QR code)
+1. **Get recipient's Node ID** (public key) from them (out-of-band, e.g., via email, QR code)
 2. **Share the bucket:**
    ```bash
-   jax bucket share <bucket-id> --peer-id <their-node-id> --role editor
+   jax bucket share --bucket-id <bucket-id> --peer-public-key <their-public-key>
    ```
 3. **Recipient will automatically receive the bucket** on their next sync
 
@@ -160,6 +274,10 @@ jax bucket clone --name my-bucket --directory ./my-local-copy
 # Clone by bucket ID
 jax bucket clone --bucket-id a1b2c3d4-5678-90ab-cdef-1234567890ab --directory /path/to/clone
 ```
+
+**Options:**
+- `--name <STRING>` or `--bucket-id <UUID>` - Bucket identifier (one required)
+- `--directory <PATH>` - Target directory path (required, must be empty or non-existent)
 
 **What happens:**
 1. JaxBucket daemon exports the bucket from its local storage

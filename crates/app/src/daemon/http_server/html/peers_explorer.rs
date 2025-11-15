@@ -6,13 +6,21 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::crypto::PublicKey;
+use common::linked_data::BlockEncoded;
 use common::peer::PingReplyStatus;
+use common::prelude::Manifest;
 
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
 #[derive(Debug, Clone)]
 pub struct ShareInfo {
+    pub public_key: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ManifestShare {
     pub public_key: String,
     pub role: String,
 }
@@ -40,11 +48,23 @@ fn status_badge_class(status: &PingReplyStatus) -> (&'static str, &'static str) 
 #[template(path = "pages/buckets/peers.html")]
 pub struct PeersExplorerTemplate {
     pub bucket_id: String,
+    pub bucket_id_short: String,
     pub bucket_name: String,
+    pub bucket_link: String,
+    pub bucket_link_short: String,
+    pub bucket_data_formatted: String,
+    pub manifest_height: u64,
+    pub manifest_version: String,
+    pub manifest_entry_link: String,
+    pub manifest_pins_link: String,
+    pub manifest_previous_link: Option<String>,
+    pub manifest_shares: Vec<ManifestShare>,
     pub peers: Vec<PeerInfo>,
     pub peers_json: String,
     pub total_peers: usize,
     pub api_url: String,
+    pub read_only: bool,
+    pub current_path: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -153,13 +173,115 @@ pub async fn handler(
 
     let peers_json = serde_json::to_string(&peers).unwrap_or_else(|_| "[]".to_string());
 
+    // Format bucket link for display
+    let bucket_link = bucket.link.hash().to_string();
+    let bucket_link_short = if bucket_link.len() > 16 {
+        format!(
+            "{}...{}",
+            &bucket_link[..8],
+            &bucket_link[bucket_link.len() - 8..]
+        )
+    } else {
+        bucket_link.clone()
+    };
+
+    // Format bucket ID for display
+    let bucket_id_str = bucket_id.to_string();
+    let bucket_id_short = if bucket_id_str.len() > 16 {
+        format!(
+            "{}...{}",
+            &bucket_id_str[..8],
+            &bucket_id_str[bucket_id_str.len() - 8..]
+        )
+    } else {
+        bucket_id_str.clone()
+    };
+
+    // Load the full bucket data from blobs to format it
+    let blobs = state.node().blobs();
+    let (
+        bucket_data_formatted,
+        manifest_height,
+        manifest_version,
+        manifest_entry_link,
+        manifest_pins_link,
+        manifest_previous_link,
+        manifest_shares,
+    ) = match blobs.get(&bucket.link.hash()).await {
+        Ok(data) => match Manifest::decode(&data) {
+            Ok(bucket_data) => {
+                // Format bucket data as pretty JSON
+                let formatted = serde_json::to_string_pretty(&bucket_data)
+                    .unwrap_or_else(|_| format!("{:#?}", bucket_data));
+
+                // Extract manifest fields
+                let height = bucket_data.height();
+                let version = format!("{:?}", bucket_data.version());
+                let entry_link = bucket_data.entry().hash().to_string();
+                let pins_link = bucket_data.pins().hash().to_string();
+                let previous = bucket_data
+                    .previous()
+                    .as_ref()
+                    .map(|l| l.hash().to_string());
+                let shares: Vec<ManifestShare> = bucket_data
+                    .shares()
+                    .iter()
+                    .map(|(pub_key, share)| ManifestShare {
+                        public_key: pub_key.clone(),
+                        role: format!("{:?}", share.principal().role),
+                    })
+                    .collect();
+
+                (
+                    formatted, height, version, entry_link, pins_link, previous, shares,
+                )
+            }
+            Err(e) => {
+                tracing::warn!("Failed to decode bucket data: {}", e);
+                (
+                    format!("Error decoding bucket data: {}", e),
+                    0,
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    None,
+                    Vec::new(),
+                )
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Failed to load bucket data from blobs: {}", e);
+            (
+                format!("Error loading bucket data: {}", e),
+                0,
+                String::new(),
+                String::new(),
+                String::new(),
+                None,
+                Vec::new(),
+            )
+        }
+    };
+
     let template = PeersExplorerTemplate {
         bucket_id: bucket_id.to_string(),
+        bucket_id_short,
         bucket_name: bucket.name,
+        bucket_link,
+        bucket_link_short,
+        bucket_data_formatted,
+        manifest_height,
+        manifest_version,
+        manifest_entry_link,
+        manifest_pins_link,
+        manifest_previous_link,
+        manifest_shares,
         peers,
         peers_json,
         total_peers,
         api_url,
+        read_only: false,
+        current_path: "/".to_string(),
     };
 
     template.into_response()

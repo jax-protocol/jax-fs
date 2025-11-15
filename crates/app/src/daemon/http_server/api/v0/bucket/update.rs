@@ -64,10 +64,10 @@ pub async fn handler(
         }
     }
 
-    let bucket_id = bucket_id
-        .ok_or_else(|| UpdateError::InvalidRequest("bucket_id is required".into()))?;
-    let mount_path = mount_path
-        .ok_or_else(|| UpdateError::InvalidRequest("mount_path is required".into()))?;
+    let bucket_id =
+        bucket_id.ok_or_else(|| UpdateError::InvalidRequest("bucket_id is required".into()))?;
+    let mount_path =
+        mount_path.ok_or_else(|| UpdateError::InvalidRequest("mount_path is required".into()))?;
     let file_data =
         file_data.ok_or_else(|| UpdateError::InvalidRequest("file is required".into()))?;
 

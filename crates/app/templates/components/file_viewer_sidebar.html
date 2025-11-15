@@ -1,0 +1,123 @@
+<!-- Bucket Info Section -->
+<div class="sidebar-section">
+    <div class="sidebar-bucket-header">
+        <i class="fas fa-folder-open text-primary"></i>
+        <h2 class="sidebar-bucket-name">{{ bucket_name }}</h2>
+    </div>
+    <div class="sidebar-bucket-link">
+        <div class="sidebar-link-row">
+            <code class="sidebar-hash" title="{{ bucket_link }}">
+                {{ bucket_link_short }}
+            </code>
+            <button onclick="copySidebarLink('{{ bucket_link }}')" class="sidebar-copy-btn" title="Copy bucket link">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+    </div>
+    <div class="sidebar-bucket-meta">
+        <button uk-toggle="target: #bucket-data-modal" class="sidebar-details-btn">
+            <i class="fas fa-file-code"></i> Manifest
+        </button>
+    </div>
+</div>
+
+<script>
+function copySidebarLink(link) {
+    navigator.clipboard.writeText(link).then(() => {
+        const btn = event.target.closest('button');
+        const row = btn.closest('.sidebar-link-row');
+        const icon = btn.querySelector('i');
+        const originalClass = icon.className;
+        const originalBg = row.style.background;
+
+        // Change icon to checkmark
+        icon.className = 'fas fa-check';
+
+        // Highlight the entire row with green
+        row.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)';
+        row.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+        row.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        btn.style.background = 'rgba(16, 185, 129, 0.2)';
+        btn.style.color = '#10b981';
+        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+
+        setTimeout(() => {
+            icon.className = originalClass;
+            row.style.background = originalBg;
+            row.style.borderColor = '';
+            row.style.border = '';
+            btn.style.background = '';
+            btn.style.color = '';
+            btn.style.borderColor = '';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+</script>
+
+<!-- File Metadata Section (Desktop Only) -->
+<div class="sidebar-section hidden md:block">
+    <div class="sidebar-section-title">File Info</div>
+    <div class="sidebar-file-metadata">
+        <div class="metadata-item">
+            <i class="fas fa-file text-muted-foreground"></i>
+            <div class="metadata-content">
+                <div class="metadata-label">Name</div>
+                <div class="metadata-value" title="{{ file_name }}">{{ file_name }}</div>
+            </div>
+        </div>
+        <div class="metadata-item">
+            <i class="fas fa-hdd text-muted-foreground"></i>
+            <div class="metadata-content">
+                <div class="metadata-label">Size</div>
+                <div class="metadata-value">{{ file_size }} bytes</div>
+            </div>
+        </div>
+        <div class="metadata-item">
+            <i class="fas fa-tag text-muted-foreground"></i>
+            <div class="metadata-content">
+                <div class="metadata-label">Type</div>
+                <div class="metadata-value">
+                    <code class="text-xs">{{ mime_type }}</code>
+                </div>
+            </div>
+        </div>
+        {% if !path_segments.is_empty() %}
+        <div class="metadata-item">
+            <i class="fas fa-folder text-muted-foreground"></i>
+            <div class="metadata-content">
+                <div class="metadata-label">Path</div>
+                <div class="metadata-value">
+                    <code class="text-xs">{{ current_path }}</code>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Navigation Section -->
+<div class="sidebar-section">
+    <div class="sidebar-section-title">Navigation</div>
+    <nav class="sidebar-nav">
+        <a href="/buckets" class="sidebar-nav-item">
+            <i class="fas fa-arrow-left"></i>
+            <span>Back to Buckets</span>
+        </a>
+        <a href="/buckets/{{ bucket_id }}/logs" class="sidebar-nav-item">
+            <i class="fas fa-history"></i>
+            <span>History</span>
+        </a>
+        <a href="/buckets/{{ bucket_id }}/peers" class="sidebar-nav-item">
+            <i class="fas fa-users"></i>
+            <span>Peers</span>
+        </a>
+        {% if !read_only %}
+        <button uk-toggle="target: #share-modal" class="sidebar-nav-item sidebar-nav-button">
+            <i class="fas fa-share-alt"></i>
+            <span>Share</span>
+        </button>
+        {% endif %}
+    </nav>
+</div>

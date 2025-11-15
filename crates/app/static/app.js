@@ -69,7 +69,6 @@ const FileUpload = {
       e.preventDefault();
 
       const fileInput = document.getElementById("fileInput");
-      const pathInput = document.getElementById("pathInput");
       const status = document.getElementById("uploadStatus");
 
       if (!fileInput.files.length) {
@@ -78,7 +77,7 @@ const FileUpload = {
       }
 
       const file = fileInput.files[0];
-      const path = pathInput.value || "/";
+      const path = window.JAX_CURRENT_PATH || "/";
 
       // Construct mount_path: join directory path with filename
       const mountPath = path.endsWith("/")

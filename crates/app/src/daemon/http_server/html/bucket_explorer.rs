@@ -14,16 +14,33 @@ use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
 #[derive(Template)]
+#[template(path = "pages/buckets/syncing.html")]
+pub struct SyncingTemplate {
+    pub bucket_id: String,
+    pub bucket_name: String,
+}
+
+#[derive(Template)]
+#[template(path = "pages/buckets/not_found.html")]
+pub struct BucketNotFoundTemplate {
+    pub bucket_id: String,
+}
+
+#[derive(Template)]
 #[template(path = "pages/buckets/index.html")]
 pub struct BucketExplorerTemplate {
     pub bucket_id: String,
+    pub bucket_id_short: String,
     pub bucket_name: String,
     pub bucket_link: String,
     pub bucket_link_short: String,
-    pub previous_link: Option<String>,
-    pub previous_link_full: String,
-    pub previous_link_short: String,
     pub bucket_data_formatted: String,
+    pub manifest_height: u64,
+    pub manifest_version: String,
+    pub manifest_entry_link: String,
+    pub manifest_pins_link: String,
+    pub manifest_previous_link: Option<String>,
+    pub manifest_shares: Vec<ManifestShare>,
     pub current_path: String,
     pub path_segments: Vec<PathSegment>,
     pub parent_path_url: String,
@@ -35,7 +52,14 @@ pub struct BucketExplorerTemplate {
     pub api_url: String,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ManifestShare {
+    pub public_key: String,
+    pub role: String,
+}
+
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PathSegment {
     pub name: String,
     pub path: String,
@@ -45,9 +69,10 @@ pub struct PathSegment {
 pub struct FileDisplayInfo {
     pub name: String,
     pub path: String,
-    pub link: String,
     pub is_dir: bool,
     pub mime_type: String,
+    pub file_size: String,
+    pub modified_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,25 +100,26 @@ pub async fn handler(
     // Get bucket info from bucket_log
     let bucket = match state.database().get_bucket_info(&bucket_id).await {
         Ok(Some(bucket)) => bucket,
-        Ok(None) => return error_response("Bucket not found"),
+        Ok(None) => {
+            let template = BucketNotFoundTemplate {
+                bucket_id: bucket_id.to_string(),
+            };
+            return template.into_response();
+        }
         Err(e) => return error_response(&format!("{}", e)),
     };
 
     // Load mount - either from specific link or current state
-    let mount = if let Some(hash_str) = &query.at {
+    let (mount, viewing_link) = if let Some(hash_str) = &query.at {
         // Parse the hash string and create a Link with blake3 codec
         match hash_str.parse::<common::linked_data::Hash>() {
             Ok(hash) => {
                 // Create a Link from the hash using the raw codec
                 let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
-                match common::mount::Mount::load(
-                    &link,
-                    state.peer().secret(),
-                    state.peer().blobs(),
-                )
-                .await
+                match common::mount::Mount::load(&link, state.peer().secret(), state.peer().blobs())
+                    .await
                 {
-                    Ok(mount) => mount,
+                    Ok(mount) => (mount, link),
                     Err(e) => {
                         tracing::error!("Failed to load mount from link: {}", e);
                         return error_response("Failed to load historical version");
@@ -108,10 +134,15 @@ pub async fn handler(
     } else {
         // Load current version
         match state.peer().mount(bucket_id).await {
-            Ok(mount) => mount,
-            Err(e) => {
-                tracing::error!("Failed to load mount: {}", e);
-                return error_response("Failed to load bucket");
+            Ok(mount) => (mount, bucket.link.clone()),
+            // TODO (amiller68): this is far too broad, but fine for
+            //  now
+            Err(_e) => {
+                let template = SyncingTemplate {
+                    bucket_id: bucket_id.to_string(),
+                    bucket_name: bucket.name.clone(),
+                };
+                return template.into_response();
             }
         }
     };
@@ -141,22 +172,34 @@ pub async fn handler(
                 .unwrap_or("")
                 .to_string();
             let is_dir = matches!(node_link, common::mount::NodeLink::Dir(..));
-            let mime_type = if is_dir {
-                "inode/directory".to_string()
+
+            let (mime_type, file_size) = if is_dir {
+                ("inode/directory".to_string(), "-".to_string())
             } else {
-                node_link
+                let mime = node_link
                     .data()
                     .and_then(|data| data.mime())
                     .map(|m| m.to_string())
-                    .unwrap_or_else(|| "application/octet-stream".to_string())
+                    .unwrap_or_else(|| "application/octet-stream".to_string());
+
+                // TODO: Get actual file size from blob when we have efficient access
+                // For now, show placeholder
+                let size = "-".to_string();
+
+                (mime, size)
             };
+
+            // TODO: Get actual modified date from metadata when available
+            // For now, use "Today" as placeholder
+            let modified_at = "Today".to_string();
 
             FileDisplayInfo {
                 name,
                 path: format!("/{}", path.display()),
-                link: node_link.link().hash().to_string(),
                 is_dir,
                 mime_type,
+                file_size,
+                modified_at,
             }
         })
         .collect();
@@ -172,8 +215,8 @@ pub async fn handler(
         api_url
     );
 
-    // Format bucket link for display
-    let bucket_link = bucket.link.hash().to_string();
+    // Format bucket link for display - use the viewing_link (current or historical)
+    let bucket_link = viewing_link.hash().to_string();
     let bucket_link_short = if bucket_link.len() > 16 {
         format!(
             "{}...{}",
@@ -184,68 +227,99 @@ pub async fn handler(
         bucket_link.clone()
     };
 
-    // Load the full bucket data from blobs to get previous link and format it
+    // Format bucket ID for display
+    let bucket_id_str = bucket_id.to_string();
+    let bucket_id_short = if bucket_id_str.len() > 16 {
+        format!(
+            "{}...{}",
+            &bucket_id_str[..8],
+            &bucket_id_str[bucket_id_str.len() - 8..]
+        )
+    } else {
+        bucket_id_str.clone()
+    };
+
+    // Load the full bucket data from blobs to format it
     let blobs = state.node().blobs();
-    let (previous_link, previous_link_full, previous_link_short, bucket_data_formatted) =
-        match blobs.get(&bucket.link.hash()).await {
-            Ok(data) => match Manifest::decode(&data) {
-                Ok(bucket_data) => {
-                    // Format bucket data as pretty JSON
-                    let formatted = serde_json::to_string_pretty(&bucket_data)
-                        .unwrap_or_else(|_| format!("{:#?}", bucket_data));
+    let (
+        bucket_data_formatted,
+        manifest_height,
+        manifest_version,
+        manifest_entry_link,
+        manifest_pins_link,
+        manifest_previous_link,
+        manifest_shares,
+    ) = match blobs.get(&viewing_link.hash()).await {
+        Ok(data) => match Manifest::decode(&data) {
+            Ok(bucket_data) => {
+                // Format bucket data as pretty JSON
+                let formatted = serde_json::to_string_pretty(&bucket_data)
+                    .unwrap_or_else(|_| format!("{:#?}", bucket_data));
 
-                    // Extract previous link if it exists
-                    let (prev_opt, prev_full, prev_short) =
-                        if let Some(prev) = bucket_data.previous() {
-                            let prev_hash = prev.hash().to_string();
-                            let prev_short = if prev_hash.len() > 16 {
-                                format!(
-                                    "{}...{}",
-                                    &prev_hash[..8],
-                                    &prev_hash[prev_hash.len() - 8..]
-                                )
-                            } else {
-                                prev_hash.clone()
-                            };
-                            (Some(prev_hash.clone()), prev_hash, prev_short)
-                        } else {
-                            (None, String::new(), String::new())
-                        };
+                // Extract manifest fields
+                let height = bucket_data.height();
+                let version = format!("{:?}", bucket_data.version());
+                let entry_link = bucket_data.entry().hash().to_string();
+                let pins_link = bucket_data.pins().hash().to_string();
+                let previous = bucket_data
+                    .previous()
+                    .as_ref()
+                    .map(|l| l.hash().to_string());
+                let shares: Vec<ManifestShare> = bucket_data
+                    .shares()
+                    .iter()
+                    .map(|(pub_key, share)| ManifestShare {
+                        public_key: pub_key.clone(),
+                        role: format!("{:?}", share.principal().role),
+                    })
+                    .collect();
 
-                    (prev_opt, prev_full, prev_short, formatted)
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to decode bucket data: {}", e);
-                    (
-                        None,
-                        String::new(),
-                        String::new(),
-                        format!("Error decoding bucket data: {}", e),
-                    )
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to load bucket data from blobs: {}", e);
                 (
-                    None,
-                    String::new(),
-                    String::new(),
-                    format!("Error loading bucket data: {}", e),
+                    formatted, height, version, entry_link, pins_link, previous, shares,
                 )
             }
-        };
+            Err(e) => {
+                tracing::warn!("Failed to decode bucket data: {}", e);
+                (
+                    format!("Error decoding bucket data: {}", e),
+                    0,
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    None,
+                    Vec::new(),
+                )
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Failed to load bucket data from blobs: {}", e);
+            (
+                format!("Error loading bucket data: {}", e),
+                0,
+                String::new(),
+                String::new(),
+                String::new(),
+                None,
+                Vec::new(),
+            )
+        }
+    };
 
     let return_url = format!("/buckets/{}", bucket_id);
 
     let template = BucketExplorerTemplate {
         bucket_id: bucket_id.to_string(),
+        bucket_id_short,
         bucket_name: bucket.name,
         bucket_link,
         bucket_link_short,
-        previous_link,
-        previous_link_full,
-        previous_link_short,
         bucket_data_formatted,
+        manifest_height,
+        manifest_version,
+        manifest_entry_link,
+        manifest_pins_link,
+        manifest_previous_link,
+        manifest_shares,
         current_path,
         path_segments,
         parent_path_url,

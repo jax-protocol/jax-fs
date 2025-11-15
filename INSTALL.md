@@ -286,7 +286,7 @@ chmod 600 ~/.config/jax/secret.pem
 
 Only one instance of `jax service` can run at a time. Stop any existing instances:
 ```bash
-pkill -f "jax service"
+pkill -f "jax daemon"
 ```
 
 ### "Failed to bind address"

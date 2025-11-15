@@ -69,6 +69,8 @@ pub enum MountError {
     PathNotFound(PathBuf),
     #[error("path is not a node: {0}")]
     PathNotNode(PathBuf),
+    #[error("path already exists: {0}")]
+    PathAlreadyExists(PathBuf),
     #[error("blobs store error: {0}")]
     BlobsStore(#[from] BlobsStoreError),
     #[error("secret error: {0}")]
@@ -362,6 +364,89 @@ impl Mount {
             let mut inner = self.0.lock().await;
             // Track the parent node hash and all created node hashes
             inner.pins.insert(parent_link.hash());
+            inner.pins.extend(node_hashes);
+
+            if let Some(new_entry) = new_entry {
+                inner.entry = new_entry;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn mkdir(&mut self, path: &Path) -> Result<(), MountError> {
+        let path = clean_path(path);
+
+        // Check if the path already exists
+        let entry = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
+
+        // Try to get the parent path and file name
+        let (parent_path, dir_name) = if let Some(parent) = path.parent() {
+            (
+                parent,
+                path.file_name().unwrap().to_string_lossy().to_string(),
+            )
+        } else {
+            return Err(MountError::Default(anyhow::anyhow!("Cannot mkdir at root")));
+        };
+
+        // Get the parent node (or use root if parent is empty)
+        let parent_node = if parent_path == Path::new("") {
+            entry.clone()
+        } else {
+            // Check if parent path exists, if not it will be created by _set_node_link_at_path
+            match Self::_get_node_at_path(&entry, parent_path, &self.1).await {
+                Ok(node) => node,
+                Err(MountError::PathNotFound(_)) => Node::default(), // Will be created
+                Err(err) => return Err(err),
+            }
+        };
+
+        // Check if a node with this name already exists in the parent
+        if parent_node.get_link(&dir_name).is_some() {
+            return Err(MountError::PathAlreadyExists(Path::new("/").join(&path)));
+        }
+
+        // Create an empty directory node
+        let new_dir_node = Node::default();
+
+        // Generate a secret for the new directory
+        let secret = Secret::generate();
+
+        // Store the node in blobs
+        let dir_link = Self::_put_node_in_blobs(&new_dir_node, &secret, &self.1).await?;
+
+        // Create a NodeLink for the directory
+        let node_link = NodeLink::new_dir(dir_link.clone(), secret);
+
+        // Convert path back to absolute for _set_node_link_at_path
+        let abs_path = Path::new("/").join(&path);
+
+        // Use _set_node_link_at_path to insert the directory into the tree
+        let (updated_link, node_hashes) =
+            Self::_set_node_link_at_path(entry, node_link, &abs_path, &self.1).await?;
+
+        // Update entry if the root was modified
+        let new_entry = if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
+            Some(
+                Self::_get_node_from_blobs(
+                    &NodeLink::Dir(new_root_link.clone(), new_secret),
+                    &self.1,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
+
+        // Update inner state
+        {
+            let mut inner = self.0.lock().await;
+            // Track the directory node hash and all created node hashes
+            inner.pins.insert(dir_link.hash());
             inner.pins.extend(node_hashes);
 
             if let Some(new_entry) = new_entry {
@@ -1014,5 +1099,107 @@ mod test {
         assert_eq!(height, 1); // Height should be 1 after first save
         let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
         assert_eq!(loaded_mount.inner().await.height(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_mkdir() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a directory
+        mount.mkdir(&PathBuf::from("/test_dir")).await.unwrap();
+
+        // Verify it exists and is a directory
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items.get(&PathBuf::from("test_dir")).unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_nested() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create nested directories (should create parents automatically)
+        mount.mkdir(&PathBuf::from("/a/b/c")).await.unwrap();
+
+        // Verify the whole path exists
+        let items_root = mount.ls(&PathBuf::from("/")).await.unwrap();
+        assert!(items_root.contains_key(&PathBuf::from("a")));
+
+        let items_a = mount.ls(&PathBuf::from("/a")).await.unwrap();
+        assert!(items_a.contains_key(&PathBuf::from("a/b")));
+
+        let items_b = mount.ls(&PathBuf::from("/a/b")).await.unwrap();
+        assert!(items_b.contains_key(&PathBuf::from("a/b/c")));
+        assert!(items_b.get(&PathBuf::from("a/b/c")).unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_already_exists() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create directory
+        mount.mkdir(&PathBuf::from("/test_dir")).await.unwrap();
+
+        // Try to create it again - should error
+        let result = mount.mkdir(&PathBuf::from("/test_dir")).await;
+        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_file_exists() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a file
+        mount
+            .add(&PathBuf::from("/test.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+
+        // Try to create directory with same name - should error
+        let result = mount.mkdir(&PathBuf::from("/test.txt")).await;
+        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_then_add_file() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a directory
+        mount.mkdir(&PathBuf::from("/docs")).await.unwrap();
+
+        // Add a file to the created directory
+        mount
+            .add(
+                &PathBuf::from("/docs/readme.md"),
+                Cursor::new(b"# README".to_vec()),
+            )
+            .await
+            .unwrap();
+
+        // Verify the file exists
+        let data = mount.cat(&PathBuf::from("/docs/readme.md")).await.unwrap();
+        assert_eq!(data, b"# README");
+
+        // Verify directory structure
+        let items = mount.ls(&PathBuf::from("/docs")).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items.contains_key(&PathBuf::from("docs/readme.md")));
+    }
+
+    #[tokio::test]
+    async fn test_mkdir_multiple_siblings() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create multiple sibling directories
+        mount.mkdir(&PathBuf::from("/dir1")).await.unwrap();
+        mount.mkdir(&PathBuf::from("/dir2")).await.unwrap();
+        mount.mkdir(&PathBuf::from("/dir3")).await.unwrap();
+
+        // Verify all exist
+        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
+        assert_eq!(items.len(), 3);
+        assert!(items.get(&PathBuf::from("dir1")).unwrap().is_dir());
+        assert!(items.get(&PathBuf::from("dir2")).unwrap().is_dir());
+        assert!(items.get(&PathBuf::from("dir3")).unwrap().is_dir());
     }
 }

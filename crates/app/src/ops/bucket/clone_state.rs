@@ -42,7 +42,12 @@ impl PathHashMap {
         }
     }
 
-    pub fn insert(&mut self, path: PathBuf, blob_hash: Hash, plaintext_hash: [u8; BLAKE3_HASH_SIZE]) {
+    pub fn insert(
+        &mut self,
+        path: PathBuf,
+        blob_hash: Hash,
+        plaintext_hash: [u8; BLAKE3_HASH_SIZE],
+    ) {
         self.entries.insert(path, (blob_hash, plaintext_hash));
     }
 

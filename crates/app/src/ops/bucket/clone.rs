@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::daemon::http_server::api::client::ApiError;
 use crate::op::Op;
 
-use super::clone_state::{CloneConfig, CloneStateManager, CloneStateError, PathHashMap};
+use super::clone_state::{CloneConfig, CloneStateError, CloneStateManager, PathHashMap};
 
 #[derive(Args, Debug, Clone)]
 pub struct Clone {

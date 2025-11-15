@@ -50,6 +50,8 @@ impl crate::op::Op for Cat {
         let request = CatRequest {
             bucket_id,
             path: self.path.clone(),
+            at: None,
+            download: None,
         };
 
         // Call API
