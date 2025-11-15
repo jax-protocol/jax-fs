@@ -375,12 +375,10 @@ fn build_parent_path_url(current_path: &str, bucket_id: &Uuid, at_hash: Option<&
         } else {
             format!("/buckets/{}", bucket_id)
         }
+    } else if let Some(hash) = at_hash {
+        format!("/buckets/{}?path={}&at={}", bucket_id, parent, hash)
     } else {
-        if let Some(hash) = at_hash {
-            format!("/buckets/{}?path={}&at={}", bucket_id, parent, hash)
-        } else {
-            format!("/buckets/{}?path={}", bucket_id, parent)
-        }
+        format!("/buckets/{}?path={}", bucket_id, parent)
     }
 }
 

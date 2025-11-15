@@ -32,14 +32,6 @@ pub mod peer;
  */
 pub mod version;
 
-/**
- * Test utilities for integration testing with multiple peers
- *
- * Available in tests and when the "testkit" feature is enabled.
- */
-// #[cfg(any(test, feature = "testkit"))]
-// pub mod testkit;
-
 pub mod prelude {
     pub use crate::crypto::{PublicKey, SecretKey};
     pub use crate::linked_data::{multibase, Cid, CidError, Link};

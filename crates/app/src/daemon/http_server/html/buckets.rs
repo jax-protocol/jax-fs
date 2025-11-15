@@ -128,17 +128,20 @@ pub async fn handler(
     template.into_response()
 }
 
-/// Count files recursively in a mount
-fn count_files_recursive<'a>(
-    mount: &'a common::mount::Mount,
-    path: &'a std::path::Path,
-) -> std::pin::Pin<
+/// Type alias for the recursive file counting future
+type FileCountFuture<'a> = std::pin::Pin<
     Box<
         dyn std::future::Future<Output = Result<usize, Box<dyn std::error::Error + Send + Sync>>>
             + Send
             + 'a,
     >,
-> {
+>;
+
+/// Count files recursively in a mount
+fn count_files_recursive<'a>(
+    mount: &'a common::mount::Mount,
+    path: &'a std::path::Path,
+) -> FileCountFuture<'a> {
     Box::pin(async move {
         let items = mount.ls(path).await?;
         let mut count = 0;

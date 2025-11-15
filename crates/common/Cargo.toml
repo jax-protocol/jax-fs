@@ -13,9 +13,6 @@ categories.workspace = true
 name = "common"
 path = "src/lib.rs"
 
-[features]
-testkit = []
-
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
