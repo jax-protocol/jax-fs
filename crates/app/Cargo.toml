@@ -1,6 +1,6 @@
 [package]
 name = "jax-bucket"
-version = "0.1.4"
+version = "0.1.5"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Workspace crates
-common = { package = "jax-common", version = "^0.1.3", path = "../common" }
+common = { package = "jax-common", version = "^0.1.4", path = "../common" }
 
 # iroh for peer networking
 iroh = { workspace = true }
