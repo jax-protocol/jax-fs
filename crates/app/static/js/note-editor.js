@@ -249,13 +249,18 @@ async function saveNote() {
 }
 
 async function createFile(path, content) {
+    // Extract directory and filename from path
+    const lastSlash = path.lastIndexOf('/');
+    const directory = lastSlash > 0 ? path.substring(0, lastSlash) : '/';
+    const filename = path.substring(lastSlash + 1);
+
     const formData = new FormData();
     formData.append('bucket_id', editorConfig.bucketId);
-    formData.append('mount_path', path);
+    formData.append('mount_path', directory);
 
-    // Create a Blob from the content
+    // Create a Blob from the content with the proper filename
     const blob = new Blob([content], { type: 'text/markdown' });
-    formData.append('file', blob);
+    formData.append('file', blob, filename);
 
     const response = await fetch(`${editorConfig.apiUrl}/api/v0/bucket/add`, {
         method: 'POST',

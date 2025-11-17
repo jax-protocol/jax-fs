@@ -17,7 +17,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         <button id="downloadBtn" class="button" title="Download file">
             <i class="fas fa-download"></i>
         </button>
-        {% if is_editable && at_hash.is_none() %} {% if is_markdown %}
+        {% if is_editable && at_hash.is_none() && !read_only %} {% if is_markdown %}
         <a
             href="/buckets/{{ bucket_id }}/edit?path={{ file_path }}&from=view"
             class="button button-primary"
@@ -134,11 +134,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         <!-- Audio -->
         {% else if mime_type.starts_with("audio/") %}
         <div class="p-4">
-            <audio controls class="w-full max-w-2xl mx-auto">
-                <source
-                    src="data:{{ mime_type }};base64,{{ content }}"
-                    type="{{ mime_type }}"
-                />
+            <audio controls class="w-full max-w-2xl mx-auto" id="audioPlayer">
                 Your browser does not support the audio tag.
             </audio>
         </div>
@@ -191,7 +187,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
 {% include "components/share_modal.html" %} {% include
 "components/manifest_modal.html" %} {% endblock %} {% block head %}
 <!-- CodeMirror 6 CSS (only loaded if file is editable) -->
-{% if is_editable && at_hash.is_none() %}
+{% if is_editable && at_hash.is_none() && !read_only %}
 <style>
     .cm-editor {
         height: 70vh;
@@ -590,16 +586,15 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
             });
         }
 
-        // PDF Viewer - load PDF via blob to hide API URL
+        // PDF Viewer - load PDF via gateway URL
         const pdfViewer = document.getElementById('pdfViewer');
         if (pdfViewer) {
-            // Build API URL for fetching the PDF
-            const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
-            let url = `${apiUrl}/api/v0/bucket/cat?bucket_id=${window.JAX_BUCKET_ID}&path=${encodeURIComponent(window.JAX_FILE_PATH)}`;
+            // Build gateway URL for fetching the PDF
+            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
 
-            // Add at_hash if viewing history
+            // Add at parameter if viewing history
             if (window.JAX_AT_HASH) {
-                url += `&at=${window.JAX_AT_HASH}`;
+                url += `?at=${window.JAX_AT_HASH}`;
             }
 
             // Fetch the PDF and create a blob URL
@@ -648,16 +643,15 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
             videoFullscreenBtn.addEventListener('click', () => toggleFullscreen('videoViewerContainer'));
         }
 
-        // Video player - load video via blob URL
+        // Video player - load video via gateway URL
         const videoPlayer = document.getElementById('videoPlayer');
         if (videoPlayer) {
-            // Build API URL for fetching the video
-            const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
-            let url = `${apiUrl}/api/v0/bucket/cat?bucket_id=${window.JAX_BUCKET_ID}&path=${encodeURIComponent(window.JAX_FILE_PATH)}`;
+            // Build gateway URL for fetching the video
+            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
 
-            // Add at_hash if viewing history
+            // Add at parameter if viewing history
             if (window.JAX_AT_HASH) {
-                url += `&at=${window.JAX_AT_HASH}`;
+                url += `?at=${window.JAX_AT_HASH}`;
             }
 
             // Fetch the video and create a blob URL
@@ -671,6 +665,29 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
                     console.error('Error loading video:', error);
                 });
         }
+
+        // Audio player - load audio via gateway URL
+        const audioPlayer = document.getElementById('audioPlayer');
+        if (audioPlayer) {
+            // Build gateway URL for fetching the audio
+            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
+
+            // Add at parameter if viewing history
+            if (window.JAX_AT_HASH) {
+                url += `?at=${window.JAX_AT_HASH}`;
+            }
+
+            // Fetch the audio and create a blob URL
+            fetch(url)
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    audioPlayer.src = blobUrl;
+                })
+                .catch(error => {
+                    console.error('Error loading audio:', error);
+                });
+        }
     });
 </script>
 
@@ -678,7 +695,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
 <script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
 
 <!-- Initialize inline editor module -->
-{% if is_editable && at_hash.is_none() %}
+{% if is_editable && at_hash.is_none() && !read_only %}
 <script type="module">
     import {
         initInlineEditor,
