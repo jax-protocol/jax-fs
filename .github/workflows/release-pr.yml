@@ -83,11 +83,31 @@ jobs:
             git checkout -b release-automation
           fi
 
-      - name: Delete existing tags if present
+      - name: Clean up orphaned tags
         if: steps.check.outputs.needs_release == 'true'
         run: |
           # Delete local tags that might conflict
           git tag -l "jax-*-v*" | xargs -r git tag -d || true
+
+          # Check for orphaned tags (tags that exist but don't match any merged commit)
+          # These are tags from failed previous workflow runs
+          COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
+          BUCKET_VERSION=$(grep "^version" crates/app/Cargo.toml | cut -d'"' -f2)
+
+          # Calculate next patch versions (what smart-release will create)
+          NEXT_COMMON=$(echo $COMMON_VERSION | awk -F. '{print $1"."$2"."$3+1}')
+          NEXT_BUCKET=$(echo $BUCKET_VERSION | awk -F. '{print $1"."$2"."$3+1}')
+
+          echo "Current versions: jax-common=$COMMON_VERSION, jax-bucket=$BUCKET_VERSION"
+          echo "Expected next versions: jax-common=$NEXT_COMMON, jax-bucket=$NEXT_BUCKET"
+
+          # Delete orphaned tags if they exist
+          for tag in "jax-common-v$NEXT_COMMON" "jax-bucket-v$NEXT_BUCKET"; do
+            if git ls-remote --tags origin | grep -q "refs/tags/$tag$"; then
+              echo "Found orphaned tag $tag, deleting from remote..."
+              git push origin --delete "$tag" || true
+            fi
+          done
 
       - name: Run cargo smart-release
         if: steps.check.outputs.needs_release == 'true'
@@ -109,18 +129,10 @@ jobs:
 
           echo "New tags to push: $NEW_TAGS"
 
-          # Delete existing tags on remote if they exist
-          for tag in $NEW_TAGS; do
-            if git ls-remote --tags origin | grep -q "refs/tags/$tag$"; then
-              echo "Deleting existing remote tag: $tag"
-              git push origin --delete "$tag" || true
-            fi
-          done
-
           # Force-push the branch (it's a PR branch, safe to force-push)
           git push -f origin release-automation
 
-          # Push the new tags
+          # Push the new tags (orphaned tags were already deleted in previous step)
           for tag in $NEW_TAGS; do
             echo "Pushing tag: $tag"
             git push origin "$tag"
