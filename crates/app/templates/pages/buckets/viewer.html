@@ -544,6 +544,15 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         });
     }
 
+    // Helper function to build gateway URL with optional at parameter
+    function buildGatewayUrl() {
+        let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
+        if (window.JAX_AT_HASH) {
+            url += `?at=${window.JAX_AT_HASH}`;
+        }
+        return url;
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const shareBtn = document.getElementById('shareBtn');
         if (shareBtn) {
@@ -586,31 +595,6 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
             });
         }
 
-        // PDF Viewer - load PDF via gateway URL
-        const pdfViewer = document.getElementById('pdfViewer');
-        if (pdfViewer) {
-            // Build gateway URL for fetching the PDF
-            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
-
-            // Add at parameter if viewing history
-            if (window.JAX_AT_HASH) {
-                url += `?at=${window.JAX_AT_HASH}`;
-            }
-
-            // Fetch the PDF and create a blob URL
-            fetch(url)
-                .then(response => response.blob())
-                .then(blob => {
-                    const blobUrl = URL.createObjectURL(blob);
-                    // Add #toolbar=0 to hide the PDF viewer toolbar
-                    pdfViewer.src = blobUrl + '#toolbar=0';
-                })
-                .catch(error => {
-                    console.error('Error loading PDF:', error);
-                    pdfViewer.srcdoc = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#666;">Failed to load PDF</div>';
-                });
-        }
-
         // Fullscreen functionality
         function toggleFullscreen(containerId) {
             const container = document.getElementById(containerId);
@@ -643,19 +627,25 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
             videoFullscreenBtn.addEventListener('click', () => toggleFullscreen('videoViewerContainer'));
         }
 
+        // PDF Viewer - load PDF via gateway URL
+        const pdfViewer = document.getElementById('pdfViewer');
+        if (pdfViewer) {
+            fetch(buildGatewayUrl())
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    pdfViewer.src = blobUrl + '#toolbar=0';
+                })
+                .catch(error => {
+                    console.error('Error loading PDF:', error);
+                    pdfViewer.srcdoc = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#666;">Failed to load PDF</div>';
+                });
+        }
+
         // Video player - load video via gateway URL
         const videoPlayer = document.getElementById('videoPlayer');
         if (videoPlayer) {
-            // Build gateway URL for fetching the video
-            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
-
-            // Add at parameter if viewing history
-            if (window.JAX_AT_HASH) {
-                url += `?at=${window.JAX_AT_HASH}`;
-            }
-
-            // Fetch the video and create a blob URL
-            fetch(url)
+            fetch(buildGatewayUrl())
                 .then(response => response.blob())
                 .then(blob => {
                     const blobUrl = URL.createObjectURL(blob);
@@ -669,16 +659,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         // Audio player - load audio via gateway URL
         const audioPlayer = document.getElementById('audioPlayer');
         if (audioPlayer) {
-            // Build gateway URL for fetching the audio
-            let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
-
-            // Add at parameter if viewing history
-            if (window.JAX_AT_HASH) {
-                url += `?at=${window.JAX_AT_HASH}`;
-            }
-
-            // Fetch the audio and create a blob URL
-            fetch(url)
+            fetch(buildGatewayUrl())
                 .then(response => response.blob())
                 .then(blob => {
                     const blobUrl = URL.createObjectURL(blob);

@@ -65,7 +65,7 @@ pub async fn handler(
                         .map_err(|_| AddError::InvalidRequest("Invalid bucket_id".into()))?,
                 );
             }
-            "mount_path" | "path" => {
+            "mount_path" => {
                 base_path = Some(
                     field
                         .text()

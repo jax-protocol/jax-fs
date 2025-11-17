@@ -68,7 +68,7 @@ impl crate::op::Op for Add {
         // Build multipart form
         let form = multipart::Form::new()
             .text("bucket_id", bucket_id.to_string())
-            .text("path", self.mount_path.clone())
+            .text("mount_path", self.mount_path.clone())
             .part("file", multipart::Part::bytes(file_data));
 
         // Send multipart request
