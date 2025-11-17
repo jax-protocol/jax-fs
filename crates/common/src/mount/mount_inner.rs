@@ -1044,11 +1044,11 @@ mod test {
             ("/image.png", "image/png"),
             ("/video.mp4", "video/mp4"),
             ("/style.css", "text/css"),
-            ("/script.js", "application/javascript"),
+            ("/script.js", "text/javascript"),
             ("/data.json", "application/json"),
             ("/archive.zip", "application/zip"),
             ("/document.pdf", "application/pdf"),
-            ("/code.rs", "text/rust"),
+            ("/code.rs", "text/x-rust"),
         ];
 
         for (path, expected_mime) in test_files {

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::str::FromStr;
 
 use mime::Mime;
@@ -5,6 +6,16 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeMime(pub Option<Mime>);
+
+impl MaybeMime {
+    /// Create a MaybeMime by detecting the MIME type from a file path's extension
+    pub fn from_path(path: &Path) -> Self {
+        let mime = mime_guess::from_path(path)
+            .first()
+            .and_then(|m| m.as_ref().parse().ok());
+        MaybeMime(mime)
+    }
+}
 
 impl Serialize for MaybeMime {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

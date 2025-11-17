@@ -2762,6 +2762,7 @@ dependencies = [
  "iroh",
  "iroh-blobs",
  "mime",
+ "mime_guess",
  "mime_serde_shim",
  "multihash",
  "parking_lot",

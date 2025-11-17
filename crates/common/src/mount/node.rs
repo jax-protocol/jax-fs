@@ -55,96 +55,17 @@ impl Data {
 
     /// Create a Data with mime type detected from file path
     pub fn from_path(path: &Path) -> Self {
-        let mime = Self::detect_mime_from_path(path);
+        let mime = MaybeMime::from_path(path);
         let metadata = BTreeMap::new();
 
         Self {
-            mime: MaybeMime(mime),
+            mime,
             metadata: if metadata.is_empty() {
                 None
             } else {
                 Some(metadata)
             },
         }
-    }
-
-    /// Detect MIME type from file extension
-    fn detect_mime_from_path(path: &Path) -> Option<Mime> {
-        let extension = path.extension()?.to_str()?.to_lowercase();
-
-        // Common file extensions to MIME types
-        let mime_str = match extension.as_str() {
-            // Text files
-            "txt" => "text/plain",
-            "html" | "htm" => "text/html",
-            "css" => "text/css",
-            "js" | "mjs" => "application/javascript",
-            "json" => "application/json",
-            "xml" => "application/xml",
-            "md" | "markdown" => "text/markdown",
-            "csv" => "text/csv",
-            "yaml" | "yml" => "application/x-yaml",
-            "toml" => "application/toml",
-
-            // Images
-            "jpg" | "jpeg" => "image/jpeg",
-            "png" => "image/png",
-            "gif" => "image/gif",
-            "bmp" => "image/bmp",
-            "svg" => "image/svg+xml",
-            "webp" => "image/webp",
-            "ico" => "image/x-icon",
-
-            // Videos
-            "mp4" => "video/mp4",
-            "webm" => "video/webm",
-            "avi" => "video/x-msvideo",
-            "mkv" => "video/x-matroska",
-            "mov" => "video/quicktime",
-
-            // Audio
-            "mp3" => "audio/mpeg",
-            "wav" => "audio/wav",
-            "ogg" => "audio/ogg",
-            "flac" => "audio/flac",
-            "aac" => "audio/aac",
-
-            // Archives
-            "zip" => "application/zip",
-            "tar" => "application/x-tar",
-            "gz" | "gzip" => "application/gzip",
-            "7z" => "application/x-7z-compressed",
-            "rar" => "application/x-rar-compressed",
-
-            // Documents
-            "pdf" => "application/pdf",
-            "doc" => "application/msword",
-            "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "xls" => "application/vnd.ms-excel",
-            "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "ppt" => "application/vnd.ms-powerpoint",
-            "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-
-            // Programming
-            "rs" => "text/rust",
-            "py" => "text/x-python",
-            "c" => "text/x-c",
-            "cpp" | "cc" | "cxx" => "text/x-c++",
-            "h" | "hpp" => "text/x-c-header",
-            "java" => "text/x-java",
-            "go" => "text/x-go",
-            "sh" => "application/x-sh",
-
-            // Fonts
-            "ttf" => "font/ttf",
-            "otf" => "font/otf",
-            "woff" => "font/woff",
-            "woff2" => "font/woff2",
-
-            _ => "application/octet-stream",
-        };
-
-        mime_str.parse().ok()
     }
 
     /// Set custom metadata
@@ -309,15 +230,17 @@ mod test {
         // Test with .rs file
         let path = PathBuf::from("/src/main.rs");
         let data = Data::from_path(&path);
-        assert_eq!(data.mime().map(|m| m.as_ref()), Some("text/rust"));
+        assert_eq!(data.mime().map(|m| m.as_ref()), Some("text/x-rust"));
 
-        // Test with unknown extension
-        let path = PathBuf::from("/test/file.xyz");
+        // Test with .m4a audio file
+        let path = PathBuf::from("/audio/song.m4a");
         let data = Data::from_path(&path);
-        assert_eq!(
-            data.mime().map(|m| m.as_ref()),
-            Some("application/octet-stream")
-        );
+        assert_eq!(data.mime().map(|m| m.as_ref()), Some("audio/m4a"));
+
+        // Test with unknown extension (mime_guess returns None for truly unknown extensions)
+        let path = PathBuf::from("/test/file.unknownext");
+        let data = Data::from_path(&path);
+        assert_eq!(data.mime(), None);
 
         // Test with no extension
         let path = PathBuf::from("/test/README");
