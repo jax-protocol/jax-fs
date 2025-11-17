@@ -16,6 +16,7 @@
         </div>
     </div>
     <div class="sidebar-bucket-link">
+        <div class="sidebar-id-label">Version</div>
         <div class="sidebar-link-row">
             <code class="sidebar-hash" title="{{ bucket_link }}">
                 {{ bucket_link_short }}
@@ -33,8 +34,8 @@
 </div>
 
 <script>
-function copySidebarId(id) {
-    navigator.clipboard.writeText(id).then(() => {
+function copySidebarValue(value) {
+    navigator.clipboard.writeText(value).then(() => {
         const btn = event.target.closest('button');
         const row = btn.closest('.sidebar-link-row');
         const icon = btn.querySelector('i');
@@ -66,38 +67,9 @@ function copySidebarId(id) {
     });
 }
 
-function copySidebarLink(link) {
-    navigator.clipboard.writeText(link).then(() => {
-        const btn = event.target.closest('button');
-        const row = btn.closest('.sidebar-link-row');
-        const icon = btn.querySelector('i');
-        const originalClass = icon.className;
-        const originalBg = row.style.background;
-
-        // Change icon to checkmark
-        icon.className = 'fas fa-check';
-
-        // Highlight the entire row with green
-        row.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%)';
-        row.style.borderColor = 'rgba(16, 185, 129, 0.3)';
-        row.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-        btn.style.background = 'rgba(16, 185, 129, 0.2)';
-        btn.style.color = '#10b981';
-        btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-
-        setTimeout(() => {
-            icon.className = originalClass;
-            row.style.background = originalBg;
-            row.style.borderColor = '';
-            row.style.border = '';
-            btn.style.background = '';
-            btn.style.color = '';
-            btn.style.borderColor = '';
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy:', err);
-    });
-}
+// Backward compatibility aliases
+function copySidebarId(id) { copySidebarValue(id); }
+function copySidebarLink(link) { copySidebarValue(link); }
 </script>
 
 <!-- Navigation Section -->

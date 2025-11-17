@@ -71,7 +71,6 @@ pub struct FileDisplayInfo {
     pub path: String,
     pub is_dir: bool,
     pub mime_type: String,
-    pub file_size: String,
     pub modified_at: String,
 }
 
@@ -173,20 +172,14 @@ pub async fn handler(
                 .to_string();
             let is_dir = matches!(node_link, common::mount::NodeLink::Dir(..));
 
-            let (mime_type, file_size) = if is_dir {
-                ("inode/directory".to_string(), "-".to_string())
+            let mime_type = if is_dir {
+                "inode/directory".to_string()
             } else {
-                let mime = node_link
+                node_link
                     .data()
                     .and_then(|data| data.mime())
                     .map(|m| m.to_string())
-                    .unwrap_or_else(|| "application/octet-stream".to_string());
-
-                // TODO: Get actual file size from blob when we have efficient access
-                // For now, show placeholder
-                let size = "-".to_string();
-
-                (mime, size)
+                    .unwrap_or_else(|| "application/octet-stream".to_string())
             };
 
             // TODO: Get actual modified date from metadata when available
@@ -198,7 +191,6 @@ pub async fn handler(
                 path: format!("/{}", path.display()),
                 is_dir,
                 mime_type,
-                file_size,
                 modified_at,
             }
         })

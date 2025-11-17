@@ -49,7 +49,7 @@ pub struct FileViewerTemplate {
     pub file_path: String,
     pub file_name: String,
     pub path_segments: Vec<PathSegment>,
-    pub file_size: usize,
+    pub file_size_formatted: String,
     pub mime_type: String,
     pub is_text: bool,
     pub is_markdown: bool,
@@ -322,6 +322,9 @@ pub async fn handler(
 
     let read_only = config.read_only || viewing_history;
 
+    let file_size = file_content.data.len();
+    let file_size_formatted = format_bytes(file_size);
+
     let template = FileViewerTemplate {
         bucket_id: bucket_id.to_string(),
         bucket_id_short,
@@ -338,7 +341,7 @@ pub async fn handler(
         file_path,
         file_name,
         path_segments,
-        file_size: file_content.data.len(),
+        file_size_formatted,
         mime_type: file_content.mime_type,
         is_text,
         is_markdown,
@@ -400,6 +403,21 @@ fn build_back_url(file_path: &str, bucket_id: &Uuid, at_hash: Option<&String>) -
     } else {
         format!("/buckets/{}?path={}", bucket_id, parent)
     }
+}
+
+fn format_bytes(bytes: usize) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+
+    let bytes_f64 = bytes as f64;
+    let k = 1024_f64;
+    let i = (bytes_f64.log(k).floor() as usize).min(UNITS.len() - 1);
+    let size = bytes_f64 / k.powi(i as i32);
+
+    format!("{:.2} {}", size, UNITS[i])
 }
 
 fn error_response(message: &str) -> askama_axum::Response {

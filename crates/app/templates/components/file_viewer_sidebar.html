@@ -4,7 +4,19 @@
         <i class="fas fa-folder-open text-primary"></i>
         <h2 class="sidebar-bucket-name">{{ bucket_name }}</h2>
     </div>
+    <div class="sidebar-bucket-id">
+        <div class="sidebar-id-label">Bucket ID</div>
+        <div class="sidebar-link-row">
+            <code class="sidebar-hash sidebar-id-value" title="{{ bucket_id }}">
+                {{ bucket_id_short }}
+            </code>
+            <button onclick="copySidebarId('{{ bucket_id }}')" class="sidebar-copy-btn" title="Copy bucket ID">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+    </div>
     <div class="sidebar-bucket-link">
+        <div class="sidebar-id-label">Version</div>
         <div class="sidebar-link-row">
             <code class="sidebar-hash" title="{{ bucket_link }}">
                 {{ bucket_link_short }}
@@ -22,8 +34,8 @@
 </div>
 
 <script>
-function copySidebarLink(link) {
-    navigator.clipboard.writeText(link).then(() => {
+function copySidebarValue(value) {
+    navigator.clipboard.writeText(value).then(() => {
         const btn = event.target.closest('button');
         const row = btn.closest('.sidebar-link-row');
         const icon = btn.querySelector('i');
@@ -54,10 +66,14 @@ function copySidebarLink(link) {
         console.error('Failed to copy:', err);
     });
 }
+
+// Backward compatibility aliases
+function copySidebarId(id) { copySidebarValue(id); }
+function copySidebarLink(link) { copySidebarValue(link); }
 </script>
 
-<!-- File Metadata Section (Desktop Only) -->
-<div class="sidebar-section hidden md:block">
+<!-- File Metadata Section -->
+<div class="sidebar-section">
     <div class="sidebar-section-title">File Info</div>
     <div class="sidebar-file-metadata">
         <div class="metadata-item">
@@ -71,7 +87,7 @@ function copySidebarLink(link) {
             <i class="fas fa-hdd text-muted-foreground"></i>
             <div class="metadata-content">
                 <div class="metadata-label">Size</div>
-                <div class="metadata-value">{{ file_size }} bytes</div>
+                <div class="metadata-value">{{ file_size_formatted }}</div>
             </div>
         </div>
         <div class="metadata-item">
