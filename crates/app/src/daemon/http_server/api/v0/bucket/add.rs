@@ -94,7 +94,8 @@ pub async fn handler(
 
     let bucket_id =
         bucket_id.ok_or_else(|| AddError::InvalidRequest("bucket_id is required".into()))?;
-    let base_path = base_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
+    let base_path =
+        base_path.ok_or_else(|| AddError::InvalidRequest("mount_path is required".into()))?;
 
     if files.is_empty() {
         return Err(AddError::InvalidRequest(
