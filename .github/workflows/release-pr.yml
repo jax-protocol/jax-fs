@@ -74,14 +74,15 @@ jobs:
       - name: Create/update release branch
         if: steps.check.outputs.needs_release == 'true'
         run: |
-          # Create or reset release branch
+          # Delete remote release-automation branch if it exists to start fresh
           git fetch origin
-          if git rev-parse --verify origin/release-automation 2>/dev/null; then
-            git checkout release-automation
-            git reset --hard origin/main
-          else
-            git checkout -b release-automation
+          if git ls-remote --heads origin release-automation | grep -q release-automation; then
+            echo "Deleting existing release-automation branch on remote..."
+            git push origin --delete release-automation || true
           fi
+
+          # Create fresh release branch from main
+          git checkout -b release-automation
 
       - name: Clean up orphaned tags
         if: steps.check.outputs.needs_release == 'true'
@@ -112,31 +113,29 @@ jobs:
       - name: Run cargo smart-release
         if: steps.check.outputs.needs_release == 'true'
         run: |
-          # Execute release (updates files, creates tags, commits)
-          # Use --skip-push so we can handle pushing ourselves
-          cargo smart-release jax-bucket --execute --no-publish --allow-dirty --update-crates-index --skip-push
+          # Execute release (updates files, creates tags, commits, and pushes)
+          # Since we deleted the remote branch, the push will succeed
+          cargo smart-release jax-bucket --execute --no-publish --allow-dirty --update-crates-index
 
-      - name: Push release branch and tags
+      - name: Verify push succeeded
         if: steps.check.outputs.needs_release == 'true'
         run: |
-          # Get list of new tags created by smart-release
-          NEW_TAGS=$(git tag --points-at HEAD | grep -E "^jax-.*-v" || echo "")
+          # Verify that smart-release successfully pushed everything
+          echo "Checking that branch and tags were pushed..."
 
-          if [ -z "$NEW_TAGS" ]; then
-            echo "No tags created, skipping push"
-            exit 0
+          # Check if branch exists on remote
+          if git ls-remote --heads origin release-automation | grep -q release-automation; then
+            echo "✅ Branch release-automation pushed successfully"
+          else
+            echo "❌ Branch was not pushed, this is unexpected"
+            exit 1
           fi
 
-          echo "New tags to push: $NEW_TAGS"
-
-          # Force-push the branch (it's a PR branch, safe to force-push)
-          git push -f origin release-automation
-
-          # Push the new tags (orphaned tags were already deleted in previous step)
-          for tag in $NEW_TAGS; do
-            echo "Pushing tag: $tag"
-            git push origin "$tag"
-          done
+          # List tags that were created
+          TAGS=$(git tag --points-at HEAD | grep -E "^jax-.*-v" || echo "")
+          if [ -n "$TAGS" ]; then
+            echo "✅ Tags created: $TAGS"
+          fi
 
       - name: Create or update PR
         if: steps.check.outputs.needs_release == 'true'
