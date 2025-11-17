@@ -93,16 +93,21 @@ jobs:
         if: steps.check.outputs.needs_release == 'true'
         run: |
           # Execute release (updates files, creates tags, commits)
-          cargo smart-release jax-bucket --execute --no-publish --allow-dirty --update-crates-index
+          # Use --skip-push so we can handle pushing ourselves
+          cargo smart-release jax-bucket --execute --no-publish --allow-dirty --update-crates-index --skip-push
 
       - name: Push release branch and tags
         if: steps.check.outputs.needs_release == 'true'
         run: |
-          # Push branch
-          git push -f origin release-automation
-
           # Get list of new tags created by smart-release
-          NEW_TAGS=$(git tag --points-at HEAD | grep -E "^jax-.*-v")
+          NEW_TAGS=$(git tag --points-at HEAD | grep -E "^jax-.*-v" || echo "")
+
+          if [ -z "$NEW_TAGS" ]; then
+            echo "No tags created, skipping push"
+            exit 0
+          fi
+
+          echo "New tags to push: $NEW_TAGS"
 
           # Delete existing tags on remote if they exist
           for tag in $NEW_TAGS; do
@@ -112,8 +117,14 @@ jobs:
             fi
           done
 
-          # Now push the new tags
-          git push --tags origin
+          # Force-push the branch (it's a PR branch, safe to force-push)
+          git push -f origin release-automation
+
+          # Push the new tags
+          for tag in $NEW_TAGS; do
+            echo "Pushing tag: $tag"
+            git push origin "$tag"
+          done
 
       - name: Create or update PR
         if: steps.check.outputs.needs_release == 'true'
