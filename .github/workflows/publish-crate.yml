@@ -10,7 +10,7 @@ jobs:
     name: Publish Crates
     runs-on: ubuntu-latest
     # Only run when release PR is merged
-    if: "contains(github.event.head_commit.message, 'chore: release updates')"
+    if: "contains(github.event.head_commit.message, 'Bump jax-')"
 
     steps:
       - name: Checkout code

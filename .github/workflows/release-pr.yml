@@ -11,8 +11,7 @@ jobs:
     name: Create/Update Release PR
     runs-on: ubuntu-latest
     # CRITICAL: Skip if this is a release PR merge to prevent infinite loop
-    if: |
-      !contains(github.event.head_commit.message, 'chore: release updates')
+    if: "!contains(github.event.head_commit.message, 'Bump jax-')"
     permissions:
       contents: write
       pull-requests: write
