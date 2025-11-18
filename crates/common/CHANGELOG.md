@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
-## v0.1.5 (2025-11-17)
+## v0.1.5 (2025-11-18)
 
 <csr-id-1b2d7c55806152c9e67d452c90543966f1e6b7d6/>
 
@@ -70,9 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
+ - 2 commits contributed to the release.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#15](https://github.com/jax-ethdenver-2025/jax-buckets/issues/15)
+ - 1 unique issue was worked on: [#15](https://github.com/jax-protocol/jax-buckets/issues/15)
 
 ### Commit Details
 
@@ -80,8 +80,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
- * **[#15](https://github.com/jax-ethdenver-2025/jax-buckets/issues/15)**
-    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`c239f47`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/c239f477f3353c779bb731b2027edde31598dad7))
+ * **[#15](https://github.com/jax-protocol/jax-buckets/issues/15)**
+    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`c239f47`](https://github.com/jax-protocol/jax-buckets/commit/c239f477f3353c779bb731b2027edde31598dad7))
+ * **Uncategorized**
+    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`96d3bb8`](https://github.com/jax-protocol/jax-buckets/commit/96d3bb8821d510e36c3385ce943afc3ca53fa547))
 </details>
 
 ## v0.1.4 (2025-11-17)
@@ -142,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - 2 commits contributed to the release.
  - 2 days passed between releases.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#11](https://github.com/jax-ethdenver-2025/jax-buckets/issues/11), [#12](https://github.com/jax-ethdenver-2025/jax-buckets/issues/12)
+ - 2 unique issues were worked on: [#11](https://github.com/jax-protocol/jax-buckets/issues/11), [#12](https://github.com/jax-protocol/jax-buckets/issues/12)
 
 ### Commit Details
 
@@ -150,20 +152,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
- * **[#11](https://github.com/jax-ethdenver-2025/jax-buckets/issues/11)**
-    - Alex/misc fixes ([`2fb5ea6`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/2fb5ea6e39a4f4d1cdfb9668511fabe731a22e92))
- * **[#12](https://github.com/jax-ethdenver-2025/jax-buckets/issues/12)**
-    - Bump jax-common v0.1.4, jax-bucket v0.1.5 ([`9517f35`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/9517f35911441ae4b7ce93c75774b1cdb47a7731))
+ * **[#11](https://github.com/jax-protocol/jax-buckets/issues/11)**
+    - Alex/misc fixes ([`2fb5ea6`](https://github.com/jax-protocol/jax-buckets/commit/2fb5ea6e39a4f4d1cdfb9668511fabe731a22e92))
+ * **[#12](https://github.com/jax-protocol/jax-buckets/issues/12)**
+    - Bump jax-common v0.1.4, jax-bucket v0.1.5 ([`9517f35`](https://github.com/jax-protocol/jax-buckets/commit/9517f35911441ae4b7ce93c75774b1cdb47a7731))
 </details>
 
 ## v0.1.3 (2025-11-15)
+
+### Bug Fixes
+
+ - <csr-id-2f3e70f535b5aff4a13ea4df9bbf59047d0dd8c9/> own
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
- - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 3 commits contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
 ### Commit Details
@@ -173,7 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <details><summary>view details</summary>
 
  * **Uncategorized**
-    - Adjusting changelogs prior to release of jax-common v0.1.3, jax-bucket v0.1.4 ([`96c3c3f`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/96c3c3fdd170dcfa12c4c08f23b09d077ea543c2))
+    - Adjusting changelogs prior to release of jax-common v0.1.3, jax-bucket v0.1.4 ([`96c3c3f`](https://github.com/jax-protocol/jax-buckets/commit/96c3c3fdd170dcfa12c4c08f23b09d077ea543c2))
+    - Bump jax-common v0.1.2 ([`e1d5272`](https://github.com/jax-protocol/jax-buckets/commit/e1d5272f93e6b1eeb60c0ccbf4976a5247fdc952))
+    - Own ([`2f3e70f`](https://github.com/jax-protocol/jax-buckets/commit/2f3e70f535b5aff4a13ea4df9bbf59047d0dd8c9))
 </details>
 
 ## v0.1.2 (2025-11-15)
@@ -231,9 +239,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 5 commits contributed to the release.
- - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#5](https://github.com/jax-ethdenver-2025/jax-buckets/issues/5)
+ - 2 commits contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#5](https://github.com/jax-protocol/jax-buckets/issues/5)
 
 ### Commit Details
 
@@ -241,22 +249,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
- * **[#5](https://github.com/jax-ethdenver-2025/jax-buckets/issues/5)**
-    - Consolidate peer state management into unified architecture ([`1b2d7c5`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/1b2d7c55806152c9e67d452c90543966f1e6b7d6))
+ * **[#5](https://github.com/jax-protocol/jax-buckets/issues/5)**
+    - Consolidate peer state management into unified architecture ([`1b2d7c5`](https://github.com/jax-protocol/jax-buckets/commit/1b2d7c55806152c9e67d452c90543966f1e6b7d6))
  * **Uncategorized**
-    - Bump jax-common v0.1.2 ([`e1d5272`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/e1d5272f93e6b1eeb60c0ccbf4976a5247fdc952))
-    - Own ([`2f3e70f`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/2f3e70f535b5aff4a13ea4df9bbf59047d0dd8c9))
-    - Bump jax-common v0.1.2, jax-bucket v0.1.3 ([`625a2eb`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/625a2eb01786f8367e0446da8420c233447c0793))
-    - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.2, jax-bucket v0.1.2 ([`7cb3b73`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/7cb3b737b9febdcc7612cf9b827b7b63ee9fbb4f))
+    - Bump jax-common v0.1.2, jax-bucket v0.1.3 ([`625a2eb`](https://github.com/jax-protocol/jax-buckets/commit/625a2eb01786f8367e0446da8420c233447c0793))
 </details>
 
-## v0.1.1 (2025-10-12)
+## v0.1.1 (2025-10-13)
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -267,7 +272,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <details><summary>view details</summary>
 
  * **Uncategorized**
-    - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.1, jax-bucket v0.1.1 ([`e053057`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/e0530577122769502f93af02296d02430f5e1f13))
-    - Chore: restructure workspace and setup   independent versioning ([`325e79b`](https://github.com/jax-ethdenver-2025/jax-buckets/commit/325e79b23b66d0a086a639130ade90ba11fd4a4d))
+    - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.2, jax-bucket v0.1.2 ([`7cb3b73`](https://github.com/jax-protocol/jax-buckets/commit/7cb3b737b9febdcc7612cf9b827b7b63ee9fbb4f))
+    - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.1, jax-bucket v0.1.1 ([`e053057`](https://github.com/jax-protocol/jax-buckets/commit/e0530577122769502f93af02296d02430f5e1f13))
+    - Chore: restructure workspace and setup   independent versioning ([`325e79b`](https://github.com/jax-protocol/jax-buckets/commit/325e79b23b66d0a086a639130ade90ba11fd4a4d))
 </details>
 
