@@ -75,9 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 3 commits contributed to the release.
+ - 4 commits contributed to the release.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#13](https://github.com/jax-protocol/jax-buckets/issues/13), [#15](https://github.com/jax-protocol/jax-buckets/issues/15)
+ - 3 unique issues were worked on: [#13](https://github.com/jax-protocol/jax-buckets/issues/13), [#15](https://github.com/jax-protocol/jax-buckets/issues/15), [#16](https://github.com/jax-protocol/jax-buckets/issues/16)
 
 ### Commit Details
 
@@ -89,6 +89,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Buil upload fix ([`7445f94`](https://github.com/jax-protocol/jax-buckets/commit/7445f9401d0f2be279c025815018c43554f28103))
  * **[#15](https://github.com/jax-protocol/jax-buckets/issues/15)**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`c239f47`](https://github.com/jax-protocol/jax-buckets/commit/c239f477f3353c779bb731b2027edde31598dad7))
+ * **[#16](https://github.com/jax-protocol/jax-buckets/issues/16)**
+    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`a5d2374`](https://github.com/jax-protocol/jax-buckets/commit/a5d2374b45790c295d43f7c66159d46ac2c15bf4))
  * **Uncategorized**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`96d3bb8`](https://github.com/jax-protocol/jax-buckets/commit/96d3bb8821d510e36c3385ce943afc3ca53fa547))
 </details>
@@ -261,6 +263,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-id-ef5cd61f032d20ff42ea68caf22a4ac46355c137/>
 <csr-id-d0a31f491f14927e4b5453daceeaafc963dd4171/>
+<csr-id-20eab70de45b734acd0e44f4340dcb6659b32e84/>
 
 ### Chore
 
