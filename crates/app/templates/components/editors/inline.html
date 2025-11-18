@@ -1,10 +1,10 @@
 <!-- Inline Editor Component -->
-<!-- Required parameters: content, is_markdown, is_editable, bucket_id, file_path -->
+<!-- Required parameters: content, file_metadata, is_editable, bucket_id, file_path -->
 
 {% if is_editable %}
 <!-- View Mode (default) -->
 <div id="viewMode">
-    {% if is_markdown %}
+    {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
     <!-- Rendered markdown content -->
     <div id="markdownContent">
         <!-- Content will be rendered here by marked.js -->
@@ -24,13 +24,13 @@
 
 <!-- Store original content for markdown rendering and change detection -->
 <textarea id="originalContent" style="display:none;">{{ content }}</textarea>
-{% if is_markdown %}
+{% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
 <textarea id="markdownSource" style="display:none;">{{ content }}</textarea>
 {% endif %}
 
 {% else %}
 <!-- Non-editable content -->
-{% if is_markdown %}
+{% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
 <div id="markdownContent">
     <!-- Content will be rendered here by marked.js -->
 </div>

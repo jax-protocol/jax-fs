@@ -3,7 +3,7 @@
 {% block title %}{{ bucket_name }} - History - Jax{% endblock %}
 
 {% block sidebar %}
-    {% include "components/explorer_sidebar.html" %}
+    {% include "components/sidebars/bucket.html" %}
 {% endblock %}
 
 {% block content %}
@@ -110,9 +110,9 @@
     {% endif %}
 </div>
 
-{% include "components/share_modal.html" %}
+{% include "components/modals/share.html" %}
 
-{% include "components/manifest_modal.html" %}
+{% include "components/modals/manifest.html" %}
 
 <!-- Upload Modal -->
 <div id="upload-modal" uk-modal>

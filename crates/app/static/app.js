@@ -79,14 +79,9 @@ const FileUpload = {
       const file = fileInput.files[0];
       const path = window.JAX_CURRENT_PATH || "/";
 
-      // Construct mount_path: join directory path with filename
-      const mountPath = path.endsWith("/")
-        ? path + file.name
-        : path + "/" + file.name;
-
       const formData = new FormData();
       formData.append("bucket_id", bucketId);
-      formData.append("mount_path", mountPath);
+      formData.append("mount_path", path);
       formData.append("file", file);
 
       this.showStatus(status, "Uploading...", "info");
@@ -103,7 +98,7 @@ const FileUpload = {
             "File uploaded successfully! Reloading...",
             "success",
           );
-          setTimeout(() => window.location.reload(), 1000);
+          // setTimeout(() => window.location.reload(), 1000);
         } else {
           const error = await response.text();
           this.showStatus(status, "Upload failed: " + error, "error");
@@ -127,79 +122,7 @@ const FileUpload = {
   },
 };
 
-// Bucket Share Module
-const BucketShare = {
-  init(apiUrl, bucketId) {
-    const form = document.getElementById("shareForm");
-    if (!form) return;
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-
-      const peerPublicKeyInput = document.getElementById("peerPublicKeyInput");
-      const status = document.getElementById("shareStatus");
-      const peerPublicKey = peerPublicKeyInput.value.trim();
-
-      if (!peerPublicKey) {
-        this.showStatus(status, "Please enter a peer public key", "error");
-        return;
-      }
-
-      // Validate hex format (64 characters)
-      if (!/^[a-fA-F0-9]{64}$/.test(peerPublicKey)) {
-        this.showStatus(
-          status,
-          "Invalid public key format. Must be 64 hexadecimal characters.",
-          "error",
-        );
-        return;
-      }
-
-      this.showStatus(status, "Sharing bucket...", "info");
-
-      try {
-        const response = await fetch(`${apiUrl}/api/v0/bucket/share`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bucket_id: bucketId,
-            peer_public_key: peerPublicKey,
-          }),
-        });
-
-        if (response.ok) {
-          this.showStatus(status, "Bucket shared successfully!", "success");
-          setTimeout(() => {
-            peerPublicKeyInput.value = "";
-            status.classList.add("hidden");
-            UIkit.modal("#share-modal").hide();
-          }, 1500);
-        } else {
-          const error = await response.text();
-          this.showStatus(status, "Failed to share bucket: " + error, "error");
-        }
-      } catch (error) {
-        this.showStatus(
-          status,
-          "Failed to share bucket: " + error.message,
-          "error",
-        );
-      }
-    });
-  },
-
-  showStatus(element, message, type) {
-    element.className =
-      "p-4 " +
-      (type === "error"
-        ? "bg-red-100 text-red-800"
-        : type === "success"
-          ? "bg-green-100 text-green-800"
-          : "bg-blue-100 text-blue-800");
-    element.textContent = message;
-    element.classList.remove("hidden");
-  },
-};
+// Bucket Share Module removed - now inline in share_modal.html
 
 // File Rename Module
 const FileRename = {
@@ -440,12 +363,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
   BucketCreation.init(apiUrl);
   if (bucketId) {
-    FileUpload.init(apiUrl, bucketId);
-    BucketShare.init(apiUrl, bucketId);
     FileRename.init(apiUrl, bucketId);
     FileDelete.init(apiUrl, bucketId);
     NewFile.init(apiUrl, bucketId, currentPath);
   }
-
-  // File editor removed - inline editing is now handled in file_viewer
 });

@@ -22,6 +22,9 @@ use crate::ServiceState;
 const API_PREFIX: &str = "/api";
 const STATUS_PREFIX: &str = "/_status";
 
+/// Maximum upload size in bytes (500 MB)
+pub const MAX_UPLOAD_SIZE_BYTES: usize = 500 * 1024 * 1024;
+
 #[derive(RustEmbed)]
 #[folder = "static"]
 struct StaticAssets;
@@ -118,7 +121,7 @@ pub async fn run_api(
         .nest(STATUS_PREFIX, health::router(state.clone()))
         .nest(API_PREFIX, api::router(state.clone()))
         .fallback(handlers::not_found_handler)
-        .layer(DefaultBodyLimit::max(500 * 1024 * 1024)) // 500MB limit for file uploads
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE_BYTES))
         .with_state(state)
         .layer(trace_layer);
 

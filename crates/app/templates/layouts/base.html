@@ -71,17 +71,20 @@
 </head>
 <body class="bg-background text-foreground flex flex-col min-h-screen">
     <nav class="border-b bg-background">
-        <div class="px-8 py-4">
+        <div class="px-8 py-4 flex items-center justify-between">
             <a href="/" class="flex items-center gap-2 text-primary font-bold text-xl text-decoration-none">
                 <i class="fas fa-database"></i>
                 <span>jax</span>
             </a>
+            {% block nav_actions %}{% endblock %}
         </div>
     </nav>
 
+    {% block main %}
     <main class="flex-1">
         {% block content %}{% endblock %}
     </main>
+    {% endblock %}
 
     <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
     <script src="/static/app.js"></script>

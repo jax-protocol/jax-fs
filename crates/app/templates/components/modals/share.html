@@ -233,6 +233,17 @@
     color: #ef4444;
 }
 
+.share-status.info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #2563eb;
+}
+
+.dark .share-status.info {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
 .share-actions {
     display: flex;
     justify-content: flex-end;
@@ -260,3 +271,74 @@
     background: rgba(255, 255, 255, 0.1);
 }
 </style>
+
+<script>
+// Bucket Share Module - Inline
+(function() {
+    function showStatus(element, message, type) {
+        element.className = 'share-status ' + type;
+        element.textContent = message;
+        element.classList.remove('hidden');
+    }
+
+    function init() {
+        const form = document.getElementById('shareForm');
+        if (!form) return;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
+            const bucketId = window.JAX_BUCKET_ID;
+            const peerPublicKeyInput = document.getElementById('peerPublicKeyInput');
+            const status = document.getElementById('shareStatus');
+            const peerPublicKey = peerPublicKeyInput.value.trim();
+
+            if (!peerPublicKey) {
+                showStatus(status, 'Please enter a peer public key', 'error');
+                return;
+            }
+
+            // Validate hex format (64 characters)
+            if (!/^[a-fA-F0-9]{64}$/.test(peerPublicKey)) {
+                showStatus(status, 'Invalid public key format. Must be 64 hexadecimal characters.', 'error');
+                return;
+            }
+
+            showStatus(status, 'Sharing bucket...', 'info');
+
+            try {
+                const response = await fetch(`${apiUrl}/api/v0/bucket/share`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        bucket_id: bucketId,
+                        peer_public_key: peerPublicKey
+                    })
+                });
+
+                if (response.ok) {
+                    showStatus(status, 'Bucket shared successfully!', 'success');
+                    setTimeout(() => {
+                        peerPublicKeyInput.value = '';
+                        status.classList.add('hidden');
+                        UIkit.modal('#share-modal').hide();
+                    }, 1500);
+                } else {
+                    const error = await response.text();
+                    showStatus(status, 'Failed to share bucket: ' + error, 'error');
+                }
+            } catch (error) {
+                showStatus(status, 'Failed to share bucket: ' + error.message, 'error');
+            }
+        });
+    }
+
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>

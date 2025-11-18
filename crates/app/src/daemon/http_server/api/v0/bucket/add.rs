@@ -47,31 +47,29 @@ pub async fn handler(
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
 
     // Parse multipart form data
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|e| AddError::MultipartError(e.to_string()))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        tracing::error!("Multipart parsing error: {}", e);
+        AddError::MultipartError(e.to_string())
+    })? {
         let field_name = field.name().unwrap_or("").to_string();
 
         match field_name.as_str() {
             "bucket_id" => {
-                let text = field
-                    .text()
-                    .await
-                    .map_err(|e| AddError::MultipartError(e.to_string()))?;
-                bucket_id = Some(
-                    Uuid::parse_str(&text)
-                        .map_err(|_| AddError::InvalidRequest("Invalid bucket_id".into()))?,
-                );
+                let text = field.text().await.map_err(|e| {
+                    tracing::error!("Error reading bucket_id field: {}", e);
+                    AddError::MultipartError(e.to_string())
+                })?;
+                bucket_id = Some(Uuid::parse_str(&text).map_err(|e| {
+                    tracing::error!("Invalid bucket_id format: {}", e);
+                    AddError::InvalidRequest("Invalid bucket_id".into())
+                })?);
+                tracing::info!("Parsed bucket_id: {}", bucket_id.unwrap());
             }
             "mount_path" => {
-                base_path = Some(
-                    field
-                        .text()
-                        .await
-                        .map_err(|e| AddError::MultipartError(e.to_string()))?,
-                );
+                base_path = Some(field.text().await.map_err(|e| {
+                    tracing::error!("Error reading mount_path field: {}", e);
+                    AddError::MultipartError(e.to_string())
+                })?);
             }
             "file" | "files" => {
                 // Get filename from the field
@@ -80,15 +78,21 @@ pub async fn handler(
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "unnamed".to_string());
 
+                tracing::info!("Reading file: {}", filename);
                 let file_data = field
                     .bytes()
                     .await
-                    .map_err(|e| AddError::MultipartError(e.to_string()))?
+                    .map_err(|e| {
+                        tracing::error!("Error reading file data for {}: {}", filename, e);
+                        AddError::MultipartError(e.to_string())
+                    })?
                     .to_vec();
 
                 files.push((filename, file_data));
             }
-            _ => {}
+            _ => {
+                tracing::warn!("Ignoring unknown field: {}", field_name);
+            }
         }
     }
 
@@ -111,25 +115,34 @@ pub async fn handler(
     );
 
     // Load mount at current head
-    let mut mount = state.peer().mount(bucket_id).await?;
+    tracing::info!("Loading mount for bucket {}", bucket_id);
+    let mut mount = state.peer().mount(bucket_id).await.map_err(|e| {
+        tracing::error!("Failed to load mount for bucket {}: {}", bucket_id, e);
+        e
+    })?;
 
     let mut results = Vec::new();
     let mut successful = 0;
     let mut failed = 0;
 
     // Process each file
-    for (filename, file_data) in files {
+    tracing::info!("Processing {} files", files.len());
+    for (idx, (filename, file_data)) in files.iter().enumerate() {
+        tracing::info!("Processing file {}/{}: {}", idx + 1, files.len(), filename);
+
         // Construct full path
         let full_path = if base_path == "/" {
             format!("/{}", filename)
         } else {
             format!("{}/{}", base_path.trim_end_matches('/'), filename)
         };
+        tracing::info!("Full path: {}", full_path);
 
         let mount_path_buf = PathBuf::from(&full_path);
 
         // Validate mount path
         if !mount_path_buf.is_absolute() {
+            tracing::warn!("Path is not absolute: {}", full_path);
             results.push(FileUploadResult {
                 mount_path: full_path.clone(),
                 mime_type: String::new(),
@@ -149,10 +162,13 @@ pub async fn handler(
         let file_size = file_data.len();
 
         // Try to add file to mount
-        match mount.add(&mount_path_buf, Cursor::new(file_data)).await {
+        match mount
+            .add(&mount_path_buf, Cursor::new(file_data.clone()))
+            .await
+        {
             Ok(_) => {
                 tracing::info!(
-                    "Added file {} ({} bytes, {})",
+                    "✓ Added file {} ({} bytes, {})",
                     full_path,
                     file_size,
                     mime_type
@@ -167,7 +183,7 @@ pub async fn handler(
                 successful += 1;
             }
             Err(e) => {
-                tracing::error!("Failed to add file {}: {}", full_path, e);
+                tracing::error!("✗ Failed to add file {}: {}", full_path, e);
                 results.push(FileUploadResult {
                     mount_path: full_path,
                     mime_type,
@@ -180,14 +196,21 @@ pub async fn handler(
         }
     }
 
-    // Save mount and update log only if at least one file succeeded
     let bucket_link = if successful > 0 {
-        state.peer().save_mount(&mount).await?
+        tracing::info!("Saving mount (at least one file succeeded)");
+        state.peer().save_mount(&mount).await.map_err(|e| {
+            tracing::error!("Failed to save mount: {}", e);
+            tracing::error!("Error details: {:?}", e);
+            e
+        })?
     } else {
+        tracing::error!("All files failed to upload");
         return Err(AddError::InvalidRequest(
             "All files failed to upload".into(),
         ));
     };
+
+    tracing::info!("Bucket link: {}", bucket_link);
 
     Ok((
         http::StatusCode::OK,

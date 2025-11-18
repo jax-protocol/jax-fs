@@ -10,7 +10,7 @@ use uuid::Uuid;
 use common::linked_data::BlockEncoded;
 use common::mount::Manifest;
 
-use crate::daemon::http_server::Config;
+use crate::daemon::http_server::{Config, MAX_UPLOAD_SIZE_BYTES};
 use crate::ServiceState;
 
 #[derive(Template)]
@@ -50,12 +50,21 @@ pub struct BucketExplorerTemplate {
     pub at_hash: Option<String>,
     pub return_url: String,
     pub api_url: String,
+    pub max_upload_size_mb: usize,
+    pub file_metadata: Option<FileMetadata>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ManifestShare {
     pub public_key: String,
     pub role: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FileMetadata {
+    pub name: String,
+    pub size_formatted: String,
+    pub mime_type: String,
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +330,8 @@ pub async fn handler(
         at_hash: query.at,
         return_url,
         api_url,
+        max_upload_size_mb: MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
+        file_metadata: None,
     };
 
     template.into_response()

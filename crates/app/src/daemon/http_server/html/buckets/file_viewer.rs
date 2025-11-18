@@ -11,6 +11,8 @@ use common::linked_data::BlockEncoded;
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
 
+use super::file_explorer::FileMetadata;
+
 #[derive(Debug, Clone)]
 pub struct FileContent {
     pub data: Vec<u8>,
@@ -47,12 +49,8 @@ pub struct FileViewerTemplate {
     pub manifest_previous_link: Option<String>,
     pub manifest_shares: Vec<ManifestShare>,
     pub file_path: String,
-    pub file_name: String,
+    pub file_metadata: Option<FileMetadata>,
     pub path_segments: Vec<PathSegment>,
-    pub file_size_formatted: String,
-    pub mime_type: String,
-    pub is_text: bool,
-    pub is_markdown: bool,
     pub is_editable: bool,
     pub content: String,
     pub back_url: String,
@@ -155,22 +153,19 @@ pub async fn handler(
         .to_string();
 
     // Determine how to display content based on MIME type
-    let (is_text, content) = if file_content.mime_type.starts_with("image/")
+    let content = if file_content.mime_type.starts_with("image/")
         || file_content.mime_type.starts_with("video/")
         || file_content.mime_type.starts_with("audio/")
     {
         // Encode as base64 for embedded display
-        (
-            false,
-            base64::Engine::encode(
-                &base64::engine::general_purpose::STANDARD,
-                &file_content.data,
-            ),
+        base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            &file_content.data,
         )
     } else {
         // Try to decode as UTF-8 text
         match String::from_utf8(file_content.data.clone()) {
-            Ok(text) => (true, text),
+            Ok(text) => text,
             Err(_) => {
                 // Binary content - show hex dump
                 let hex = file_content
@@ -197,7 +192,7 @@ pub async fn handler(
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
-                (false, hex)
+                hex
             }
         }
     };
@@ -207,9 +202,6 @@ pub async fn handler(
 
     // Build back URL (parent directory)
     let back_url = build_back_url(&file_path, &bucket_id, query.at.as_ref());
-
-    // Check if file is markdown based on MIME type
-    let is_markdown = file_content.mime_type.starts_with("text/markdown");
 
     // Check if file is editable based on MIME type (text/markdown and text/plain)
     let is_editable = file_content.mime_type.starts_with("text/markdown")
@@ -338,13 +330,13 @@ pub async fn handler(
         manifest_pins_link,
         manifest_previous_link,
         manifest_shares,
-        file_path,
-        file_name,
+        file_path: file_path.clone(),
+        file_metadata: Some(FileMetadata {
+            name: file_name,
+            size_formatted: file_size_formatted,
+            mime_type: file_content.mime_type.clone(),
+        }),
         path_segments,
-        file_size_formatted,
-        mime_type: file_content.mime_type,
-        is_text,
-        is_markdown,
         is_editable,
         content,
         back_url,

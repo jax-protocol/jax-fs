@@ -1,3 +1,4 @@
+<div class="sidebar-content">
 <!-- Bucket Info Section -->
 <div class="sidebar-section">
     <div class="sidebar-bucket-header">
@@ -72,7 +73,8 @@ function copySidebarId(id) { copySidebarValue(id); }
 function copySidebarLink(link) { copySidebarValue(link); }
 </script>
 
-<!-- File Metadata Section -->
+<!-- File Metadata Section (shown when viewing a file) -->
+{% if let Some(file) = file_metadata %}
 <div class="sidebar-section">
     <div class="sidebar-section-title">File Info</div>
     <div class="sidebar-file-metadata">
@@ -80,14 +82,14 @@ function copySidebarLink(link) { copySidebarValue(link); }
             <i class="fas fa-file text-muted-foreground"></i>
             <div class="metadata-content">
                 <div class="metadata-label">Name</div>
-                <div class="metadata-value" title="{{ file_name }}">{{ file_name }}</div>
+                <div class="metadata-value" title="{{ file.name }}">{{ file.name }}</div>
             </div>
         </div>
         <div class="metadata-item">
             <i class="fas fa-hdd text-muted-foreground"></i>
             <div class="metadata-content">
                 <div class="metadata-label">Size</div>
-                <div class="metadata-value">{{ file_size_formatted }}</div>
+                <div class="metadata-value">{{ file.size_formatted }}</div>
             </div>
         </div>
         <div class="metadata-item">
@@ -95,7 +97,7 @@ function copySidebarLink(link) { copySidebarValue(link); }
             <div class="metadata-content">
                 <div class="metadata-label">Type</div>
                 <div class="metadata-value">
-                    <code class="text-xs">{{ mime_type }}</code>
+                    <code class="text-xs">{{ file.mime_type }}</code>
                 </div>
             </div>
         </div>
@@ -112,6 +114,7 @@ function copySidebarLink(link) { copySidebarValue(link); }
         {% endif %}
     </div>
 </div>
+{% endif %}
 
 <!-- Navigation Section -->
 <div class="sidebar-section">
@@ -137,3 +140,24 @@ function copySidebarLink(link) { copySidebarValue(link); }
         {% endif %}
     </nav>
 </div>
+
+<!-- Current Path Section (shown when browsing directories) -->
+{% if file_metadata.is_none() && current_path != "/" %}
+<div class="sidebar-section">
+    <div class="sidebar-section-title">Current Path</div>
+    <div class="sidebar-current-path">
+        {{ current_path }}
+    </div>
+</div>
+{% endif %}
+</div>
+
+<!-- Upload Action (Bottom) -->
+{% if !read_only %}
+<div class="sidebar-upload-section">
+    <button uk-toggle="target: #upload-modal" class="sidebar-upload-btn">
+        <i class="fas fa-upload"></i>
+        <span>Upload Files</span>
+    </button>
+</div>
+{% endif %}
