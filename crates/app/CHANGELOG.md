@@ -15,6 +15,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.7 (2025-11-18)
+
+### Bug Fixes
+
+ - <csr-id-76d456262a6fa4f16b4dfb6e7e120ac057bc47da/> use gateway URL for download button instead of localhost API
+   The download button was using the localhost API URL which doesn't work
+   for remote read-only nodes that don't expose the API over the internet.
+   Now it uses the same gateway URL pattern as the share button, ensuring
+   downloads work consistently across all node types.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#20](https://github.com/jax-protocol/jax-buckets/issues/20)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#20](https://github.com/jax-protocol/jax-buckets/issues/20)**
+    - Use gateway URL for download button instead of localhost API ([`76d4562`](https://github.com/jax-protocol/jax-buckets/commit/76d456262a6fa4f16b4dfb6e7e120ac057bc47da))
+</details>
+
 ## v0.1.6 (2025-11-18)
 
 <csr-id-ef5cd61f032d20ff42ea68caf22a4ac46355c137/>
@@ -75,9 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 4 commits contributed to the release.
+ - 5 commits contributed to the release.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 3 unique issues were worked on: [#13](https://github.com/jax-protocol/jax-buckets/issues/13), [#15](https://github.com/jax-protocol/jax-buckets/issues/15), [#16](https://github.com/jax-protocol/jax-buckets/issues/16)
+ - 4 unique issues were worked on: [#13](https://github.com/jax-protocol/jax-buckets/issues/13), [#15](https://github.com/jax-protocol/jax-buckets/issues/15), [#16](https://github.com/jax-protocol/jax-buckets/issues/16), [#18](https://github.com/jax-protocol/jax-buckets/issues/18)
 
 ### Commit Details
 
@@ -91,6 +119,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`c239f47`](https://github.com/jax-protocol/jax-buckets/commit/c239f477f3353c779bb731b2027edde31598dad7))
  * **[#16](https://github.com/jax-protocol/jax-buckets/issues/16)**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`a5d2374`](https://github.com/jax-protocol/jax-buckets/commit/a5d2374b45790c295d43f7c66159d46ac2c15bf4))
+ * **[#18](https://github.com/jax-protocol/jax-buckets/issues/18)**
+    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`414464a`](https://github.com/jax-protocol/jax-buckets/commit/414464a83b79b34590fed77df3dd500fe22a59c2))
  * **Uncategorized**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`96d3bb8`](https://github.com/jax-protocol/jax-buckets/commit/96d3bb8821d510e36c3385ce943afc3ca53fa547))
 </details>
