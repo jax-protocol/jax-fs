@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
-## v0.1.4 (2025-11-17)
+## v0.1.5 (2025-11-18)
 
 ### Bug Fixes
 
@@ -68,9 +68,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 9 commits contributed to the release.
+ - 10 commits contributed to the release.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#11](https://github.com/jax-protocol/jax-buckets/issues/11), [#5](https://github.com/jax-protocol/jax-buckets/issues/5)
+ - 3 unique issues were worked on: [#11](https://github.com/jax-protocol/jax-buckets/issues/11), [#12](https://github.com/jax-protocol/jax-buckets/issues/12), [#5](https://github.com/jax-protocol/jax-buckets/issues/5)
 
 ### Commit Details
 
@@ -80,6 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#11](https://github.com/jax-protocol/jax-buckets/issues/11)**
     - Alex/misc fixes ([`2fb5ea6`](https://github.com/jax-protocol/jax-buckets/commit/2fb5ea6e39a4f4d1cdfb9668511fabe731a22e92))
+ * **[#12](https://github.com/jax-protocol/jax-buckets/issues/12)**
+    - Bump jax-common v0.1.4, jax-bucket v0.1.5 ([`9517f35`](https://github.com/jax-protocol/jax-buckets/commit/9517f35911441ae4b7ce93c75774b1cdb47a7731))
  * **[#5](https://github.com/jax-protocol/jax-buckets/issues/5)**
     - Consolidate peer state management into unified architecture ([`1b2d7c5`](https://github.com/jax-protocol/jax-buckets/commit/1b2d7c55806152c9e67d452c90543966f1e6b7d6))
  * **Uncategorized**
@@ -91,6 +93,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Adjusting changelogs prior to release of jax-common v0.1.1, jax-service v0.1.1, jax-bucket v0.1.1 ([`e053057`](https://github.com/jax-protocol/jax-buckets/commit/e0530577122769502f93af02296d02430f5e1f13))
     - Chore: restructure workspace and setup   independent versioning ([`325e79b`](https://github.com/jax-protocol/jax-buckets/commit/325e79b23b66d0a086a639130ade90ba11fd4a4d))
 </details>
+
+## v0.1.4 (2025-11-17)
+
+<csr-id-1b2d7c55806152c9e67d452c90543966f1e6b7d6/>
+
+### Bug Fixes
+
+ - <csr-id-2f3e70f535b5aff4a13ea4df9bbf59047d0dd8c9/> own
+
+### Other
+
+ - <csr-id-1b2d7c55806152c9e67d452c90543966f1e6b7d6/> Consolidate peer state management into unified architecture
+   * fix: refacoted state
+   
+   * fix: better api
+   
+   * progress
+   
+   * saving work
+   
+   * fix: bucket log trait
+   
+   * saving work
+   
+   * fix: more refavctor
+   
+   * feat: job model
+   
+   * feat: intergrate new protocl peer into example service
+   
+   * fix: node back to running
+   
+   * feat: working demo again
+   
+   * fix: rm test data
+   
+   * chore: move peer builder to its own file
+   
+   * fix: split out sync managet into its own thing
+   
+   * feat: bunch of ui updates
+   
+   * feat: actual fucking file viewer
+   
+   * fix: oops
+   
+   * ci: fix
+   
+   * ci: fix
+   
+   * fix: video playing
 
 ## v0.1.3 (2025-11-15)
 
