@@ -590,13 +590,13 @@
         const downloadBtn = document.getElementById('downloadBtn');
         if (downloadBtn) {
             downloadBtn.addEventListener('click', function() {
-                // Build API URL for downloading the file
-                const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
-                let url = `${apiUrl}/api/v0/bucket/cat?bucket_id=${window.JAX_BUCKET_ID}&path=${encodeURIComponent(window.JAX_FILE_PATH)}&download=true`;
+                // Use gateway URL (same as share button)
+                const host = window.location.origin;
+                let url = `${host}/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
 
                 // Add at_hash if viewing history
                 if (window.JAX_AT_HASH) {
-                    url += `&at=${window.JAX_AT_HASH}`;
+                    url += `?at=${window.JAX_AT_HASH}`;
                 }
 
                 // Trigger download by navigating to URL
