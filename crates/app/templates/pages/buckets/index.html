@@ -3,14 +3,14 @@
 {% block title %}{{ bucket_name }} - Jax{% endblock %}
 
 {% block sidebar %}
-    {% include "components/explorer_sidebar.html" %}
+    {% include "components/sidebars/bucket.html" %}
 {% endblock %}
 
 {% block content %}
 <div class="px-8 py-6 space-y-6">
     <!-- Historical version banner -->
     {% if viewing_history %}
-    {% include "components/historical_banner.html" %}
+    {% include "components/banners/historical.html" %}
     {% endif %}
 
     <!-- Breadcrumb navigation -->
@@ -39,9 +39,6 @@
             {% if !read_only %}
             <button uk-toggle="target: #new-folder-modal" class="button">
                 <i class="fas fa-folder-plus"></i>
-            </button>
-            <button uk-toggle="target: #upload-modal" class="button">
-                <i class="fas fa-upload"></i>
             </button>
             <a href="/buckets/{{ bucket_id }}/edit?path={{ current_path }}&new=true" class="button">
                 <i class="fas fa-plus"></i>
@@ -192,44 +189,8 @@
 </div>
 
 <!-- Upload Modal -->
-<div id="upload-modal" uk-modal>
-    <div class="uk-modal-dialog uk-modal-body">
-        <h2 class="uk-modal-title">Upload Files</h2>
-        <form id="uploadForm" class="space-y-4">
-            <div>
-                <label for="fileInput" class="block text-sm font-medium mb-2">
-                    Select Files
-                    <span class="text-xs text-gray-500 font-normal">(Max total size: {{ max_upload_size_mb }} MB)</span>
-                </label>
-                <input type="file" id="fileInput" name="files" class="uk-input" multiple required>
-                <div id="fileSizeWarning" class="hidden mt-2 p-2 bg-yellow-100 text-yellow-800 text-sm rounded"></div>
-                <p class="text-xs text-muted-foreground mt-1">You can select multiple files to upload at once</p>
-            </div>
-            <div id="fileList" class="hidden">
-                <div class="text-sm font-medium mb-2">Selected files:</div>
-                <div id="fileListContent" class="space-y-1 max-h-48 overflow-y-auto"></div>
-            </div>
-            <div id="uploadStatus" class="hidden"></div>
-            <div id="uploadProgress" class="hidden">
-                <div class="text-sm font-medium mb-2">Upload Progress</div>
-                <div id="uploadProgressBar" class="w-full bg-muted rounded-full h-2">
-                    <div id="uploadProgressFill" class="bg-primary h-2 rounded-full transition-all" style="width: 0%"></div>
-                </div>
-                <div id="uploadProgressText" class="text-xs text-muted-foreground mt-1"></div>
-            </div>
-            <div class="flex gap-4 justify-end mt-4">
-                <button class="button button-danger uk-modal-close" type="button" id="uploadCancelBtn">
-                    <i class="fas fa-times"></i> Cancel
-                </button>
-                <button type="submit" class="button button-primary" id="uploadSubmitBtn">
-                    <i class="fas fa-upload"></i> Upload
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-{% include "components/share_modal.html" %}
+{% include "components/modals/upload.html" %}
+{% include "components/modals/share.html" %}
 
 <!-- Rename Modal -->
 <div id="rename-modal" uk-modal>
@@ -273,7 +234,7 @@
     </div>
 </div>
 
-{% include "components/manifest_modal.html" %}
+{% include "components/modals/manifest.html" %}
 {% endif %}
 {% endblock %}
 
@@ -417,171 +378,6 @@ function closeActionMenu() {
         currentActionMenu = null;
     }
     document.removeEventListener('click', closeActionMenu);
-}
-
-// File upload functionality
-document.addEventListener('DOMContentLoaded', function() {
-    const uploadForm = document.getElementById('uploadForm');
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const fileListContent = document.getElementById('fileListContent');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const uploadProgress = document.getElementById('uploadProgress');
-    const uploadProgressFill = document.getElementById('uploadProgressFill');
-    const uploadProgressText = document.getElementById('uploadProgressText');
-    const uploadSubmitBtn = document.getElementById('uploadSubmitBtn');
-
-    const MAX_UPLOAD_SIZE = {{ max_upload_size_mb }} * 1024 * 1024; // MB to bytes (from server)
-    const fileSizeWarning = document.getElementById('fileSizeWarning');
-
-    // Show file list when files are selected
-    fileInput.addEventListener('change', function() {
-        const files = Array.from(fileInput.files);
-        if (files.length > 0) {
-            // Calculate total size
-            const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-            const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
-
-            const maxSizeMB = {{ max_upload_size_mb }};
-            const warnThresholdMB = maxSizeMB * 0.8; // Warn at 80%
-
-            // Show warning if over limit
-            if (totalSize > MAX_UPLOAD_SIZE) {
-                fileSizeWarning.textContent = `⚠️ Total size (${totalSizeMB} MB) exceeds the ${maxSizeMB} MB limit. Please select fewer or smaller files.`;
-                fileSizeWarning.classList.remove('hidden');
-                uploadSubmitBtn.disabled = true;
-            } else {
-                fileSizeWarning.classList.add('hidden');
-                uploadSubmitBtn.disabled = false;
-                if (totalSizeMB > warnThresholdMB) {
-                    // Warn when approaching limit
-                    fileSizeWarning.textContent = `ℹ️ Total size: ${totalSizeMB} MB (approaching ${maxSizeMB} MB limit)`;
-                    fileSizeWarning.classList.remove('hidden');
-                    fileSizeWarning.classList.remove('bg-yellow-100', 'text-yellow-800');
-                    fileSizeWarning.classList.add('bg-blue-100', 'text-blue-800');
-                }
-            }
-
-            fileListContent.innerHTML = files.map((file, idx) => `
-                <div class="flex items-center gap-2 text-xs p-2 bg-muted rounded">
-                    <i class="fas fa-file"></i>
-                    <span class="flex-1">${file.name}</span>
-                    <span class="text-muted-foreground">${formatFileSize(file.size)}</span>
-                </div>
-            `).join('') + `<div class="text-sm font-medium mt-2">Total: ${totalSizeMB} MB / ${maxSizeMB} MB</div>`;
-            fileList.classList.remove('hidden');
-        } else {
-            fileList.classList.add('hidden');
-            fileSizeWarning.classList.add('hidden');
-        }
-    });
-
-    uploadForm.addEventListener('submit', async function(e) {
-        console.log('=== UPLOAD FORM SUBMITTED ===');
-        e.preventDefault();
-        console.log('Form default prevented');
-
-        const files = fileInput.files;
-        if (files.length === 0) {
-            showStatus(uploadStatus, 'Please select at least one file', 'error');
-            return;
-        }
-
-        // Disable submit button and show progress
-        uploadSubmitBtn.disabled = true;
-        uploadSubmitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
-        uploadProgress.classList.remove('hidden');
-        uploadStatus.classList.add('hidden');
-
-        // Build form data
-        const formData = new FormData();
-        formData.append('bucket_id', window.JAX_BUCKET_ID);
-        formData.append('mount_path', window.JAX_CURRENT_PATH);
-
-        console.log('Uploading', files.length, 'files to mount_path:', window.JAX_CURRENT_PATH);
-        for (let i = 0; i < files.length; i++) {
-            console.log('  - Adding file:', files[i].name);
-            formData.append('files', files[i]);
-        }
-
-        // Debug: log FormData contents
-        for (let pair of formData.entries()) {
-            console.log('FormData:', pair[0], '=', pair[1] instanceof File ? pair[1].name : pair[1]);
-        }
-
-        try {
-            uploadProgressFill.style.width = '50%';
-            uploadProgressText.textContent = `Uploading ${files.length} file(s)...`;
-
-            const response = await fetch(window.JAX_API_URL + '/api/v0/bucket/add', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                console.log('Upload response:', result);
-                console.log('  Total files:', result.total_files);
-                console.log('  Successful:', result.successful_files);
-                console.log('  Failed:', result.failed_files);
-                console.log('  File details:', result.files);
-
-                uploadProgressFill.style.width = '100%';
-
-                // Show results
-                const successMsg = `Successfully uploaded ${result.successful_files} file(s)`;
-                const failMsg = result.failed_files > 0 ? `, ${result.failed_files} failed` : '';
-                showStatus(uploadStatus, successMsg + failMsg, result.failed_files > 0 ? 'warning' : 'success');
-
-                // Show detailed results if there were failures
-                if (result.failed_files > 0) {
-                    const failedFiles = result.files.filter(f => !f.success);
-                    console.error('=== FAILED UPLOADS ===');
-                    failedFiles.forEach(f => {
-                        console.error(`  ❌ ${f.mount_path}`);
-                        console.error(`     Error: ${f.error}`);
-                        console.error(`     Size: ${f.size} bytes`);
-                    });
-                }
-
-                // Show successful uploads
-                const successfulFiles = result.files.filter(f => f.success);
-                console.log('=== SUCCESSFUL UPLOADS ===');
-                successfulFiles.forEach(f => {
-                    console.log(`  ✓ ${f.mount_path} (${f.mime_type})`);
-                });
-
-                // DON'T reload - let user review results
-                console.log('=== UPLOAD SUCCESSFUL - NO AUTO RELOAD ===');
-                console.log('If page reloads, it is NOT from this code.');
-            } else {
-                const error = await response.json();
-                console.error('=== UPLOAD REQUEST FAILED ===');
-                console.error('HTTP Status:', response.status);
-                console.error('Error response:', error);
-                showStatus(uploadStatus, 'Error: ' + (error.error || 'Failed to upload files'), 'error');
-                uploadSubmitBtn.disabled = false;
-                uploadSubmitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-                uploadProgress.classList.add('hidden');
-            }
-        } catch (error) {
-            console.error('=== UPLOAD REQUEST EXCEPTION ===');
-            console.error('Exception:', error);
-            console.error('Stack:', error.stack);
-            showStatus(uploadStatus, 'Error: ' + error.message, 'error');
-            uploadSubmitBtn.disabled = false;
-            uploadSubmitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
-            uploadProgress.classList.add('hidden');
-        }
-    });
-});
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
 }
 </script>
 

@@ -65,6 +65,8 @@ pub struct PeersExplorerTemplate {
     pub api_url: String,
     pub read_only: bool,
     pub current_path: String,
+    pub file_metadata: Option<super::file_explorer::FileMetadata>,
+    pub path_segments: Vec<super::file_explorer::PathSegment>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -282,6 +284,8 @@ pub async fn handler(
         api_url,
         read_only: false,
         current_path: "/".to_string(),
+        file_metadata: None,
+        path_segments: vec![],
     };
 
     template.into_response()

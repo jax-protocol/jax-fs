@@ -57,6 +57,8 @@ pub struct BucketLogsTemplate {
     pub last_page: u32,
     pub read_only: bool,
     pub current_path: String,
+    pub file_metadata: Option<super::file_explorer::FileMetadata>,
+    pub path_segments: Vec<super::file_explorer::PathSegment>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -220,6 +222,8 @@ pub async fn handler(
             last_page: 0,
             read_only: false,
             current_path: "/".to_string(),
+            file_metadata: None,
+            path_segments: vec![],
         };
         return template.into_response();
     }
@@ -304,6 +308,8 @@ pub async fn handler(
         last_page: total_pages.saturating_sub(1),
         read_only: false,
         current_path: "/".to_string(),
+        file_metadata: None,
+        path_segments: vec![],
     };
 
     template.into_response()

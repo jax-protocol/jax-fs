@@ -1,9 +1,15 @@
-{% extends "layouts/explorer.html" %} {% block title %}{{ file_name }} - Jax{%
-endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
-%} {% endblock %} {% block content %}
+{% extends "layouts/explorer.html" %}
+
+{% block title %}{{ file_metadata.as_ref().unwrap().name }} - Jax{% endblock %}
+
+{% block sidebar %}
+{% include "components/sidebars/bucket.html" %}
+{% endblock %}
+
+{% block content %}
 <div class="px-8 py-6 space-y-6">
     <!-- Historical version banner -->
-    {% if viewing_history %} {% include "components/historical_banner.html" %}
+    {% if viewing_history %} {% include "components/banners/historical.html" %}
     {% endif %}
 
     <!-- File header with actions -->
@@ -17,7 +23,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         <button id="downloadBtn" class="button" title="Download file">
             <i class="fas fa-download"></i>
         </button>
-        {% if is_editable && at_hash.is_none() && !read_only %} {% if is_markdown %}
+        {% if is_editable && at_hash.is_none() && !read_only %} {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
         <a
             href="/buckets/{{ bucket_id }}/edit?path={{ file_path }}&from=view"
             class="button button-primary"
@@ -99,27 +105,27 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
     <div class="card">
         <div class="p-4 border-b">
             <h2 class="text-lg font-semibold">
-                <i class="fas fa-file mr-2"></i>{{ file_name }}
+                <i class="fas fa-file mr-2"></i>{{ file_metadata.as_ref().unwrap().name }}
             </h2>
         </div>
 
         <!-- Images -->
-        {% if mime_type.starts_with("image/") %}
+        {% if file_metadata.as_ref().unwrap().mime_type.starts_with("image/") %}
         <div class="p-4 text-center">
             <div class="media-viewer-container" id="imageViewerContainer">
                 <button class="fullscreen-btn" id="imageFullscreenBtn" title="Fullscreen">
                     <i class="fas fa-expand"></i>
                 </button>
                 <img
-                    src="data:{{ mime_type }};base64,{{ content }}"
-                    alt="{{ file_name }}"
+                    src="data:{{ file_metadata.as_ref().unwrap().mime_type }};base64,{{ content }}"
+                    alt="{{ file_metadata.as_ref().unwrap().name }}"
                     class="max-w-full h-auto mx-auto border rounded"
                 />
             </div>
         </div>
 
         <!-- Videos -->
-        {% else if mime_type.starts_with("video/") %}
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("video/") %}
         <div class="p-4">
             <div class="media-viewer-container" id="videoViewerContainer">
                 <button class="fullscreen-btn" id="videoFullscreenBtn" title="Fullscreen">
@@ -132,7 +138,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         </div>
 
         <!-- Audio -->
-        {% else if mime_type.starts_with("audio/") %}
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("audio/") %}
         <div class="p-4">
             <audio controls class="w-full max-w-2xl mx-auto" id="audioPlayer">
                 Your browser does not support the audio tag.
@@ -140,7 +146,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         </div>
 
         <!-- PDF files -->
-        {% else if mime_type == "application/pdf" %}
+        {% else if file_metadata.as_ref().unwrap().mime_type == "application/pdf" %}
         <div class="p-4">
             <div class="pdf-viewer-container" id="pdfViewerContainer">
                 <button class="fullscreen-btn" id="pdfFullscreenBtn" title="Fullscreen">
@@ -149,14 +155,14 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
                 <iframe
                     id="pdfViewer"
                     class="pdf-viewer"
-                    title="{{ file_name }}"
+                    title="{{ file_metadata.as_ref().unwrap().name }}"
                 ></iframe>
             </div>
         </div>
 
         <!-- Text files -->
-        {% else if is_text %}
-        <div class="p-4">{% include "components/inline_editor.html" %}</div>
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("text/") %}
+        <div class="p-4">{% include "components/editors/inline.html" %}</div>
 
         <!-- Binary files -->
         {% else %}
@@ -167,7 +173,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
         <div class="p-4 text-center">
             <p class="text-muted-foreground mb-4">
                 <i class="fas fa-file-code text-4xl mb-2"></i><br />
-                Binary file ({{ file_size_formatted }})
+                Binary file ({{ file_metadata.as_ref().unwrap().size_formatted }})
             </p>
             <details class="text-left">
                 <summary
@@ -184,8 +190,11 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
     </div>
 </div>
 
-{% include "components/share_modal.html" %} {% include
-"components/manifest_modal.html" %} {% endblock %} {% block head %}
+{% include "components/modals/share.html" %}
+{% include "components/modals/manifest.html" %}
+{% endblock %}
+
+{% block head %}
 <!-- CodeMirror 6 CSS (only loaded if file is editable) -->
 {% if is_editable && at_hash.is_none() && !read_only %}
 <style>
@@ -516,7 +525,7 @@ endblock %} {% block sidebar %} {% include "components/file_viewer_sidebar.html"
     window.JAX_API_URL = '{{ api_url }}';
     window.JAX_BUCKET_ID = '{{ bucket_id }}';
     window.JAX_FILE_PATH = '{{ file_path }}';
-    window.JAX_IS_MARKDOWN = {{ is_markdown }};
+    window.JAX_IS_MARKDOWN = {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}true{% else %}false{% endif %};
     window.JAX_IS_EDITABLE = {{ is_editable }};
     {% if at_hash.is_none() %}
     window.JAX_AT_HASH = null;

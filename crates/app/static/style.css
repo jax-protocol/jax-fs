@@ -1062,7 +1062,14 @@ footer a:hover {
     border-right: 1px solid hsl(var(--border));
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+.sidebar-content {
+    flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .explorer-main {
@@ -1232,9 +1239,10 @@ footer a:hover {
 }
 
 .sidebar-upload-section {
-    margin-top: auto;
+    flex-shrink: 0;
     padding: 1rem;
     border-top: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
 }
 
 .sidebar-upload-btn {

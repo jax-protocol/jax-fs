@@ -1,149 +1,70 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% extends "layouts/base.html" %}
 
-    <title>{% block title %}Jax Tracker{% endblock %}</title>
+{% block nav_actions %}
+<button id="mobile-menu-toggle" class="mobile-menu-toggle">
+    <i class="fas fa-bars"></i>
+</button>
+{% endblock %}
 
-    <!-- Inter font -->
-    <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-
-    <style>
-      :root {
-        font-family: Inter, sans-serif;
-        font-feature-settings: "liga" 1, "calt" 1;
-      }
-      @supports (font-variation-settings: normal) {
-        :root {
-          font-family: InterVariable, sans-serif;
-        }
-      }
-    </style>
-
-    <!-- Franken UI -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/core.min.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/css/utilities.min.css" />
-
-    <script>
-      const htmlElement = document.documentElement;
-      const __FRANKEN__ = JSON.parse(localStorage.getItem("__FRANKEN__") || "{}");
-
-      if (__FRANKEN__.mode === "dark" || (!__FRANKEN__.mode && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
-        htmlElement.classList.add("dark");
-      } else {
-        htmlElement.classList.remove("dark");
-      }
-
-      if (__FRANKEN__.theme) {
-        htmlElement.classList.add(__FRANKEN__.theme);
-      }
-      htmlElement.classList.add(__FRANKEN__.radii || "uk-radii-md");
-      htmlElement.classList.add(__FRANKEN__.shadows || "uk-shadows-sm");
-      htmlElement.classList.add(__FRANKEN__.font || "uk-font-sm");
-      htmlElement.classList.add(__FRANKEN__.chart || "uk-chart-default");
-    </script>
-
-    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/core.iife.js"></script>
-
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
-
-    <!-- Custom styles -->
-    <link rel="stylesheet" href="/static/style.css">
-
-    <!-- Load CodeMirror 6 once for all pages -->
-    <script type="module">
-      import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
-      import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.4";
-      import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
-
-      // Store in window for global access
-      window.CodeMirror = { EditorView, basicSetup, markdown, oneDark };
-      window.CodeMirrorLoaded = true;
-
-      // Dispatch event for any listeners
-      window.dispatchEvent(new Event('codemirror-loaded'));
-    </script>
-
-    {% block head %}{% endblock %}
-</head>
-<body class="bg-background text-foreground flex flex-col min-h-screen">
-    <nav class="border-b bg-background">
-        <div class="px-8 py-4 flex items-center justify-between">
-            <a href="/" class="flex items-center gap-2 text-primary font-bold text-xl text-decoration-none">
-                <i class="fas fa-database"></i>
-                <span>jax</span>
-            </a>
-            <button id="mobile-menu-toggle" class="mobile-menu-toggle">
-                <i class="fas fa-bars"></i>
-            </button>
-        </div>
-    </nav>
-
-    <main class="flex-1 explorer-layout">
-        <!-- Mobile Menu Overlay -->
-        <div id="mobile-menu-overlay" class="mobile-menu-overlay">
-            <div class="mobile-menu-content">
-                <div class="mobile-menu-header">
-                    <h2 class="text-lg font-semibold">Menu</h2>
-                    <button id="mobile-menu-close" class="mobile-menu-close">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="mobile-menu-body">
-                    {% block sidebar %}{% endblock %}
-                </div>
+{% block main %}
+<main class="flex-1 explorer-layout">
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu-overlay" class="mobile-menu-overlay">
+        <div class="mobile-menu-content">
+            <div class="mobile-menu-header">
+                <h2 class="text-lg font-semibold">Menu</h2>
+                <button id="mobile-menu-close" class="mobile-menu-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mobile-menu-body">
+                {% block sidebar %}{% endblock %}
             </div>
         </div>
+    </div>
 
-        <!-- Sidebar (Desktop) -->
-        <aside class="explorer-sidebar">
-            {% block sidebar %}{% endblock %}
-        </aside>
+    <!-- Sidebar (Desktop) -->
+    <aside class="explorer-sidebar">
+        {% block sidebar %}{% endblock %}
+    </aside>
 
-        <!-- Main Content -->
-        <div class="explorer-main">
-            {% block content %}{% endblock %}
-        </div>
-    </main>
+    <!-- Main Content -->
+    <div class="explorer-main">
+        {% block content %}{% endblock %}
+    </div>
+</main>
 
-    <script>
-    // Mobile menu toggle
-    document.addEventListener('DOMContentLoaded', function() {
-        const toggleBtn = document.getElementById('mobile-menu-toggle');
-        const closeBtn = document.getElementById('mobile-menu-close');
-        const overlay = document.getElementById('mobile-menu-overlay');
+<script>
+// Mobile menu toggle
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('mobile-menu-toggle');
+    const closeBtn = document.getElementById('mobile-menu-close');
+    const overlay = document.getElementById('mobile-menu-overlay');
 
-        function openMobileMenu() {
-            overlay.classList.add('active');
-            document.body.style.overflow = 'hidden';
+    function openMobileMenu() {
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeMobileMenu() {
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', openMobileMenu);
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeMobileMenu);
+    }
+
+    // Close on overlay click
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            closeMobileMenu();
         }
-
-        function closeMobileMenu() {
-            overlay.classList.remove('active');
-            document.body.style.overflow = '';
-        }
-
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', openMobileMenu);
-        }
-
-        if (closeBtn) {
-            closeBtn.addEventListener('click', closeMobileMenu);
-        }
-
-        // Close on overlay click
-        overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) {
-                closeMobileMenu();
-            }
-        });
     });
-    </script>
-
-    <script type="module" src="https://cdn.jsdelivr.net/npm/franken-ui@next/dist/js/icon.iife.js"></script>
-    <script src="/static/app.js"></script>
-</body>
-</html>
+});
+</script>
+{% endblock %}
