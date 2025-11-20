@@ -35,9 +35,8 @@ static HTML_ATTR_REGEX: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-static MARKDOWN_LINK_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"\]\((?P<url>\.{0,2}/[^)]+)\)"#).unwrap()
-});
+static MARKDOWN_LINK_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\]\((?P<url>\.{0,2}/[^)]+)\)"#).unwrap());
 
 /// Rewrites relative URLs in content to absolute gateway URLs
 fn rewrite_relative_urls(
@@ -75,7 +74,12 @@ fn rewrite_relative_urls(
 }
 
 /// Resolves a relative URL to an absolute gateway URL
-fn resolve_relative_url(relative_url: &str, current_dir: &str, bucket_id: &Uuid, host: &str) -> String {
+fn resolve_relative_url(
+    relative_url: &str,
+    current_dir: &str,
+    bucket_id: &Uuid,
+    host: &str,
+) -> String {
     let path = if let Some(stripped) = relative_url.strip_prefix("./") {
         // Current directory reference
         format!("{}/{}", current_dir, stripped)
@@ -95,9 +99,9 @@ fn resolve_relative_url(relative_url: &str, current_dir: &str, bucket_id: &Uuid,
     };
 
     // Normalize the path and ensure it starts with /
-    let normalized = std::path::PathBuf::from(&path)
-        .components()
-        .fold(std::path::PathBuf::new(), |mut acc, component| {
+    let normalized = std::path::PathBuf::from(&path).components().fold(
+        std::path::PathBuf::new(),
+        |mut acc, component| {
             match component {
                 std::path::Component::ParentDir => {
                     acc.pop();
@@ -108,15 +112,21 @@ fn resolve_relative_url(relative_url: &str, current_dir: &str, bucket_id: &Uuid,
                 _ => {}
             }
             acc
-        });
+        },
+    );
 
     let normalized_str = normalized.to_str().unwrap_or("");
-    format!("{}/gw/{}/{}", host.trim_end_matches('/'), bucket_id, normalized_str)
+    format!(
+        "{}/gw/{}/{}",
+        host.trim_end_matches('/'),
+        bucket_id,
+        normalized_str
+    )
 }
 
 /// Converts markdown content to HTML
 fn markdown_to_html(markdown: &str) -> String {
-    use pulldown_cmark::{Parser, Options, html};
+    use pulldown_cmark::{html, Options, Parser};
 
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
@@ -280,7 +290,8 @@ pub async fn handler(
                 } else if index_mime_type == "text/html" {
                     // Apply URL rewriting to HTML
                     let content_str = String::from_utf8_lossy(&file_data);
-                    let rewritten = rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
+                    let rewritten =
+                        rewrite_relative_urls(&content_str, index_path_str, &bucket_id, &host);
                     (rewritten.into_bytes(), "text/html; charset=utf-8")
                 } else {
                     // Serve text/plain as-is
@@ -371,7 +382,8 @@ pub async fn handler(
             // Apply URL rewriting for text/html and text/markdown files
             let (final_content, final_mime_type) = if mime_type == "text/html" {
                 let content_str = String::from_utf8_lossy(&file_data);
-                let rewritten = rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
+                let rewritten =
+                    rewrite_relative_urls(&content_str, &absolute_path, &bucket_id, &host);
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else if mime_type == "text/markdown" {
                 // Convert markdown to HTML and apply URL rewriting
