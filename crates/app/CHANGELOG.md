@@ -15,7 +15,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
-## v0.1.7 (2025-11-18)
+## v0.1.7 (2025-12-21)
+
+### New Features
+
+ - <csr-id-1ae7702a086b04103207142d83642917b72e88e9/> add URL rewriting and index file support to gateway handler
+   * feat: add URL rewriting and index file support to gateway handler
+   
+   This change enhances the gateway handler to make HTML/Markdown content portable:
+   
+   - Transform relative URLs in HTML/Markdown to absolute gateway URLs
+     - Handles href, src, action, data, srcset attributes
+     - Resolves ./, ../, and relative paths correctly
+     - URLs like ./assets/image.jpg become <host>/gw/<bucket-id>/path/assets/image.jpg
+   
+   - Add index file detection for directories
+     - Priority: index.html, index.htm, index.md, index.txt
+     - Serves HTML files directly with URL rewriting
+     - Converts Markdown to HTML with URL rewriting
+     - Falls back to JSON directory listing if no index found
+     - Works for root directories
+   
+   - Add Markdown to HTML conversion
+     - Uses pulldown-cmark for parsing
+     - Generates styled HTML with responsive layout
+     - Supports tables, strikethrough, task lists
+   
+   - Host extraction from request headers
+     - Auto-detects HTTP/HTTPS based on hostname
+   
+   This makes it possible to work with local assets while rendering portable
+   documents that function correctly when hosted through the gateway.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
 ### Bug Fixes
 
@@ -29,9 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
- - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#20](https://github.com/jax-protocol/jax-buckets/issues/20)
+ - 3 commits contributed to the release over the course of 32 calendar days.
+ - 32 days passed between releases.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 3 unique issues were worked on: [#20](https://github.com/jax-protocol/jax-buckets/issues/20), [#21](https://github.com/jax-protocol/jax-buckets/issues/21), [#22](https://github.com/jax-protocol/jax-buckets/issues/22)
 
 ### Commit Details
 
@@ -41,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#20](https://github.com/jax-protocol/jax-buckets/issues/20)**
     - Use gateway URL for download button instead of localhost API ([`76d4562`](https://github.com/jax-protocol/jax-buckets/commit/76d456262a6fa4f16b4dfb6e7e120ac057bc47da))
+ * **[#21](https://github.com/jax-protocol/jax-buckets/issues/21)**
+    - Bump jax-bucket v0.1.7 ([`4af30f7`](https://github.com/jax-protocol/jax-buckets/commit/4af30f7e4b554389b8cae0b140dcb926bf2e4993))
+ * **[#22](https://github.com/jax-protocol/jax-buckets/issues/22)**
+    - Add URL rewriting and index file support to gateway handler ([`1ae7702`](https://github.com/jax-protocol/jax-buckets/commit/1ae7702a086b04103207142d83642917b72e88e9))
 </details>
 
 ## v0.1.6 (2025-11-18)
