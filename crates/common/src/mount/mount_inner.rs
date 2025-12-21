@@ -244,9 +244,11 @@ impl Mount {
         let secret = share.recover(secret_key)?;
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
-        let entry =
-            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret.clone()), blobs)
-                .await?;
+        let entry = Self::_get_node_from_blobs(
+            &NodeLink::Dir(manifest.entry().clone(), secret.clone()),
+            blobs,
+        )
+        .await?;
 
         // Read height from the manifest
         let height = manifest.height();
@@ -341,7 +343,9 @@ impl Mount {
 
             // Record the add operation in the ops log
             let path_str = clean_path(path).to_string_lossy().to_string();
-            inner.ops_log.record(OpType::Add, path_str, Some(link), false);
+            inner
+                .ops_log
+                .record(OpType::Add, path_str, Some(link), false);
         }
 
         Ok(())
@@ -549,7 +553,11 @@ impl Mount {
                 Self::_get_node_at_path(&entry, parent_path, &self.1).await?
             };
 
-            let file_name = from_clean.file_name().unwrap().to_string_lossy().to_string();
+            let file_name = from_clean
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
 
             if parent_node.del(&file_name).is_none() {
                 return Err(MountError::PathNotFound(from_clean.to_path_buf()));
@@ -569,7 +577,8 @@ impl Mount {
 
                 let abs_parent_path = Path::new("/").join(parent_path);
                 let (updated_link, node_hashes) =
-                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1).await?;
+                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1)
+                        .await?;
 
                 let new_entry = if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
                     Some(
@@ -608,20 +617,15 @@ impl Mount {
             inner.pins.extend(node_hashes);
 
             if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
-                inner.entry = Self::_get_node_from_blobs(
-                    &NodeLink::Dir(new_root_link, new_secret),
-                    &self.1,
-                )
-                .await?;
+                inner.entry =
+                    Self::_get_node_from_blobs(&NodeLink::Dir(new_root_link, new_secret), &self.1)
+                        .await?;
             }
 
             // 6. Record mv operation
-            inner.ops_log.record(
-                OpType::Mv { from: from_str },
-                to_str,
-                None,
-                is_dir,
-            );
+            inner
+                .ops_log
+                .record(OpType::Mv { from: from_str }, to_str, None, is_dir);
         }
 
         Ok(())
@@ -1016,11 +1020,17 @@ impl Mount {
         blobs: &BlobsStore,
     ) -> Result<PathOpLog, MountError> {
         let hash = link.hash();
-        tracing::debug!("_get_ops_log_from_blobs: Checking for ops log at hash {}", hash);
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Checking for ops log at hash {}",
+            hash
+        );
 
         match blobs.stat(&hash).await {
             Ok(true) => {
-                tracing::debug!("_get_ops_log_from_blobs: Ops log hash {} exists in blobs", hash);
+                tracing::debug!(
+                    "_get_ops_log_from_blobs: Ops log hash {} exists in blobs",
+                    hash
+                );
             }
             Ok(false) => {
                 tracing::error!(
@@ -1477,7 +1487,10 @@ mod test {
 
         // Move to a new subdirectory (should create it)
         mount
-            .mv(&PathBuf::from("/file.txt"), &PathBuf::from("/subdir/file.txt"))
+            .mv(
+                &PathBuf::from("/file.txt"),
+                &PathBuf::from("/subdir/file.txt"),
+            )
             .await
             .unwrap();
 
@@ -1496,11 +1509,17 @@ mod test {
 
         // Create a directory with files
         mount
-            .add(&PathBuf::from("/olddir/file1.txt"), Cursor::new(b"data1".to_vec()))
+            .add(
+                &PathBuf::from("/olddir/file1.txt"),
+                Cursor::new(b"data1".to_vec()),
+            )
             .await
             .unwrap();
         mount
-            .add(&PathBuf::from("/olddir/file2.txt"), Cursor::new(b"data2".to_vec()))
+            .add(
+                &PathBuf::from("/olddir/file2.txt"),
+                Cursor::new(b"data2".to_vec()),
+            )
             .await
             .unwrap();
 
@@ -1519,7 +1538,10 @@ mod test {
         assert_eq!(items.len(), 2);
 
         // Verify file contents
-        let data = mount.cat(&PathBuf::from("/newdir/file1.txt")).await.unwrap();
+        let data = mount
+            .cat(&PathBuf::from("/newdir/file1.txt"))
+            .await
+            .unwrap();
         assert_eq!(data, b"data1");
     }
 
@@ -1529,7 +1551,10 @@ mod test {
 
         // Try to move a non-existent file
         let result = mount
-            .mv(&PathBuf::from("/nonexistent.txt"), &PathBuf::from("/new.txt"))
+            .mv(
+                &PathBuf::from("/nonexistent.txt"),
+                &PathBuf::from("/new.txt"),
+            )
             .await;
         assert!(matches!(result, Err(MountError::PathNotFound(_))));
     }
@@ -1566,7 +1591,10 @@ mod test {
             .unwrap();
         mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
         mount
-            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/dir/file1.txt"))
+            .mv(
+                &PathBuf::from("/file1.txt"),
+                &PathBuf::from("/dir/file1.txt"),
+            )
             .await
             .unwrap();
         mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
