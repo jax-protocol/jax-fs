@@ -20,8 +20,9 @@ pub struct SyncTarget {
     pub link: Link,
     /// Height of the target bucket
     pub height: u64,
-    /// Public key of the peer to sync from
-    pub peer_id: PublicKey,
+    /// Public keys of peers to sync from (in priority order)
+    /// First peer is the "preferred" peer that triggered the sync
+    pub peer_ids: Vec<PublicKey>,
 }
 
 /// Sync bucket job definition
@@ -41,10 +42,12 @@ where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
+    let peer_ids_hex: Vec<String> = job.target.peer_ids.iter().map(|p| p.to_hex()).collect();
     tracing::info!(
-        "Syncing bucket {} from peer {} to link {:?} at height {}",
+        "Syncing bucket {} from {} peer(s) {:?} to link {:?} at height {}",
         job.bucket_id,
-        job.target.peer_id.to_hex(),
+        job.target.peer_ids.len(),
+        peer_ids_hex,
         job.target.link,
         job.target.height
     );
@@ -54,7 +57,7 @@ where
     let common_ancestor = if exists {
         // find a common ancestor between our log and the
         //  link the peer advertised to us
-        find_common_ancestor(peer, job.bucket_id, &job.target.link, &job.target.peer_id).await?
+        find_common_ancestor(peer, job.bucket_id, &job.target.link, &job.target.peer_ids).await?
     } else {
         None
     };
@@ -67,9 +70,9 @@ where
     // for now just log a warning and do nothing
     if exists && common_ancestor.is_none() {
         tracing::warn!(
-            "Bucket {} diverged from peer {:?}",
+            "Bucket {} diverged from peer(s) {:?}",
             job.bucket_id,
-            job.target.peer_id
+            peer_ids_hex
         );
         return Ok(());
     }
@@ -91,7 +94,7 @@ where
 
     // Download manifest chain from peer (from target back to common ancestor)
     let manifests =
-        download_manifest_chain(peer, &job.target.link, stop_link, &job.target.peer_id).await?;
+        download_manifest_chain(peer, &job.target.link, stop_link, &job.target.peer_ids).await?;
 
     // TODO (amiller68): maybe theres an optimization here in that we should know
     //  we can exit earlier by virtue of finding a common ancestor which is just
@@ -115,27 +118,28 @@ where
     Ok(())
 }
 
-/// Download a chain of manifests from a peer
+/// Download a chain of manifests from peers
 ///
 /// Walks backwards through the manifest chain via `previous` links.
 /// Stops when it reaches `stop_at` link (common ancestor) or genesis (no previous).
+/// Tries multiple peers in order for each download, succeeding on first available.
 ///
 /// Returns manifests in order from oldest to newest with their links and heights.
 async fn download_manifest_chain<L>(
     peer: &Peer<L>,
     start_link: &Link,
     stop_link: Option<&Link>,
-    // TODO (amiller68): this could use multi-peer download
-    peer_id: &PublicKey,
+    peer_ids: &[PublicKey],
 ) -> Result<Vec<(Manifest, Link)>>
 where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
     tracing::debug!(
-        "Downloading manifest chain from {:?}, stop_at: {:?}",
+        "Downloading manifest chain from {:?}, stop_at: {:?}, using {} peer(s)",
         start_link,
-        stop_link
+        stop_link,
+        peer_ids.len()
     );
 
     let mut manifests = Vec::new();
@@ -143,13 +147,13 @@ where
 
     // Download manifests walking backwards
     loop {
-        // Download the manifest blob from peer
+        // Download the manifest blob from peers
         peer.blobs()
-            .download_hash(current_link.hash(), vec![*peer_id], peer.endpoint())
+            .download_hash(current_link.hash(), peer_ids.to_vec(), peer.endpoint())
             .await
             .map_err(|e| {
                 anyhow!(
-                    "Failed to download manifest {:?} from peer: {}",
+                    "Failed to download manifest {:?} from peers: {}",
                     current_link,
                     e
                 )
@@ -188,18 +192,19 @@ where
     Ok(manifests)
 }
 
-/// Find common ancestor by downloading manifests from peer
+/// Find common ancestor by downloading manifests from peers
 ///
 /// Starting from `start_link`, walks backwards through the peer's manifest chain,
 /// downloading each manifest and checking if it exists in our local log.
 /// Returns the first (most recent) link and height found in our log.
+/// Tries multiple peers in order for each download, succeeding on first available.
 ///
 /// # Arguments
 ///
 /// * `peer` - The peer instance with access to logs and blobs
 /// * `bucket_id` - The bucket to check against our local log
 /// * `link` - The starting point on the peer's chain (typically their head)
-/// * `peer_id` - The peer to download manifests from
+/// * `peer_ids` - The peers to download manifests from (in priority order)
 ///
 /// # Returns
 ///
@@ -210,16 +215,16 @@ async fn find_common_ancestor<L>(
     peer: &Peer<L>,
     bucket_id: Uuid,
     link: &Link,
-    peer_id: &PublicKey,
+    peer_ids: &[PublicKey],
 ) -> Result<Option<(Link, u64)>>
 where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
     tracing::debug!(
-        "Finding common ancestor starting from {:?} with peer {}",
+        "Finding common ancestor starting from {:?} using {} peer(s)",
         link,
-        peer_id.to_hex()
+        peer_ids.len()
     );
 
     let mut current_link = link.clone();
@@ -235,13 +240,13 @@ where
 
         // TODO (amiller68): this should build in memory
         //  but for now we just download it
-        // Download the manifest from peer
+        // Download the manifest from peers
         peer.blobs()
-            .download_hash(current_link.hash(), vec![*peer_id], peer.endpoint())
+            .download_hash(current_link.hash(), peer_ids.to_vec(), peer.endpoint())
             .await
             .map_err(|e| {
                 anyhow!(
-                    "Failed to download manifest {:?} from peer: {}",
+                    "Failed to download manifest {:?} from peers: {}",
                     current_link,
                     e
                 )

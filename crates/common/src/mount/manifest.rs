@@ -176,6 +176,14 @@ impl Manifest {
     pub fn set_height(&mut self, height: u64) {
         self.height = height;
     }
+
+    /// Get all peer IDs from shares
+    pub fn get_peer_ids(&self) -> Vec<PublicKey> {
+        self.shares
+            .iter()
+            .filter_map(|(key_hex, _)| PublicKey::from_hex(key_hex).ok())
+            .collect()
+    }
 }
 
 #[cfg(test)]

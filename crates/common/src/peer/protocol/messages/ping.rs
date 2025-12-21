@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::bucket_log::BucketLogProvider;
 use crate::crypto::PublicKey;
 use crate::linked_data::Link;
+use crate::mount::Manifest;
 use crate::peer::protocol::bidirectional::BidirectionalHandler;
 use crate::peer::protocol::messages::Message;
 use crate::peer::Peer;
@@ -141,7 +142,7 @@ impl BidirectionalHandler for Ping {
         L::Error: std::error::Error + Send + Sync + 'static,
     {
         match &pong.status {
-            PingReplyStatus::Behind(_, our_height) => {
+            PingReplyStatus::Behind(our_link, our_height) => {
                 // We told them we're behind, so we should dispatch a sync job
                 tracing::info!(
                     "We're behind peer for bucket {} (our height: {}, their height: {}), dispatching sync job",
@@ -149,6 +150,18 @@ impl BidirectionalHandler for Ping {
                     our_height,
                     ping.height
                 );
+
+                // Load our manifest to get all peer IDs from shares
+                let peer_ids = match peer.blobs().get_cbor::<Manifest>(&our_link.hash()).await {
+                    Ok(manifest) => manifest.get_peer_ids(),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to load manifest for peer list, using sender only: {}",
+                            e
+                        );
+                        vec![*sender_node_id]
+                    }
+                };
 
                 // Dispatch sync job to background worker
                 use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
@@ -158,7 +171,7 @@ impl BidirectionalHandler for Ping {
                         target: SyncTarget {
                             link: ping.link.clone(),
                             height: ping.height,
-                            peer_id: *sender_node_id,
+                            peer_ids,
                         },
                     }))
                     .await
@@ -187,6 +200,10 @@ impl BidirectionalHandler for Ping {
                 );
                 // TODO (amiller68): there should probably be a share message instead
                 //  of this
+                // We don't have the bucket locally, so we can't get peer list from our manifest.
+                // Use only the sender for now; once we sync we'll have the full peer list.
+                let peer_ids = vec![*sender_node_id];
+
                 // Dispatch sync job to background worker
                 use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
                 if let Err(e) = peer
@@ -195,7 +212,7 @@ impl BidirectionalHandler for Ping {
                         target: SyncTarget {
                             link: ping.link.clone(),
                             height: ping.height,
-                            peer_id: *sender_node_id,
+                            peer_ids,
                         },
                     }))
                     .await
@@ -239,6 +256,29 @@ impl BidirectionalHandler for Ping {
                     link
                 );
 
+                // Load our manifest to get all peer IDs from shares
+                let peer_ids = match peer.logs().head(pong.bucket_id, None).await {
+                    Ok((our_link, _)) => {
+                        match peer.blobs().get_cbor::<Manifest>(&our_link.hash()).await {
+                            Ok(manifest) => manifest.get_peer_ids(),
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to load manifest for peer list, using recipient only: {}",
+                                    e
+                                );
+                                vec![*recipient_node_id]
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to get head for peer list, using recipient only: {}",
+                            e
+                        );
+                        vec![*recipient_node_id]
+                    }
+                };
+
                 // Dispatch sync job to background worker
                 use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
                 if let Err(e) = peer
@@ -247,7 +287,7 @@ impl BidirectionalHandler for Ping {
                         target: SyncTarget {
                             link: link.clone(),
                             height: *height,
-                            peer_id: *recipient_node_id,
+                            peer_ids,
                         },
                     }))
                     .await
