@@ -12,6 +12,7 @@ use crate::peer::{BlobsStore, BlobsStoreError};
 
 use super::manifest::Manifest;
 use super::node::{Node, NodeError, NodeLink};
+use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
 
 pub fn clean_path(path: &Path) -> PathBuf {
@@ -36,6 +37,8 @@ pub struct MountInner {
     pub pins: Pins,
     // convenience pointer to the height of the mount
     pub height: u64,
+    // the path operations log (CRDT for conflict resolution)
+    pub ops_log: PathOpLog,
 }
 
 impl MountInner {
@@ -53,6 +56,9 @@ impl MountInner {
     }
     pub fn height(&self) -> u64 {
         self.height
+    }
+    pub fn ops_log(&self) -> &PathOpLog {
+        &self.ops_log
     }
 }
 
@@ -104,7 +110,7 @@ impl Mount {
     /// Save the current mount state to the blobs store
     pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
-        let (entry_node, mut pins, previous_link, previous_height, manifest_template) = {
+        let (entry_node, mut pins, previous_link, previous_height, manifest_template, ops_log) = {
             let inner = self.0.lock().await;
             (
                 inner.entry.clone(),
@@ -112,6 +118,7 @@ impl Mount {
                 inner.link.clone(),
                 inner.height,
                 inner.manifest.clone(),
+                inner.ops_log.clone(),
             )
         };
 
@@ -128,6 +135,16 @@ impl Mount {
         // put the new root link into the pins, as well as the previous link
         pins.insert(entry.clone().hash());
         pins.insert(previous_link.hash());
+
+        // Encrypt and store the ops log if it has any operations
+        let ops_log_link = if !ops_log.is_empty() {
+            let link = Self::_put_ops_log_in_blobs(&ops_log, &secret, blobs).await?;
+            pins.insert(link.hash());
+            Some(link)
+        } else {
+            None
+        };
+
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
         // Update the bucket's share with the new root link
@@ -144,6 +161,11 @@ impl Mount {
         manifest.set_previous(previous_link.clone());
         manifest.set_entry(entry.clone());
         manifest.set_height(height);
+
+        // Set the ops log link if we have operations
+        if let Some(ops_link) = ops_log_link {
+            manifest.set_ops_log(ops_link);
+        }
 
         // Put the updated manifest into blobs to determine the new link
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
@@ -189,6 +211,9 @@ impl Mount {
         );
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
+        // Initialize the path operations log with the owner's peer ID
+        let ops_log = PathOpLog::with_peer_id(owner.public());
+
         // return the new mount
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
@@ -197,6 +222,7 @@ impl Mount {
                 entry,
                 pins,
                 height: 0,
+                ops_log,
             })),
             blobs.clone(),
         ))
@@ -221,11 +247,20 @@ impl Mount {
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
         let entry =
-            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret), blobs)
+            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret.clone()), blobs)
                 .await?;
 
         // Read height from the manifest
         let height = manifest.height();
+
+        // Load the ops log if it exists, otherwise create a new one
+        let mut ops_log = if let Some(ops_link) = manifest.ops_log() {
+            Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?
+        } else {
+            PathOpLog::new()
+        };
+        // Set the peer ID for local operations
+        ops_log.set_peer_id(secret_key.public());
 
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
@@ -234,6 +269,7 @@ impl Mount {
                 entry,
                 pins,
                 height,
+                ops_log,
             })),
             blobs.clone(),
         ))
@@ -304,6 +340,10 @@ impl Mount {
             if let Some(entry) = new_entry {
                 inner.entry = entry;
             }
+
+            // Record the add operation in the ops log
+            let path_str = clean_path(path).to_string_lossy().to_string();
+            inner.ops_log.record(OpType::Add, path_str, Some(link), false);
         }
 
         Ok(())
@@ -328,9 +368,15 @@ impl Mount {
 
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
 
-        if parent_node.del(&file_name).is_none() {
+        // Get the node link before deleting to check if it's a directory
+        let removed_link = parent_node.del(&file_name);
+        if removed_link.is_none() {
             return Err(MountError::PathNotFound(path.to_path_buf()));
         }
+        let is_dir = removed_link.map(|l| l.is_dir()).unwrap_or(false);
+
+        // Store path string for ops log before we lose ownership
+        let path_str = path.to_string_lossy().to_string();
 
         if parent_path == Path::new("") {
             let secret = Secret::generate();
@@ -340,6 +386,9 @@ impl Mount {
             // Track the new root node hash
             inner.pins.insert(link.hash());
             inner.entry = parent_node;
+
+            // Record the remove operation in the ops log
+            inner.ops_log.record(OpType::Remove, path_str, None, is_dir);
         } else {
             // Save the modified parent node to blobs
             let secret = Secret::generate();
@@ -371,6 +420,9 @@ impl Mount {
             if let Some(new_entry) = new_entry {
                 inner.entry = new_entry;
             }
+
+            // Record the remove operation in the ops log
+            inner.ops_log.record(OpType::Remove, path_str, None, is_dir);
         }
 
         Ok(())
@@ -454,6 +506,192 @@ impl Mount {
             if let Some(new_entry) = new_entry {
                 inner.entry = new_entry;
             }
+
+            // Record the mkdir operation in the ops log
+            let path_str = path.to_string_lossy().to_string();
+            inner.ops_log.record(OpType::Mkdir, path_str, None, true);
+        }
+
+        Ok(())
+    }
+
+    /// Move or rename a file or directory from one path to another.
+    ///
+    /// This operation:
+    /// 1. Validates that the move is legal (destination not inside source)
+    /// 2. Retrieves the node at the source path
+    /// 3. Removes it from the source location
+    /// 4. Inserts it at the destination location
+    ///
+    /// The node's content (files/subdirectories) is not re-encrypted during the move;
+    /// only the tree structure is updated. This makes moves efficient regardless of
+    /// the size of the subtree being moved.
+    ///
+    /// # Errors
+    ///
+    /// - `PathNotFound` - source path doesn't exist
+    /// - `PathAlreadyExists` - destination path already exists
+    /// - `MoveIntoSelf` - attempting to move a directory into itself (e.g., /foo -> /foo/bar)
+    /// - `Default` - attempting to move the root directory
+    pub async fn mv(&mut self, from: &Path, to: &Path) -> Result<(), MountError> {
+        // Convert absolute paths to relative paths for internal operations.
+        // The mount stores paths relative to root, so "/foo/bar" becomes "foo/bar".
+        let from_clean = clean_path(from);
+        let to_clean = clean_path(to);
+
+        // ============================================================
+        // VALIDATION: Prevent moving a directory into itself
+        // ============================================================
+        // This catches cases like:
+        //   - /foo -> /foo (same path, would delete then fail to insert)
+        //   - /foo -> /foo/bar (moving into subdirectory of itself)
+        //
+        // This is impossible in a filesystem sense - you can't put a box inside itself.
+        // We check this early to provide a clear error message and avoid corrupting
+        // the tree structure (the delete would succeed but the insert would fail).
+        if to.starts_with(from) {
+            return Err(MountError::MoveIntoSelf {
+                from: from.to_path_buf(),
+                to: to.to_path_buf(),
+            });
+        }
+
+        // ============================================================
+        // STEP 1: Retrieve the NodeLink at the source path
+        // ============================================================
+        // A NodeLink is a reference to either a file or directory. For directories,
+        // it contains the entire subtree. We'll reuse this same NodeLink at the
+        // destination, which means no re-encryption is needed for the content.
+        let node_link = self.get(from).await?;
+        let is_dir = node_link.is_dir();
+
+        // Store paths for ops log before any mutations
+        let from_str = from_clean.to_string_lossy().to_string();
+        let to_str = to_clean.to_string_lossy().to_string();
+
+        // ============================================================
+        // STEP 2: Verify destination doesn't already exist
+        // ============================================================
+        // Unlike Unix mv which can overwrite, we require the destination to be empty.
+        // This prevents accidental data loss.
+        if self.get(to).await.is_ok() {
+            return Err(MountError::PathAlreadyExists(to.to_path_buf()));
+        }
+
+        // ============================================================
+        // STEP 3: Remove the node from its source location
+        // ============================================================
+        // We need to update the parent directory to remove the reference to this node.
+        // This involves:
+        //   a) Finding the parent directory
+        //   b) Removing the child entry from it
+        //   c) Re-encrypting and saving the modified parent
+        //   d) Propagating changes up to the root (updating all ancestor nodes)
+        {
+            // Get the parent path (e.g., "foo" for "foo/bar")
+            let parent_path = from_clean
+                .parent()
+                .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot move root")))?;
+
+            // Get the current root entry node
+            let entry = {
+                let inner = self.0.lock().await;
+                inner.entry.clone()
+            };
+
+            // Load the parent node - either the root itself or a subdirectory
+            let mut parent_node = if parent_path == Path::new("") {
+                // Source is at root level (e.g., "/foo"), parent is root
+                entry.clone()
+            } else {
+                // Source is nested, need to traverse to find parent
+                Self::_get_node_at_path(&entry, parent_path, &self.1).await?
+            };
+
+            // Extract the filename component (e.g., "bar" from "foo/bar")
+            let file_name = from_clean
+                .file_name()
+                .expect(
+                    "from_clean has no filename - this should be impossible after parent() check",
+                )
+                .to_string_lossy()
+                .to_string();
+
+            // Remove the child from the parent's children map
+            if parent_node.del(&file_name).is_none() {
+                return Err(MountError::PathNotFound(from_clean.to_path_buf()));
+            }
+
+            // Now we need to persist the modified parent and update the tree
+            if parent_path == Path::new("") {
+                // Parent is root - just update root directly
+                let secret = Secret::generate();
+                let link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(link.hash());
+                inner.entry = parent_node;
+            } else {
+                // Parent is a subdirectory - need to propagate changes up the tree.
+                // This creates a new encrypted blob for the parent and updates
+                // all ancestor nodes to point to the new parent.
+                let secret = Secret::generate();
+                let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+                let new_node_link = NodeLink::new_dir(parent_link.clone(), secret);
+
+                // Update the tree from root down to this parent
+                let abs_parent_path = Path::new("/").join(parent_path);
+                let (updated_root_link, node_hashes) =
+                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1)
+                        .await?;
+
+                // Load the new root entry from the updated link.
+                // The root should always be a directory; if it's not, something is
+                // seriously wrong with the mount structure.
+                let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
+
+                // Update the mount's internal state with the new tree
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(parent_link.hash());
+                inner.pins.extend(node_hashes);
+                inner.entry = new_entry;
+            }
+        }
+
+        // ============================================================
+        // STEP 4: Insert the node at the destination path
+        // ============================================================
+        // We reuse the same NodeLink from step 1. This means the actual file/directory
+        // content doesn't need to be re-encrypted - only the tree structure changes.
+        // This makes moves O(depth) rather than O(size of subtree).
+        let entry = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
+
+        let (updated_root_link, node_hashes) =
+            Self::_set_node_link_at_path(entry, node_link, to, &self.1).await?;
+
+        // ============================================================
+        // STEP 5: Update internal state with the final tree
+        // ============================================================
+        {
+            // Load the new root entry and update the mount
+            let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
+
+            let mut inner = self.0.lock().await;
+            inner.pins.extend(node_hashes);
+            inner.entry = new_entry;
+
+            // ============================================================
+            // STEP 6: Record mv operation in the ops log
+            // ============================================================
+            inner.ops_log.record(
+                OpType::Mv { from: from_str },
+                to_str,
+                None,
+                is_dir,
+            );
         }
 
         Ok(())
@@ -1012,6 +1250,73 @@ impl Mount {
         let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
         Ok(link)
     }
+
+    async fn _get_ops_log_from_blobs(
+        link: &Link,
+        secret: &Secret,
+        blobs: &BlobsStore,
+    ) -> Result<PathOpLog, MountError> {
+        let hash = link.hash();
+        tracing::debug!("_get_ops_log_from_blobs: Checking for ops log at hash {}", hash);
+
+        match blobs.stat(&hash).await {
+            Ok(true) => {
+                tracing::debug!("_get_ops_log_from_blobs: Ops log hash {} exists in blobs", hash);
+            }
+            Ok(false) => {
+                tracing::error!(
+                    "_get_ops_log_from_blobs: Ops log hash {} NOT FOUND in blobs - LinkNotFound error!",
+                    hash
+                );
+                return Err(MountError::LinkNotFound(link.clone()));
+            }
+            Err(e) => {
+                tracing::error!(
+                    "_get_ops_log_from_blobs: Error checking ops log hash {}: {}",
+                    hash,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        tracing::debug!("_get_ops_log_from_blobs: Reading encrypted ops log blob");
+        let blob = blobs.get(&hash).await?;
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Got {} bytes of encrypted ops log data",
+            blob.len()
+        );
+
+        tracing::debug!("_get_ops_log_from_blobs: Decrypting ops log data");
+        let data = secret.decrypt(&blob)?;
+        tracing::debug!("_get_ops_log_from_blobs: Decrypted {} bytes", data.len());
+
+        let ops_log = PathOpLog::decode(&data)?;
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Successfully decoded PathOpLog with {} operations",
+            ops_log.len()
+        );
+
+        Ok(ops_log)
+    }
+
+    async fn _put_ops_log_in_blobs(
+        ops_log: &PathOpLog,
+        secret: &Secret,
+        blobs: &BlobsStore,
+    ) -> Result<Link, MountError> {
+        let _data = ops_log.encode()?;
+        let data = secret.encrypt(&_data)?;
+        let hash = blobs.put(data).await?;
+        // Ops log is stored as an encrypted raw blob
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
+        tracing::debug!(
+            "_put_ops_log_in_blobs: Stored ops log with {} operations at hash {}",
+            ops_log.len(),
+            hash
+        );
+        Ok(link)
+    }
 }
 
 #[cfg(test)]
@@ -1542,5 +1847,62 @@ mod test {
             .await
             .unwrap();
         assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_ops_log_records_operations() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Perform various operations
+        mount
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
+        mount
+            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/dir/file1.txt"))
+            .await
+            .unwrap();
+        mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
+
+        // Verify ops log has recorded all operations
+        let inner = mount.inner().await;
+        let ops_log = inner.ops_log();
+
+        // Should have 4 operations: Add, Mkdir, Mv, Remove
+        assert_eq!(ops_log.len(), 4);
+
+        let ops: Vec<_> = ops_log.ops_in_order().collect();
+        assert!(matches!(ops[0].op_type, OpType::Add));
+        assert!(matches!(ops[1].op_type, OpType::Mkdir));
+        assert!(matches!(ops[2].op_type, OpType::Mv { .. }));
+        assert!(matches!(ops[3].op_type, OpType::Remove));
+    }
+
+    #[tokio::test]
+    async fn test_ops_log_persists_across_save_load() {
+        let (mut mount, blobs, secret_key, _temp) = setup_test_env().await;
+
+        // Perform some operations
+        mount
+            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
+
+        // Save
+        let (link, _, _) = mount.save(&blobs).await.unwrap();
+
+        // Load the mount
+        let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
+
+        // Verify ops log was loaded
+        let inner = loaded_mount.inner().await;
+        let ops_log = inner.ops_log();
+        assert_eq!(ops_log.len(), 2);
+
+        let ops: Vec<_> = ops_log.ops_in_order().collect();
+        assert!(matches!(ops[0].op_type, OpType::Add));
+        assert!(matches!(ops[1].op_type, OpType::Mkdir));
     }
 }
