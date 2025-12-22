@@ -457,6 +457,112 @@ impl Mount {
         Ok(())
     }
 
+    /// Move or rename a file or directory from one path to another
+    pub async fn mv(&mut self, from: &Path, to: &Path) -> Result<(), MountError> {
+        let from_clean = clean_path(from);
+        let to_clean = clean_path(to);
+
+        // 1. Get the NodeLink at source
+        let node_link = self.get(from).await?;
+
+        // 2. Check destination doesn't exist
+        if self.get(to).await.is_ok() {
+            return Err(MountError::PathAlreadyExists(to.to_path_buf()));
+        }
+
+        // 3. Remove from source location
+        {
+            let parent_path = from_clean
+                .parent()
+                .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot move root")))?;
+
+            let entry = {
+                let inner = self.0.lock().await;
+                inner.entry.clone()
+            };
+
+            let mut parent_node = if parent_path == Path::new("") {
+                entry.clone()
+            } else {
+                Self::_get_node_at_path(&entry, parent_path, &self.1).await?
+            };
+
+            let file_name = from_clean
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+
+            if parent_node.del(&file_name).is_none() {
+                return Err(MountError::PathNotFound(from_clean.to_path_buf()));
+            }
+
+            if parent_path == Path::new("") {
+                let secret = Secret::generate();
+                let link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(link.hash());
+                inner.entry = parent_node;
+            } else {
+                let secret = Secret::generate();
+                let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+                let new_node_link = NodeLink::new_dir(parent_link.clone(), secret);
+
+                let abs_parent_path = Path::new("/").join(parent_path);
+                let (updated_link, node_hashes) =
+                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1)
+                        .await?;
+
+                let new_entry = if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
+                    Some(
+                        Self::_get_node_from_blobs(
+                            &NodeLink::Dir(new_root_link.clone(), new_secret),
+                            &self.1,
+                        )
+                        .await?,
+                    )
+                } else {
+                    None
+                };
+
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(parent_link.hash());
+                inner.pins.extend(node_hashes);
+
+                if let Some(new_entry) = new_entry {
+                    inner.entry = new_entry;
+                }
+            }
+        }
+
+        // 4. Insert at destination (reusing existing node_link, no re-encryption needed)
+        let entry = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
+
+        let (updated_link, node_hashes) =
+            Self::_set_node_link_at_path(entry, node_link, to, &self.1).await?;
+
+        // 5. Update inner state
+        {
+            let mut inner = self.0.lock().await;
+            inner.pins.extend(node_hashes);
+
+            if let NodeLink::Dir(new_root_link, new_secret) = updated_link {
+                inner.entry =
+                    Self::_get_node_from_blobs(&NodeLink::Dir(new_root_link, new_secret), &self.1)
+                        .await?;
+            }
+        }
+
+        // Silence unused variable warnings - these are kept for clarity
+        let _ = to_clean;
+
+        Ok(())
+    }
+
     pub async fn ls(&self, path: &Path) -> Result<BTreeMap<PathBuf, NodeLink>, MountError> {
         let mut items = BTreeMap::new();
         let path = clean_path(path);
@@ -1201,5 +1307,135 @@ mod test {
         assert!(items.get(&PathBuf::from("dir1")).unwrap().is_dir());
         assert!(items.get(&PathBuf::from("dir2")).unwrap().is_dir());
         assert!(items.get(&PathBuf::from("dir3")).unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mv_file() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a file
+        mount
+            .add(&PathBuf::from("/old.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+
+        // Move the file
+        mount
+            .mv(&PathBuf::from("/old.txt"), &PathBuf::from("/new.txt"))
+            .await
+            .unwrap();
+
+        // Verify old path doesn't exist
+        let result = mount.cat(&PathBuf::from("/old.txt")).await;
+        assert!(result.is_err());
+
+        // Verify new path exists with same content
+        let data = mount.cat(&PathBuf::from("/new.txt")).await.unwrap();
+        assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_mv_file_to_subdir() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a file
+        mount
+            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+
+        // Move to a new subdirectory (should create it)
+        mount
+            .mv(
+                &PathBuf::from("/file.txt"),
+                &PathBuf::from("/subdir/file.txt"),
+            )
+            .await
+            .unwrap();
+
+        // Verify old path doesn't exist
+        let result = mount.cat(&PathBuf::from("/file.txt")).await;
+        assert!(result.is_err());
+
+        // Verify new path exists
+        let data = mount.cat(&PathBuf::from("/subdir/file.txt")).await.unwrap();
+        assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_mv_directory() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a directory with files
+        mount
+            .add(
+                &PathBuf::from("/olddir/file1.txt"),
+                Cursor::new(b"data1".to_vec()),
+            )
+            .await
+            .unwrap();
+        mount
+            .add(
+                &PathBuf::from("/olddir/file2.txt"),
+                Cursor::new(b"data2".to_vec()),
+            )
+            .await
+            .unwrap();
+
+        // Move the directory
+        mount
+            .mv(&PathBuf::from("/olddir"), &PathBuf::from("/newdir"))
+            .await
+            .unwrap();
+
+        // Verify old directory doesn't exist
+        let result = mount.ls(&PathBuf::from("/olddir")).await;
+        assert!(result.is_err());
+
+        // Verify new directory exists with files
+        let items = mount.ls(&PathBuf::from("/newdir")).await.unwrap();
+        assert_eq!(items.len(), 2);
+
+        // Verify file contents
+        let data = mount
+            .cat(&PathBuf::from("/newdir/file1.txt"))
+            .await
+            .unwrap();
+        assert_eq!(data, b"data1");
+    }
+
+    #[tokio::test]
+    async fn test_mv_not_found() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Try to move a non-existent file
+        let result = mount
+            .mv(
+                &PathBuf::from("/nonexistent.txt"),
+                &PathBuf::from("/new.txt"),
+            )
+            .await;
+        assert!(matches!(result, Err(MountError::PathNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mv_already_exists() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create two files
+        mount
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
+            .await
+            .unwrap();
+        mount
+            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
+            .await
+            .unwrap();
+
+        // Try to move file1 to file2 (should fail)
+        let result = mount
+            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/file2.txt"))
+            .await;
+        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
     }
 }
