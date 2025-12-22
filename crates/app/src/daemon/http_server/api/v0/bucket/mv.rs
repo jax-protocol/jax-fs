@@ -63,11 +63,7 @@ pub async fn handler(
         MvError::Mount(e)
     })?;
 
-    tracing::info!(
-        "MV API: Moved {} to {}",
-        req.source_path,
-        req.dest_path
-    );
+    tracing::info!("MV API: Moved {} to {}", req.source_path, req.dest_path);
 
     // Save mount and update log
     let new_bucket_link = state.peer().save_mount(&mount).await?;
