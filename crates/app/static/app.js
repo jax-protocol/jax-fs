@@ -333,6 +333,124 @@ const FileDelete = {
   },
 };
 
+// File Move Module
+const FileMove = {
+  directories: [],
+  apiUrl: null,
+  bucketId: null,
+
+  init(apiUrl, bucketId) {
+    this.apiUrl = apiUrl;
+    this.bucketId = bucketId;
+
+    const form = document.getElementById("moveForm");
+    if (!form) return;
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const sourcePath = document.getElementById("moveSourcePath").value;
+      const destDir = document.getElementById("moveDestDir").value;
+      const destName = document.getElementById("moveDestName").value.trim();
+      const status = document.getElementById("moveStatus");
+
+      if (!destName) {
+        this.showStatus(status, "Please enter a name", "error");
+        return;
+      }
+
+      // Build full destination path
+      const destPath = destDir === "/" ? "/" + destName : destDir + "/" + destName;
+
+      this.showStatus(status, "Moving...", "info");
+
+      try {
+        const response = await fetch(`${apiUrl}/api/v0/bucket/mv`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bucket_id: bucketId,
+            source_path: sourcePath,
+            dest_path: destPath,
+          }),
+        });
+
+        if (response.ok) {
+          this.showStatus(
+            status,
+            "Moved successfully! Reloading...",
+            "success",
+          );
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          const error = await response.text();
+          this.showStatus(status, "Move failed: " + error, "error");
+        }
+      } catch (error) {
+        this.showStatus(status, "Move failed: " + error.message, "error");
+      }
+    });
+  },
+
+  async fetchDirectories() {
+    if (!this.apiUrl || !this.bucketId) return;
+
+    try {
+      const response = await fetch(`${this.apiUrl}/api/v0/bucket/ls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bucket_id: this.bucketId,
+          path: "/",
+          deep: true,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Filter to only directories and sort
+        this.directories = data.items
+          .filter((item) => item.is_dir)
+          .map((item) => item.path)
+          .sort();
+      }
+    } catch (error) {
+      console.error("Failed to fetch directories:", error);
+    }
+  },
+
+  populateDirectoryDropdown(currentDir) {
+    const select = document.getElementById("moveDestDir");
+    if (!select) return;
+
+    // Clear existing options except root
+    select.innerHTML = '<option value="/">/ (root)</option>';
+
+    // Add directories
+    this.directories.forEach((dir) => {
+      const option = document.createElement("option");
+      option.value = dir;
+      option.textContent = dir;
+      if (dir === currentDir) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  },
+
+  showStatus(element, message, type) {
+    element.className =
+      "p-4 " +
+      (type === "error"
+        ? "bg-red-100 text-red-800"
+        : type === "success"
+          ? "bg-green-100 text-green-800"
+          : "bg-blue-100 text-blue-800");
+    element.textContent = message;
+    element.classList.remove("hidden");
+  },
+};
+
 // File Editor Module removed - now using inline editor in file_viewer
 
 // Global modal functions for bucket_explorer.html
@@ -354,6 +472,26 @@ function openDeleteModal(path, name, isDir) {
   UIkit.modal("#delete-modal").show();
 }
 
+async function openMoveModal(path, name, isDir) {
+  document.getElementById("moveSourcePath").value = path;
+  document.getElementById("moveSourceDisplay").value = path;
+  document.getElementById("moveDestName").value = name;
+  document.getElementById("moveItemType").textContent = isDir
+    ? "Directory"
+    : "File";
+
+  // Get current directory from path
+  const pathParts = path.split("/");
+  pathParts.pop(); // Remove filename
+  const currentDir = pathParts.join("/") || "/";
+
+  // Fetch directories and populate dropdown
+  await FileMove.fetchDirectories();
+  FileMove.populateDirectoryDropdown(currentDir);
+
+  UIkit.modal("#move-modal").show();
+}
+
 // Initialize modules when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
   // Get API URL from data attribute on body or window
@@ -365,6 +503,7 @@ document.addEventListener("DOMContentLoaded", function () {
   if (bucketId) {
     FileRename.init(apiUrl, bucketId);
     FileDelete.init(apiUrl, bucketId);
+    FileMove.init(apiUrl, bucketId);
     NewFile.init(apiUrl, bucketId, currentPath);
   }
 });

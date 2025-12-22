@@ -11,6 +11,7 @@ pub mod export;
 pub mod list;
 pub mod ls;
 pub mod mkdir;
+pub mod mv;
 pub mod ping;
 pub mod rename;
 pub mod share;
@@ -28,6 +29,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/add", post(add::handler))
         .route("/update", post(update::handler))
         .route("/rename", post(rename::handler))
+        .route("/mv", post(mv::handler))
         .route("/delete", post(delete::handler))
         .route("/mkdir", post(mkdir::handler))
         .route("/ls", post(ls::handler))

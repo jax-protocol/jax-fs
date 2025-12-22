@@ -71,6 +71,8 @@ pub enum MountError {
     PathNotNode(PathBuf),
     #[error("path already exists: {0}")]
     PathAlreadyExists(PathBuf),
+    #[error("cannot move '{from}' to '{to}': destination is inside source")]
+    MoveIntoSelf { from: PathBuf, to: PathBuf },
     #[error("blobs store error: {0}")]
     BlobsStore(#[from] BlobsStoreError),
     #[error("secret error: {0}")]
@@ -453,6 +455,177 @@ impl Mount {
                 inner.entry = new_entry;
             }
         }
+
+        Ok(())
+    }
+
+    /// Move or rename a file or directory from one path to another.
+    ///
+    /// This operation:
+    /// 1. Validates that the move is legal (destination not inside source)
+    /// 2. Retrieves the node at the source path
+    /// 3. Removes it from the source location
+    /// 4. Inserts it at the destination location
+    ///
+    /// The node's content (files/subdirectories) is not re-encrypted during the move;
+    /// only the tree structure is updated. This makes moves efficient regardless of
+    /// the size of the subtree being moved.
+    ///
+    /// # Errors
+    ///
+    /// - `PathNotFound` - source path doesn't exist
+    /// - `PathAlreadyExists` - destination path already exists
+    /// - `MoveIntoSelf` - attempting to move a directory into itself (e.g., /foo -> /foo/bar)
+    /// - `Default` - attempting to move the root directory
+    pub async fn mv(&mut self, from: &Path, to: &Path) -> Result<(), MountError> {
+        // Convert absolute paths to relative paths for internal operations.
+        // The mount stores paths relative to root, so "/foo/bar" becomes "foo/bar".
+        let from_clean = clean_path(from);
+        let to_clean = clean_path(to);
+
+        // ============================================================
+        // VALIDATION: Prevent moving a directory into itself
+        // ============================================================
+        // This catches cases like:
+        //   - /foo -> /foo (same path, would delete then fail to insert)
+        //   - /foo -> /foo/bar (moving into subdirectory of itself)
+        //
+        // This is impossible in a filesystem sense - you can't put a box inside itself.
+        // We check this early to provide a clear error message and avoid corrupting
+        // the tree structure (the delete would succeed but the insert would fail).
+        if to.starts_with(from) {
+            return Err(MountError::MoveIntoSelf {
+                from: from.to_path_buf(),
+                to: to.to_path_buf(),
+            });
+        }
+
+        // ============================================================
+        // STEP 1: Retrieve the NodeLink at the source path
+        // ============================================================
+        // A NodeLink is a reference to either a file or directory. For directories,
+        // it contains the entire subtree. We'll reuse this same NodeLink at the
+        // destination, which means no re-encryption is needed for the content.
+        let node_link = self.get(from).await?;
+
+        // ============================================================
+        // STEP 2: Verify destination doesn't already exist
+        // ============================================================
+        // Unlike Unix mv which can overwrite, we require the destination to be empty.
+        // This prevents accidental data loss.
+        if self.get(to).await.is_ok() {
+            return Err(MountError::PathAlreadyExists(to.to_path_buf()));
+        }
+
+        // ============================================================
+        // STEP 3: Remove the node from its source location
+        // ============================================================
+        // We need to update the parent directory to remove the reference to this node.
+        // This involves:
+        //   a) Finding the parent directory
+        //   b) Removing the child entry from it
+        //   c) Re-encrypting and saving the modified parent
+        //   d) Propagating changes up to the root (updating all ancestor nodes)
+        {
+            // Get the parent path (e.g., "foo" for "foo/bar")
+            let parent_path = from_clean
+                .parent()
+                .ok_or_else(|| MountError::Default(anyhow::anyhow!("Cannot move root")))?;
+
+            // Get the current root entry node
+            let entry = {
+                let inner = self.0.lock().await;
+                inner.entry.clone()
+            };
+
+            // Load the parent node - either the root itself or a subdirectory
+            let mut parent_node = if parent_path == Path::new("") {
+                // Source is at root level (e.g., "/foo"), parent is root
+                entry.clone()
+            } else {
+                // Source is nested, need to traverse to find parent
+                Self::_get_node_at_path(&entry, parent_path, &self.1).await?
+            };
+
+            // Extract the filename component (e.g., "bar" from "foo/bar")
+            let file_name = from_clean
+                .file_name()
+                .expect(
+                    "from_clean has no filename - this should be impossible after parent() check",
+                )
+                .to_string_lossy()
+                .to_string();
+
+            // Remove the child from the parent's children map
+            if parent_node.del(&file_name).is_none() {
+                return Err(MountError::PathNotFound(from_clean.to_path_buf()));
+            }
+
+            // Now we need to persist the modified parent and update the tree
+            if parent_path == Path::new("") {
+                // Parent is root - just update root directly
+                let secret = Secret::generate();
+                let link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(link.hash());
+                inner.entry = parent_node;
+            } else {
+                // Parent is a subdirectory - need to propagate changes up the tree.
+                // This creates a new encrypted blob for the parent and updates
+                // all ancestor nodes to point to the new parent.
+                let secret = Secret::generate();
+                let parent_link = Self::_put_node_in_blobs(&parent_node, &secret, &self.1).await?;
+                let new_node_link = NodeLink::new_dir(parent_link.clone(), secret);
+
+                // Update the tree from root down to this parent
+                let abs_parent_path = Path::new("/").join(parent_path);
+                let (updated_root_link, node_hashes) =
+                    Self::_set_node_link_at_path(entry, new_node_link, &abs_parent_path, &self.1)
+                        .await?;
+
+                // Load the new root entry from the updated link.
+                // The root should always be a directory; if it's not, something is
+                // seriously wrong with the mount structure.
+                let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
+
+                // Update the mount's internal state with the new tree
+                let mut inner = self.0.lock().await;
+                inner.pins.insert(parent_link.hash());
+                inner.pins.extend(node_hashes);
+                inner.entry = new_entry;
+            }
+        }
+
+        // ============================================================
+        // STEP 4: Insert the node at the destination path
+        // ============================================================
+        // We reuse the same NodeLink from step 1. This means the actual file/directory
+        // content doesn't need to be re-encrypted - only the tree structure changes.
+        // This makes moves O(depth) rather than O(size of subtree).
+        let entry = {
+            let inner = self.0.lock().await;
+            inner.entry.clone()
+        };
+
+        let (updated_root_link, node_hashes) =
+            Self::_set_node_link_at_path(entry, node_link, to, &self.1).await?;
+
+        // ============================================================
+        // STEP 5: Update internal state with the final tree
+        // ============================================================
+        {
+            // Load the new root entry and update the mount
+            let new_entry = Self::_get_node_from_blobs(&updated_root_link, &self.1).await?;
+
+            let mut inner = self.0.lock().await;
+            inner.pins.extend(node_hashes);
+            inner.entry = new_entry;
+        }
+
+        // Silence unused variable warning - to_clean is computed for symmetry with from_clean
+        // and may be useful for future debugging/logging
+        let _ = to_clean;
 
         Ok(())
     }
@@ -1201,5 +1374,173 @@ mod test {
         assert!(items.get(&PathBuf::from("dir1")).unwrap().is_dir());
         assert!(items.get(&PathBuf::from("dir2")).unwrap().is_dir());
         assert!(items.get(&PathBuf::from("dir3")).unwrap().is_dir());
+    }
+
+    #[tokio::test]
+    async fn test_mv_file() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a file
+        mount
+            .add(&PathBuf::from("/old.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+
+        // Move the file
+        mount
+            .mv(&PathBuf::from("/old.txt"), &PathBuf::from("/new.txt"))
+            .await
+            .unwrap();
+
+        // Verify old path doesn't exist
+        let result = mount.cat(&PathBuf::from("/old.txt")).await;
+        assert!(result.is_err());
+
+        // Verify new path exists with same content
+        let data = mount.cat(&PathBuf::from("/new.txt")).await.unwrap();
+        assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_mv_file_to_subdir() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a file
+        mount
+            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+
+        // Move to a new subdirectory (should create it)
+        mount
+            .mv(
+                &PathBuf::from("/file.txt"),
+                &PathBuf::from("/subdir/file.txt"),
+            )
+            .await
+            .unwrap();
+
+        // Verify old path doesn't exist
+        let result = mount.cat(&PathBuf::from("/file.txt")).await;
+        assert!(result.is_err());
+
+        // Verify new path exists
+        let data = mount.cat(&PathBuf::from("/subdir/file.txt")).await.unwrap();
+        assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_mv_directory() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a directory with files
+        mount
+            .add(
+                &PathBuf::from("/olddir/file1.txt"),
+                Cursor::new(b"data1".to_vec()),
+            )
+            .await
+            .unwrap();
+        mount
+            .add(
+                &PathBuf::from("/olddir/file2.txt"),
+                Cursor::new(b"data2".to_vec()),
+            )
+            .await
+            .unwrap();
+
+        // Move the directory
+        mount
+            .mv(&PathBuf::from("/olddir"), &PathBuf::from("/newdir"))
+            .await
+            .unwrap();
+
+        // Verify old directory doesn't exist
+        let result = mount.ls(&PathBuf::from("/olddir")).await;
+        assert!(result.is_err());
+
+        // Verify new directory exists with files
+        let items = mount.ls(&PathBuf::from("/newdir")).await.unwrap();
+        assert_eq!(items.len(), 2);
+
+        // Verify file contents
+        let data = mount
+            .cat(&PathBuf::from("/newdir/file1.txt"))
+            .await
+            .unwrap();
+        assert_eq!(data, b"data1");
+    }
+
+    #[tokio::test]
+    async fn test_mv_not_found() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Try to move a non-existent file
+        let result = mount
+            .mv(
+                &PathBuf::from("/nonexistent.txt"),
+                &PathBuf::from("/new.txt"),
+            )
+            .await;
+        assert!(matches!(result, Err(MountError::PathNotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mv_already_exists() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create two files
+        mount
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
+            .await
+            .unwrap();
+        mount
+            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
+            .await
+            .unwrap();
+
+        // Try to move file1 to file2 (should fail)
+        let result = mount
+            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/file2.txt"))
+            .await;
+        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
+    }
+
+    #[tokio::test]
+    async fn test_mv_into_self() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Create a directory with a file inside
+        mount.mkdir(&PathBuf::from("/parent")).await.unwrap();
+        mount
+            .add(
+                &PathBuf::from("/parent/child.txt"),
+                Cursor::new(b"data".to_vec()),
+            )
+            .await
+            .unwrap();
+
+        // Try to move directory into itself (should fail)
+        let result = mount
+            .mv(&PathBuf::from("/parent"), &PathBuf::from("/parent/nested"))
+            .await;
+        assert!(matches!(result, Err(MountError::MoveIntoSelf { .. })));
+
+        // Try to move directory to same path (should also fail)
+        let result = mount
+            .mv(&PathBuf::from("/parent"), &PathBuf::from("/parent"))
+            .await;
+        assert!(matches!(result, Err(MountError::MoveIntoSelf { .. })));
+
+        // Verify original directory still exists and is intact
+        let items = mount.ls(&PathBuf::from("/parent")).await.unwrap();
+        assert_eq!(items.len(), 1);
+
+        // Verify child file still accessible
+        let data = mount
+            .cat(&PathBuf::from("/parent/child.txt"))
+            .await
+            .unwrap();
+        assert_eq!(data, b"data");
     }
 }

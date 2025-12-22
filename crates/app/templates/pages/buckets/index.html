@@ -234,6 +234,41 @@
     </div>
 </div>
 
+<!-- Move Modal -->
+<div id="move-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Move <span id="moveItemType"></span></h2>
+        <form id="moveForm" class="space-y-4">
+            <input type="hidden" id="moveSourcePath" name="source_path">
+            <div>
+                <label class="block text-sm font-medium mb-2">From</label>
+                <input type="text" id="moveSourceDisplay" class="uk-input" disabled>
+            </div>
+            <div>
+                <label for="moveDestDir" class="block text-sm font-medium mb-2">Destination Folder</label>
+                <select id="moveDestDir" class="uk-select" required>
+                    <option value="/">/ (root)</option>
+                </select>
+                <p class="text-xs text-muted-foreground mt-1">Select the folder to move to</p>
+            </div>
+            <div>
+                <label for="moveDestName" class="block text-sm font-medium mb-2">Name</label>
+                <input type="text" id="moveDestName" name="dest_name" class="uk-input" required>
+                <p class="text-xs text-muted-foreground mt-1">You can rename the item while moving</p>
+            </div>
+            <div id="moveStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-arrows-alt"></i> Move
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 {% include "components/modals/manifest.html" %}
 {% endif %}
 {% endblock %}
@@ -350,6 +385,9 @@ function toggleActionMenu(event, path, name, isDir) {
     menu.innerHTML = `
         <button onclick="openRenameModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item">
             <i class="fas fa-i-cursor"></i> Rename
+        </button>
+        <button onclick="openMoveModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item">
+            <i class="fas fa-arrows-alt"></i> Move
         </button>
         <button onclick="openDeleteModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item action-menu-item-danger">
             <i class="fas fa-trash"></i> Delete
