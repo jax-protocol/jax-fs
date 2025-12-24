@@ -566,8 +566,8 @@ impl Mount {
         let is_dir = node_link.is_dir();
 
         // Store paths for ops log before any mutations
-        let from_str = from_clean.to_string_lossy().to_string();
-        let to_str = to_clean.to_string_lossy().to_string();
+        let from_path = from_clean.to_path_buf();
+        let to_path = to_clean.to_path_buf();
 
         // ============================================================
         // STEP 2: Verify destination doesn't already exist
@@ -687,8 +687,8 @@ impl Mount {
             // STEP 6: Record mv operation in the ops log
             // ============================================================
             inner.ops_log.record(
-                OpType::Mv { from: from_str },
-                to_str,
+                OpType::Mv { from: from_path },
+                to_path,
                 None,
                 is_dir,
             );

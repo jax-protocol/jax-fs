@@ -9,6 +9,7 @@
 //! leaking directory structure information.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,7 @@ pub enum OpType {
     /// Move/rename a file or directory
     Mv {
         /// Source path (the path being moved from)
-        from: String,
+        from: PathBuf,
     },
 }
 
@@ -67,7 +68,7 @@ pub struct PathOperation {
     /// Type of operation
     pub op_type: OpType,
     /// Target path (destination for Mv, affected path for others)
-    pub path: String,
+    pub path: PathBuf,
     /// For Add: link to the content (None for Remove/Mkdir/Mv)
     pub content_link: Option<Link>,
     /// Whether this operation affects a directory
@@ -127,7 +128,7 @@ impl PathOpLog {
     pub fn record(
         &mut self,
         op_type: OpType,
-        path: String,
+        path: impl Into<PathBuf>,
         content_link: Option<Link>,
         is_dir: bool,
     ) -> OpId {
@@ -144,7 +145,7 @@ impl PathOpLog {
         let op = PathOperation {
             id: id.clone(),
             op_type,
-            path,
+            path: path.into(),
             content_link,
             is_dir,
         };
@@ -180,7 +181,8 @@ impl PathOpLog {
     ///
     /// Returns the winning operation for the path (if any).
     /// The operation with the highest OpId wins.
-    pub fn resolve_path(&self, path: &str) -> Option<&PathOperation> {
+    pub fn resolve_path(&self, path: impl AsRef<std::path::Path>) -> Option<&PathOperation> {
+        let path = path.as_ref();
         // Find all operations affecting this path
         let path_ops: Vec<&PathOperation> = self
             .operations
@@ -200,11 +202,11 @@ impl PathOpLog {
     ///
     /// Returns a map of path -> winning operation for all paths
     /// that currently exist (excludes paths where Remove was the winning op)
-    pub fn resolve_all(&self) -> BTreeMap<String, &PathOperation> {
-        let mut result: BTreeMap<String, &PathOperation> = BTreeMap::new();
+    pub fn resolve_all(&self) -> BTreeMap<PathBuf, &PathOperation> {
+        let mut result: BTreeMap<PathBuf, &PathOperation> = BTreeMap::new();
 
         // Group operations by path
-        let mut by_path: BTreeMap<&String, Vec<&PathOperation>> = BTreeMap::new();
+        let mut by_path: BTreeMap<&PathBuf, Vec<&PathOperation>> = BTreeMap::new();
         for op in self.operations.values() {
             by_path.entry(&op.path).or_default().push(op);
         }
@@ -233,7 +235,8 @@ impl PathOpLog {
     }
 
     /// Get operations affecting a specific path, in order
-    pub fn ops_for_path(&self, path: &str) -> Vec<&PathOperation> {
+    pub fn ops_for_path(&self, path: impl AsRef<std::path::Path>) -> Vec<&PathOperation> {
+        let path = path.as_ref();
         self.operations
             .values()
             .filter(|op| op.path == path)
@@ -295,13 +298,13 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        let id = log.record(OpType::Add, "file.txt".to_string(), None, false);
+        let id = log.record(OpType::Add, "file.txt", None, false);
 
         assert_eq!(id.timestamp, 1);
         assert_eq!(log.len(), 1);
 
         let op = log.operations.get(&id).unwrap();
-        assert_eq!(op.path, "file.txt");
+        assert_eq!(op.path, PathBuf::from("file.txt"));
         assert!(matches!(op.op_type, OpType::Add));
     }
 
@@ -310,9 +313,9 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        let id1 = log.record(OpType::Add, "file1.txt".to_string(), None, false);
-        let id2 = log.record(OpType::Add, "file2.txt".to_string(), None, false);
-        let id3 = log.record(OpType::Remove, "file1.txt".to_string(), None, false);
+        let id1 = log.record(OpType::Add, "file1.txt", None, false);
+        let id2 = log.record(OpType::Add, "file2.txt", None, false);
+        let id3 = log.record(OpType::Remove, "file1.txt", None, false);
 
         assert_eq!(id1.timestamp, 1);
         assert_eq!(id2.timestamp, 2);
@@ -324,11 +327,11 @@ mod tests {
     fn test_merge_logs() {
         let mut log1 = PathOpLog::new();
         log1.local_peer_id = Some(make_peer_id(1));
-        log1.record(OpType::Add, "file1.txt".to_string(), None, false);
+        log1.record(OpType::Add, "file1.txt", None, false);
 
         let mut log2 = PathOpLog::new();
         log2.local_peer_id = Some(make_peer_id(2));
-        log2.record(OpType::Add, "file2.txt".to_string(), None, false);
+        log2.record(OpType::Add, "file2.txt", None, false);
 
         let added = log1.merge(&log2);
 
@@ -340,7 +343,7 @@ mod tests {
     fn test_merge_idempotent() {
         let mut log1 = PathOpLog::new();
         log1.local_peer_id = Some(make_peer_id(1));
-        log1.record(OpType::Add, "file.txt".to_string(), None, false);
+        log1.record(OpType::Add, "file.txt", None, false);
 
         let log1_clone = log1.clone();
         let added = log1.merge(&log1_clone);
@@ -353,7 +356,7 @@ mod tests {
     fn test_resolve_path_single_op() {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
-        log.record(OpType::Add, "file.txt".to_string(), None, false);
+        log.record(OpType::Add, "file.txt", None, false);
 
         let resolved = log.resolve_path("file.txt");
         assert!(resolved.is_some());
@@ -365,8 +368,8 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file.txt".to_string(), None, false);
-        log.record(OpType::Remove, "file.txt".to_string(), None, false);
+        log.record(OpType::Add, "file.txt", None, false);
+        log.record(OpType::Remove, "file.txt", None, false);
 
         let resolved = log.resolve_path("file.txt");
         assert!(resolved.is_some());
@@ -378,15 +381,15 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file1.txt".to_string(), None, false);
-        log.record(OpType::Add, "file2.txt".to_string(), None, false);
-        log.record(OpType::Remove, "file1.txt".to_string(), None, false);
+        log.record(OpType::Add, "file1.txt", None, false);
+        log.record(OpType::Add, "file2.txt", None, false);
+        log.record(OpType::Remove, "file1.txt", None, false);
 
         let resolved = log.resolve_all();
 
         assert_eq!(resolved.len(), 1);
-        assert!(resolved.contains_key("file2.txt"));
-        assert!(!resolved.contains_key("file1.txt"));
+        assert!(resolved.contains_key(&PathBuf::from("file2.txt")));
+        assert!(!resolved.contains_key(&PathBuf::from("file1.txt")));
     }
 
     #[test]
@@ -396,11 +399,11 @@ mod tests {
 
         let mut log1 = PathOpLog::new();
         log1.local_peer_id = Some(peer1);
-        log1.record(OpType::Add, "file.txt".to_string(), None, false);
+        log1.record(OpType::Add, "file.txt", None, false);
 
         let mut log2 = PathOpLog::new();
         log2.local_peer_id = Some(peer2);
-        log2.record(OpType::Remove, "file.txt".to_string(), None, false);
+        log2.record(OpType::Remove, "file.txt", None, false);
 
         // Merge log2 into log1
         log1.merge(&log2);
@@ -423,12 +426,12 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "old.txt".to_string(), None, false);
+        log.record(OpType::Add, "old.txt", None, false);
         log.record(
             OpType::Mv {
-                from: "old.txt".to_string(),
+                from: PathBuf::from("old.txt"),
             },
-            "new.txt".to_string(),
+            "new.txt",
             None,
             false,
         );
@@ -448,13 +451,13 @@ mod tests {
         let mut log = PathOpLog::new();
         log.local_peer_id = Some(make_peer_id(1));
 
-        log.record(OpType::Add, "file1.txt".to_string(), None, false);
-        log.record(OpType::Mkdir, "dir".to_string(), None, true);
+        log.record(OpType::Add, "file1.txt", None, false);
+        log.record(OpType::Mkdir, "dir", None, true);
         log.record(
             OpType::Mv {
-                from: "file1.txt".to_string(),
+                from: PathBuf::from("file1.txt"),
             },
-            "dir/file1.txt".to_string(),
+            "dir/file1.txt",
             None,
             false,
         );
