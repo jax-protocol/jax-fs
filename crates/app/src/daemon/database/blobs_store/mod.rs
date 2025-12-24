@@ -29,16 +29,26 @@
 //! let data = store.get(&hash).await?;
 //! ```
 
+// TODO: Remove this once the module is integrated into the main application
+#![allow(dead_code)]
+
+#[allow(dead_code)]
 mod actor;
+#[allow(dead_code)]
 mod bao_file;
+#[allow(dead_code)]
 mod entry_state;
+#[allow(dead_code)]
 mod import;
+#[allow(dead_code)]
 mod minio;
 
 use thiserror::Error;
 
 use crate::daemon::database::Database;
-pub use actor::{BlobStatus, BlobStoreApi};
+#[allow(unused_imports)]
+pub use actor::BlobStatus;
+pub use actor::BlobStoreApi;
 pub use minio::{BlobObjectStore, ObjectStoreConfig, ObjectStoreError};
 
 /// Configuration for the object store + SQLite blob store.

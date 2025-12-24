@@ -385,6 +385,7 @@ pub struct ObjectInfo {
 }
 
 // Re-export for convenience
+#[allow(unused_imports)]
 pub use object_store::path::Path as ObjectPath;
 
 #[cfg(test)]
