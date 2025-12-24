@@ -129,6 +129,45 @@ impl BlobStore {
         Self::from_parts(db, object_store).await
     }
 
+    /// Create a new blob store using the local filesystem for storage.
+    ///
+    /// This is useful for local development and testing without requiring
+    /// S3/MinIO. Both the SQLite database and blob data are stored in the
+    /// specified directory.
+    ///
+    /// # Arguments
+    /// * `data_dir` - Directory for storing blobs and SQLite database
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let store = BlobStore::new_local("./data/blobs").await?;
+    /// ```
+    pub async fn new_local(data_dir: impl AsRef<Path>) -> Result<Self, StoreError> {
+        let data_dir = data_dir.as_ref();
+
+        // Create directory if it doesn't exist
+        std::fs::create_dir_all(data_dir)?;
+
+        // SQLite database in the data directory
+        let db_path = data_dir.join("blobs.db");
+        let db = Database::new(&db_path).await?;
+
+        // Object storage in a subdirectory
+        let objects_dir = data_dir.join("objects");
+        let object_store = BlobObjectStore::new_local(&objects_dir)?;
+
+        Self::from_parts(db, object_store).await
+    }
+
+    /// Create a fully in-memory blob store (both SQLite and object storage).
+    ///
+    /// This is useful for unit testing. All data is lost when the store is dropped.
+    pub async fn new_ephemeral() -> Result<Self, StoreError> {
+        let db = Database::in_memory().await?;
+        let object_store = BlobObjectStore::new_in_memory();
+        Self::from_parts(db, object_store).await
+    }
+
     /// Create a blob store from existing database and object store.
     ///
     /// This is useful for testing with in-memory object stores.

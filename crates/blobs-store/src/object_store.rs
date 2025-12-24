@@ -3,11 +3,14 @@
 //! Uses the `object_store` crate for a unified interface to S3/MinIO/GCS/Azure/local storage.
 //! The same code works across all backends with just configuration changes.
 
+use std::path::Path as StdPath;
 use std::sync::Arc;
 
 use bytes::Bytes;
 use futures::TryStreamExt;
 use object_store::aws::AmazonS3Builder;
+use object_store::local::LocalFileSystem;
+use object_store::memory::InMemory;
 use object_store::path::Path;
 use object_store::{ObjectStore, PutPayload};
 use thiserror::Error;
@@ -117,6 +120,43 @@ impl BlobObjectStore {
     /// Useful for testing with in-memory stores or other backends.
     pub fn new_from_store(store: Arc<dyn ObjectStore>, bucket: String) -> Self {
         Self { store, bucket }
+    }
+
+    /// Create a new object store backed by the local filesystem.
+    ///
+    /// This is useful for local development and testing without requiring
+    /// S3/MinIO. The `root` directory will be created if it doesn't exist.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let store = BlobObjectStore::new_local("./data/blobs")?;
+    /// ```
+    pub fn new_local(root: impl AsRef<StdPath>) -> Result<Self, ObjectStoreError> {
+        let root = root.as_ref();
+
+        // Create directory if it doesn't exist
+        std::fs::create_dir_all(root)
+            .map_err(|e| ObjectStoreError::Config(format!("Failed to create directory: {}", e)))?;
+
+        let store = LocalFileSystem::new_with_prefix(root)
+            .map_err(|e| ObjectStoreError::Config(e.to_string()))?;
+
+        info!("created local filesystem object store at {:?}", root);
+        Ok(Self {
+            store: Arc::new(store),
+            bucket: root.display().to_string(),
+        })
+    }
+
+    /// Create an in-memory object store.
+    ///
+    /// This is useful for testing. All data is lost when the store is dropped.
+    pub fn new_in_memory() -> Self {
+        info!("created in-memory object store");
+        Self {
+            store: Arc::new(InMemory::new()),
+            bucket: "memory".to_string(),
+        }
     }
 
     /// Get the bucket name.

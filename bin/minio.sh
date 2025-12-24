@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# Script to manage a local MinIO container for development (Mac-optimized)
+
+set -o errexit
+set -o nounset
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Source utilities and config
+source "$SCRIPT_DIR/utils"
+source "$SCRIPT_DIR/config"
+
+if [ -z "$PROJECT_NAME" ]; then
+    echo -e "${RED}Error: PROJECT_NAME is not set${NC}"
+    exit 1
+fi
+
+MINIO_CONTAINER_NAME="${PROJECT_NAME}-minio"
+MINIO_VOLUME_NAME="${PROJECT_NAME}-minio-data"
+MINIO_API_PORT=9000
+MINIO_CONSOLE_PORT=9001
+MINIO_ROOT_USER=minioadmin
+MINIO_ROOT_PASSWORD=minioadmin
+MINIO_IMAGE_NAME=minio/minio:latest
+
+# Check if docker or podman is available
+CONTAINER_RUNTIME="docker"
+if ! which docker &>/dev/null && which podman &>/dev/null; then
+    CONTAINER_RUNTIME="podman"
+fi
+
+# Detect OS and set network flags accordingly
+OS_TYPE=$(uname -s)
+NETWORK_FLAGS=""
+if [[ "$OS_TYPE" == "Linux" ]]; then
+    NETWORK_FLAGS="--network host"
+elif [[ "$OS_TYPE" == "Darwin" ]]; then
+    # macOS uses bridge networking (default)
+    NETWORK_FLAGS=""
+fi
+
+# Verify Docker/Podman is running
+function check_runtime {
+    if ! $CONTAINER_RUNTIME ps &>/dev/null; then
+        echo -e "${RED}Error: $CONTAINER_RUNTIME is not running. Please start it first.${NC}"
+        exit 1
+    fi
+}
+
+# Start local MinIO for development
+function up {
+    check_runtime
+
+    print_header "Starting MinIO"
+
+    # Check if container exists (running or stopped)
+    if $CONTAINER_RUNTIME ps -a --format '{{.Names}}' | grep -q "^${MINIO_CONTAINER_NAME}$"; then
+        # Container exists - check if it's running
+        if $CONTAINER_RUNTIME ps --format '{{.Names}}' | grep -q "^${MINIO_CONTAINER_NAME}$"; then
+            echo -e "${GREEN}MinIO container is already running.${NC}"
+            verify_connection
+            return 0
+        else
+            # Container exists but is stopped - start it
+            echo "Starting existing MinIO container..."
+            $CONTAINER_RUNTIME start $MINIO_CONTAINER_NAME
+            sleep 3
+            verify_connection
+
+            echo ""
+            echo -e "${GREEN}MinIO started!${NC}"
+            show_connection_info
+            return 0
+        fi
+    fi
+
+    # Container doesn't exist - create and start it
+    echo "Creating new MinIO container..."
+    start_minio_container
+
+    # Wait for MinIO to be ready
+    echo -e "${YELLOW}Waiting for MinIO to be ready...${NC}"
+    sleep 3
+
+    # Verify network connectivity to container
+    verify_connection
+
+    echo ""
+    echo -e "${GREEN}MinIO started!${NC}"
+    show_connection_info
+}
+
+# Helper function to display connection information
+function show_connection_info {
+    echo ""
+    echo -e "${YELLOW}Set environment variables:${NC}"
+    echo "  export MINIO_ENDPOINT=http://localhost:${MINIO_API_PORT}"
+    echo "  export MINIO_ROOT_USER=${MINIO_ROOT_USER}"
+    echo "  export MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}"
+    echo ""
+    echo -e "${YELLOW}MinIO Console (Web UI):${NC}"
+    echo "  http://localhost:${MINIO_CONSOLE_PORT}"
+    echo ""
+    echo -e "${YELLOW}S3 API Endpoint:${NC}"
+    echo "  http://localhost:${MINIO_API_PORT}"
+}
+
+# Verify connection to MinIO
+function verify_connection {
+    echo -e "${YELLOW}Verifying container status...${NC}"
+    $CONTAINER_RUNTIME logs --tail 10 $MINIO_CONTAINER_NAME
+
+    echo "Testing connection from host to container..."
+    if command -v curl &>/dev/null; then
+        if curl -f -s -o /dev/null http://localhost:${MINIO_API_PORT}/minio/health/live; then
+            echo -e "${GREEN}API connection successful!${NC}"
+        else
+            echo -e "${RED}API connection test failed. See troubleshooting tips below.${NC}"
+            show_troubleshooting
+        fi
+    else
+        echo -e "${YELLOW}curl not found. Install curl to test connectivity.${NC}"
+        show_troubleshooting
+    fi
+}
+
+# Helper function to show troubleshooting tips
+function show_troubleshooting {
+    echo ""
+    print_header "Troubleshooting Tips for macOS"
+    echo "1. Check Docker Desktop settings - ensure port forwarding is enabled"
+    echo "2. Try restarting Docker Desktop completely"
+    echo "3. Check if another service is using ports $MINIO_API_PORT or $MINIO_CONSOLE_PORT:"
+    echo "   lsof -i :$MINIO_API_PORT"
+    echo "   lsof -i :$MINIO_CONSOLE_PORT"
+    echo "4. Verify your Mac firewall settings allow Docker connections"
+    echo "5. Try explicitly connecting with host.docker.internal instead of localhost:"
+    echo "   export MINIO_ENDPOINT=http://host.docker.internal:${MINIO_API_PORT}"
+    echo ""
+}
+
+# Helper function to create and start a new MinIO container
+function start_minio_container {
+    $CONTAINER_RUNTIME pull $MINIO_IMAGE_NAME
+    $CONTAINER_RUNTIME volume create $MINIO_VOLUME_NAME || true
+
+    # OS-optimized container settings
+    $CONTAINER_RUNTIME run \
+        --name $MINIO_CONTAINER_NAME \
+        $NETWORK_FLAGS \
+        --publish $MINIO_API_PORT:9000 \
+        --publish $MINIO_CONSOLE_PORT:9001 \
+        --volume $MINIO_VOLUME_NAME:/data \
+        --env MINIO_ROOT_USER=$MINIO_ROOT_USER \
+        --env MINIO_ROOT_PASSWORD=$MINIO_ROOT_PASSWORD \
+        --health-cmd="curl -f http://localhost:9000/minio/health/live || exit 1" \
+        --health-interval=5s \
+        --health-timeout=5s \
+        --health-retries=5 \
+        --detach \
+        $MINIO_IMAGE_NAME \
+        server /data --console-address :9001
+}
+
+function down {
+    check_runtime
+    print_header "Cleaning MinIO Container"
+
+    echo "Stopping MinIO container..."
+    $CONTAINER_RUNTIME stop $MINIO_CONTAINER_NAME 2>/dev/null || true
+    check_result "Container stop"
+
+    echo "Removing MinIO container..."
+    $CONTAINER_RUNTIME rm -f $MINIO_CONTAINER_NAME 2>/dev/null || true
+    check_result "Container removal"
+
+    echo "Removing MinIO volume..."
+    $CONTAINER_RUNTIME volume rm -f $MINIO_VOLUME_NAME 2>/dev/null || true
+    check_result "Volume removal"
+
+    print_summary "MinIO cleaned up successfully!" "cleanup step(s) failed"
+}
+
+function endpoint {
+    check_runtime
+    if $CONTAINER_RUNTIME ps -a | grep $MINIO_CONTAINER_NAME &>/dev/null; then
+        echo "http://localhost:${MINIO_API_PORT}"
+    else
+        echo -e "${RED}MinIO container is not running. Start it with: $0 up${NC}" >&2
+        exit 1
+    fi
+}
+
+function console {
+    check_runtime
+    if $CONTAINER_RUNTIME ps | grep -q "$MINIO_CONTAINER_NAME"; then
+        local console_url="http://localhost:${MINIO_CONSOLE_PORT}"
+        echo -e "${GREEN}Opening MinIO Console...${NC}"
+        echo "URL: $console_url"
+        echo "Username: $MINIO_ROOT_USER"
+        echo "Password: $MINIO_ROOT_PASSWORD"
+
+        # Try to open in browser
+        if command -v xdg-open &>/dev/null; then
+            xdg-open "$console_url" 2>/dev/null || true
+        elif command -v open &>/dev/null; then
+            open "$console_url" 2>/dev/null || true
+        else
+            echo -e "${YELLOW}Please open the URL manually in your browser${NC}"
+        fi
+    else
+        echo -e "${RED}MinIO container is not running. Start it with: $0 up${NC}" >&2
+        exit 1
+    fi
+}
+
+function status {
+    check_runtime
+    print_header "MinIO Status"
+
+    if $CONTAINER_RUNTIME ps | grep -q "$MINIO_CONTAINER_NAME"; then
+        echo -e "${GREEN}MinIO container is running.${NC}"
+        echo ""
+        echo -e "${YELLOW}Recent logs:${NC}"
+        $CONTAINER_RUNTIME logs --tail 20 $MINIO_CONTAINER_NAME
+        echo ""
+
+        if command -v curl &>/dev/null; then
+            echo -e "${YELLOW}Connection status:${NC}"
+            if curl -f -s -o /dev/null http://localhost:${MINIO_API_PORT}/minio/health/live; then
+                echo -e "${GREEN}API connection active${NC}"
+                echo -e "${GREEN}Console available at http://localhost:${MINIO_CONSOLE_PORT}${NC}"
+            else
+                echo -e "${RED}Connection failed${NC}"
+            fi
+        fi
+    else
+        echo -e "${RED}MinIO container is not running.${NC}"
+        echo ""
+        echo "Start it with: $0 up"
+    fi
+}
+
+function help {
+    echo -e "${YELLOW}MinIO Container Manager${NC}"
+    echo ""
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  up       - Start a local MinIO container for development"
+    echo "  down     - Remove the MinIO container and volume"
+    echo "  endpoint - Print the MinIO S3 API endpoint URL"
+    echo "  console  - Open MinIO web console in browser"
+    echo "  status   - Check container status and connection"
+    echo "  help     - Show this help message"
+    echo ""
+    echo "MinIO provides S3-compatible object storage for local development."
+    echo "Default credentials: minioadmin / minioadmin"
+}
+
+# Process command
+CMD=${1:-help}
+shift || true
+
+case "$CMD" in
+up | down | endpoint | console | status | help)
+    $CMD "$@"
+    ;;
+*)
+    echo -e "${RED}Unknown command: $CMD${NC}"
+    help
+    exit 1
+    ;;
+esac

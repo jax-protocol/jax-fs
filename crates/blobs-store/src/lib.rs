@@ -16,19 +16,20 @@
 //! ```rust,ignore
 //! use jax_blobs_store::{BlobStore, ObjectStoreConfig};
 //!
-//! // Create object store config for MinIO
+//! // Option 1: Local filesystem (no S3/MinIO needed)
+//! let store = BlobStore::new_local("./data/blobs").await?;
+//!
+//! // Option 2: S3/MinIO backend
 //! let config = ObjectStoreConfig::new(
 //!     "http://localhost:9000",
 //!     "minioadmin",
 //!     "minioadmin",
 //!     "jax-blobs",
 //! );
-//!
-//! // Create the blob store with persistent SQLite
 //! let store = BlobStore::new("./blobs.db", config).await?;
 //!
-//! // Or use in-memory SQLite (recoverable from object storage)
-//! let store = BlobStore::in_memory(config).await?;
+//! // Option 3: Fully in-memory (for testing)
+//! let store = BlobStore::new_ephemeral().await?;
 //!
 //! // Store a blob
 //! let hash = store.put(bytes::Bytes::from("hello world")).await?;
@@ -56,7 +57,7 @@ mod store;
 
 pub use database::{Database, DatabaseError};
 pub use object_store::{BlobObjectStore, ObjectStoreConfig, ObjectStoreError};
-pub use store::{BlobStatus, BlobStore};
+pub use store::{BlobStatus, BlobStore, StoreError};
 
 /// Statistics from a recovery operation.
 #[derive(Debug, Default)]

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Project configuration for bin scripts
+
+# Project name (used for container naming, etc.)
+PROJECT_NAME="jax"
