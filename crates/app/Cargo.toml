@@ -50,6 +50,18 @@ rust-embed = "8.5"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "macros", "uuid"] }
 time = { workspace = true }
 
+# object storage (S3/MinIO/GCS/Azure/local)
+object_store = { version = "0.11", features = ["aws"] }
+
+# iroh-blobs store dependencies
+iroh-blobs = { workspace = true }
+bao-tree = "0.15"
+hex = "0.4"
+derive_more = { version = "1", features = ["from"] }
+
+# bytes - explicit dependency for blobs_store
+bytes = "1.9"
+
 # core
 anyhow = { workspace = true }
 thiserror = { workspace = true }

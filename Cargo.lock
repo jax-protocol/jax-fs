@@ -629,9 +629,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.41"
+version = "1.2.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac9fe6cdbb24b6ade63616c0a0688e45bb56732262c158df3c0c4bea4ca47cb7"
+checksum = "9f50d563227a1c37cc0a263f64eca3334388c01c5e4c4861a9def205c614383c"
 dependencies = [
  "find-msvc-tools",
  "shlex",
@@ -1491,9 +1491,9 @@ checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.4"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
+checksum = "3a3076410a55c90011c298b04d0cfa770b00fa04e1e3c97d3f6c9de105a03844"
 
 [[package]]
 name = "flume"
@@ -2053,6 +2053,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "humantime"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2095,6 +2101,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls",
@@ -2702,6 +2709,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2717,17 +2733,23 @@ dependencies = [
  "async-trait",
  "axum 0.7.9",
  "axum-extra",
+ "bao-tree",
  "base64",
+ "bytes",
  "chrono",
  "clap",
+ "derive_more 1.0.0",
  "directories",
  "dirs",
  "flume",
  "futures",
+ "hex",
  "http",
  "iroh",
+ "iroh-blobs",
  "jax-common",
  "mime_guess",
+ "object_store",
  "pulldown-cmark",
  "regex",
  "reqwest",
@@ -3491,6 +3513,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "object_store"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cfccb68961a56facde1163f9319e0d15743352344e7808a11795fb99698dcaf"
+dependencies = [
+ "async-trait",
+ "base64",
+ "bytes",
+ "chrono",
+ "futures",
+ "humantime",
+ "hyper",
+ "itertools",
+ "md-5",
+ "parking_lot",
+ "percent-encoding",
+ "quick-xml",
+ "rand 0.8.5",
+ "reqwest",
+ "ring",
+ "serde",
+ "serde_json",
+ "snafu",
+ "tokio",
+ "tracing",
+ "url",
+ "walkdir",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4022,6 +4074,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
+name = "quick-xml"
+version = "0.37.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "quinn"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4292,6 +4354,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
+ "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -4305,6 +4368,7 @@ dependencies = [
  "pin-project-lite",
  "quinn",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "serde",
  "serde_json",

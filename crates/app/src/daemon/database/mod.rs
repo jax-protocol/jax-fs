@@ -1,3 +1,4 @@
+pub mod blobs_store;
 pub mod bucket_log_provider;
 mod bucket_queries;
 mod sqlite;
