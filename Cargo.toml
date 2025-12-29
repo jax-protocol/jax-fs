@@ -77,6 +77,9 @@ time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.8", features = ["v4", "serde"] }
 
+# FUSE filesystem
+fuser = "0.14"
+
 # Utility
 thiserror = "1.0"
 parking_lot = "0.12"

@@ -7,6 +7,10 @@ mod state;
 // Daemon/service modules (HTTP server, database, P2P sync)
 mod daemon;
 
+// FUSE filesystem module (requires macFUSE on macOS, libfuse on Linux)
+#[cfg(feature = "fuse")]
+pub mod fuse;
+
 // Re-export types that daemon modules need
 pub use daemon::ServiceState;
 
