@@ -71,7 +71,7 @@ impl FileCache {
     }
 
     /// Invalidate a path and all its descendants (for directory operations)
-    pub fn invalidate_prefix(&self, prefix: &Path) {
+    pub fn invalidate_prefix(&self, _prefix: &Path) {
         // Bump version to invalidate everything - this is simpler than
         // iterating through all entries. Specific paths can be re-cached
         // on next access.

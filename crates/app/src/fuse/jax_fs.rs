@@ -62,6 +62,7 @@ struct WriteBuffer {
     path: PathBuf,
     data: Vec<u8>,
     /// Whether we loaded the original file content (for append/modify operations)
+    #[allow(dead_code)]
     original_loaded: bool,
     /// Track if any writes happened (to avoid re-uploading unchanged files)
     dirty: bool,
@@ -338,7 +339,7 @@ impl Filesystem for JaxFs {
     }
 
     /// Get file attributes
-    fn getattr(&mut self, _req: &Request<'_>, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
+    fn getattr(&mut self, _req: &Request<'_>, ino: u64, reply: ReplyAttr) {
         if ino == 1 {
             // Root directory
             let attr = self.make_attr(1, true, 0);
@@ -508,8 +509,8 @@ impl Filesystem for JaxFs {
 
         // Check if opening for write
         let write_mode = (flags & libc::O_WRONLY != 0) || (flags & libc::O_RDWR != 0);
-        let truncate = (flags & libc::O_TRUNC != 0);
-        let append = (flags & libc::O_APPEND != 0);
+        let truncate = flags & libc::O_TRUNC != 0;
+        let _append = flags & libc::O_APPEND != 0;
 
         if write_mode || truncate {
             let path = {
@@ -899,6 +900,6 @@ impl Filesystem for JaxFs {
         }
 
         // Return current attributes
-        self.getattr(_req, ino, _fh, reply)
+        self.getattr(_req, ino, reply)
     }
 }
