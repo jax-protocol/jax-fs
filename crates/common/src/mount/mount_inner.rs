@@ -257,12 +257,13 @@ impl Mount {
 
         // Load the ops log if it exists, otherwise create a new one
         let mut ops_log = if let Some(ops_link) = manifest.ops_log() {
-            Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?
+            let mut log = Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?;
+            // Set the peer ID after deserialization (not serialized)
+            log.set_peer_id(secret_key.public());
+            log
         } else {
-            PathOpLog::new()
+            PathOpLog::with_peer_id(secret_key.public())
         };
-        // Set the peer ID for local operations
-        ops_log.set_peer_id(secret_key.public());
 
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
