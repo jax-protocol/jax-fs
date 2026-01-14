@@ -42,6 +42,7 @@
 //! - The root node's secret is shared with authorized peers via [`Share`](crate::crypto::Share)
 //! - This provides fine-grained access control and efficient key rotation
 
+mod conflict;
 mod manifest;
 mod maybe_mime;
 mod mount_inner;
@@ -50,6 +51,9 @@ mod path_ops;
 mod pins;
 mod principal;
 
+pub use conflict::{
+    BaseWins, Conflict, ConflictResolver, ForkOnConflict, LastWriteWins, MergeResult, Resolution,
+};
 pub use manifest::{Manifest, Share, Shares};
 pub use mount_inner::{Mount, MountError};
 pub use node::{Node, NodeError, NodeLink};
