@@ -15,6 +15,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
+## v0.1.6 (2026-01-14)
+
+### New Features
+
+ - <csr-id-75f36dfd89913f4296dc1e9e8f0dd4b24d903fe7/> add path operation CRDT for conflict-free sync
+   * feat: add path operation CRDT for conflict-free sync
+   
+   Introduce a lightweight Conflict-free Replicated Data Type (CRDT) to track
+   filesystem path operations (add, remove, mkdir, mv) across peers. The operation
+   log is stored as a separate encrypted blob (not in the manifest) to avoid
+   leaking directory structure information. Enables deterministic conflict
+   resolution during peer sync using Lamport timestamps and peer IDs.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+ - <csr-id-b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865/> add mv operation to Mount
+   * feat: add mv operation to Mount for moving/renaming files and directories
+   
+   Adds a new `mv` method to the Mount struct that allows moving or renaming
+   files and directories. The operation preserves the existing NodeLink (no
+   re-encryption of content needed), creates intermediate directories if
+   needed, and properly tracks all new node hashes in pins.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+### Bug Fixes
+
+ - <csr-id-2edfaf0ccb6fd91c08e5676385a5e2ec732040b8/> sync from available peers instead of failing if one is offline
+   * fix: sync from available peers instead of failing if one is offline
+   
+   Allow sync operations to work with multiple peers from bucket shares,
+   falling back to other peers if the preferred one is unreachable. This
+   fixes the bug where sync fails entirely if not all peers are online.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 3 commits contributed to the release over the course of 23 calendar days.
+ - 56 days passed between releases.
+ - 3 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 3 unique issues were worked on: [#24](https://github.com/jax-protocol/jax-buckets/issues/24), [#27](https://github.com/jax-protocol/jax-buckets/issues/27), [#32](https://github.com/jax-protocol/jax-buckets/issues/32)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#24](https://github.com/jax-protocol/jax-buckets/issues/24)**
+    - Sync from available peers instead of failing if one is offline ([`2edfaf0`](https://github.com/jax-protocol/jax-buckets/commit/2edfaf0ccb6fd91c08e5676385a5e2ec732040b8))
+ * **[#27](https://github.com/jax-protocol/jax-buckets/issues/27)**
+    - Add mv operation to Mount ([`b30cb13`](https://github.com/jax-protocol/jax-buckets/commit/b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865))
+ * **[#32](https://github.com/jax-protocol/jax-buckets/issues/32)**
+    - Add path operation CRDT for conflict-free sync ([`75f36df`](https://github.com/jax-protocol/jax-buckets/commit/75f36dfd89913f4296dc1e9e8f0dd4b24d903fe7))
+</details>
+
 ## v0.1.5 (2025-11-18)
 
 <csr-id-1b2d7c55806152c9e67d452c90543966f1e6b7d6/>
@@ -70,9 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 3 commits contributed to the release.
+ - 4 commits contributed to the release.
  - 0 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#15](https://github.com/jax-protocol/jax-buckets/issues/15), [#16](https://github.com/jax-protocol/jax-buckets/issues/16)
+ - 3 unique issues were worked on: [#15](https://github.com/jax-protocol/jax-buckets/issues/15), [#16](https://github.com/jax-protocol/jax-buckets/issues/16), [#18](https://github.com/jax-protocol/jax-buckets/issues/18)
 
 ### Commit Details
 
@@ -84,6 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`c239f47`](https://github.com/jax-protocol/jax-buckets/commit/c239f477f3353c779bb731b2027edde31598dad7))
  * **[#16](https://github.com/jax-protocol/jax-buckets/issues/16)**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`a5d2374`](https://github.com/jax-protocol/jax-buckets/commit/a5d2374b45790c295d43f7c66159d46ac2c15bf4))
+ * **[#18](https://github.com/jax-protocol/jax-buckets/issues/18)**
+    - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`414464a`](https://github.com/jax-protocol/jax-buckets/commit/414464a83b79b34590fed77df3dd500fe22a59c2))
  * **Uncategorized**
     - Bump jax-common v0.1.5, jax-bucket v0.1.6 ([`96d3bb8`](https://github.com/jax-protocol/jax-buckets/commit/96d3bb8821d510e36c3385ce943afc3ca53fa547))
 </details>
