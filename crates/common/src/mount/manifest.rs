@@ -74,6 +74,10 @@ pub struct Manifest {
     height: u64,
     // specify the software version as a sanity check
     version: Version,
+    // Optional link to the encrypted path operations log (CRDT)
+    // This is stored separately to avoid leaking directory structure
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ops_log: Option<Link>,
 }
 
 impl BlockEncoded<DagCborCodec> for Manifest {}
@@ -107,6 +111,7 @@ impl Manifest {
             previous: None,
             height,
             version: Version::default(),
+            ops_log: None,
         }
     }
 
@@ -183,6 +188,14 @@ impl Manifest {
             .iter()
             .filter_map(|(key_hex, _)| PublicKey::from_hex(key_hex).ok())
             .collect()
+    }
+
+    pub fn ops_log(&self) -> Option<&Link> {
+        self.ops_log.as_ref()
+    }
+
+    pub fn set_ops_log(&mut self, link: Link) {
+        self.ops_log = Some(link);
     }
 }
 

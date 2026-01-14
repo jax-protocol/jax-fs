@@ -12,6 +12,7 @@ use crate::peer::{BlobsStore, BlobsStoreError};
 
 use super::manifest::Manifest;
 use super::node::{Node, NodeError, NodeLink};
+use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
 
 pub fn clean_path(path: &Path) -> PathBuf {
@@ -36,6 +37,10 @@ pub struct MountInner {
     pub pins: Pins,
     // convenience pointer to the height of the mount
     pub height: u64,
+    // the path operations log (CRDT for conflict resolution)
+    pub ops_log: PathOpLog,
+    // the local peer ID (for recording operations)
+    pub peer_id: PublicKey,
 }
 
 impl MountInner {
@@ -53,6 +58,12 @@ impl MountInner {
     }
     pub fn height(&self) -> u64 {
         self.height
+    }
+    pub fn ops_log(&self) -> &PathOpLog {
+        &self.ops_log
+    }
+    pub fn peer_id(&self) -> &PublicKey {
+        &self.peer_id
     }
 }
 
@@ -104,7 +115,7 @@ impl Mount {
     /// Save the current mount state to the blobs store
     pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
-        let (entry_node, mut pins, previous_link, previous_height, manifest_template) = {
+        let (entry_node, mut pins, previous_link, previous_height, manifest_template, ops_log) = {
             let inner = self.0.lock().await;
             (
                 inner.entry.clone(),
@@ -112,6 +123,7 @@ impl Mount {
                 inner.link.clone(),
                 inner.height,
                 inner.manifest.clone(),
+                inner.ops_log.clone(),
             )
         };
 
@@ -128,6 +140,16 @@ impl Mount {
         // put the new root link into the pins, as well as the previous link
         pins.insert(entry.clone().hash());
         pins.insert(previous_link.hash());
+
+        // Encrypt and store the ops log if it has any operations
+        let ops_log_link = if !ops_log.is_empty() {
+            let link = Self::_put_ops_log_in_blobs(&ops_log, &secret, blobs).await?;
+            pins.insert(link.hash());
+            Some(link)
+        } else {
+            None
+        };
+
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
         // Update the bucket's share with the new root link
@@ -144,6 +166,11 @@ impl Mount {
         manifest.set_previous(previous_link.clone());
         manifest.set_entry(entry.clone());
         manifest.set_height(height);
+
+        // Set the ops log link if we have operations
+        if let Some(ops_link) = ops_log_link {
+            manifest.set_ops_log(ops_link);
+        }
 
         // Put the updated manifest into blobs to determine the new link
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
@@ -197,6 +224,8 @@ impl Mount {
                 entry,
                 pins,
                 height: 0,
+                ops_log: PathOpLog::new(),
+                peer_id: owner.public(),
             })),
             blobs.clone(),
         ))
@@ -220,12 +249,24 @@ impl Mount {
         let secret = share.recover(secret_key)?;
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
-        let entry =
-            Self::_get_node_from_blobs(&NodeLink::Dir(manifest.entry().clone(), secret), blobs)
-                .await?;
+        let entry = Self::_get_node_from_blobs(
+            &NodeLink::Dir(manifest.entry().clone(), secret.clone()),
+            blobs,
+        )
+        .await?;
 
         // Read height from the manifest
         let height = manifest.height();
+
+        // Load the ops log if it exists, otherwise create a new one
+        let ops_log = if let Some(ops_link) = manifest.ops_log() {
+            let mut log = Self::_get_ops_log_from_blobs(ops_link, &secret, blobs).await?;
+            // Rebuild local clock from operations after deserialization
+            log.rebuild_clock();
+            log
+        } else {
+            PathOpLog::new()
+        };
 
         Ok(Mount(
             Arc::new(Mutex::new(MountInner {
@@ -234,6 +275,8 @@ impl Mount {
                 entry,
                 pins,
                 height,
+                ops_log,
+                peer_id: secret_key.public(),
             })),
             blobs.clone(),
         ))
@@ -304,6 +347,12 @@ impl Mount {
             if let Some(entry) = new_entry {
                 inner.entry = entry;
             }
+
+            // Record the add operation in the ops log
+            let peer_id = inner.peer_id;
+            inner
+                .ops_log
+                .record(peer_id, OpType::Add, clean_path(path), Some(link), false);
         }
 
         Ok(())
@@ -328,9 +377,15 @@ impl Mount {
 
         let file_name = path.file_name().unwrap().to_string_lossy().to_string();
 
-        if parent_node.del(&file_name).is_none() {
+        // Get the node link before deleting to check if it's a directory
+        let removed_link = parent_node.del(&file_name);
+        if removed_link.is_none() {
             return Err(MountError::PathNotFound(path.to_path_buf()));
         }
+        let is_dir = removed_link.map(|l| l.is_dir()).unwrap_or(false);
+
+        // Store path for ops log before we lose ownership
+        let removed_path = path.to_path_buf();
 
         if parent_path == Path::new("") {
             let secret = Secret::generate();
@@ -371,6 +426,15 @@ impl Mount {
             if let Some(new_entry) = new_entry {
                 inner.entry = new_entry;
             }
+        }
+
+        // Record the remove operation in the ops log
+        {
+            let mut inner = self.0.lock().await;
+            let peer_id = inner.peer_id;
+            inner
+                .ops_log
+                .record(peer_id, OpType::Remove, removed_path, None, is_dir);
         }
 
         Ok(())
@@ -454,6 +518,12 @@ impl Mount {
             if let Some(new_entry) = new_entry {
                 inner.entry = new_entry;
             }
+
+            // Record the mkdir operation in the ops log
+            let peer_id = inner.peer_id;
+            inner
+                .ops_log
+                .record(peer_id, OpType::Mkdir, path.to_path_buf(), None, true);
         }
 
         Ok(())
@@ -507,6 +577,11 @@ impl Mount {
         // it contains the entire subtree. We'll reuse this same NodeLink at the
         // destination, which means no re-encryption is needed for the content.
         let node_link = self.get(from).await?;
+        let is_dir = node_link.is_dir();
+
+        // Store paths for ops log before any mutations
+        let from_path = from_clean.to_path_buf();
+        let to_path = to_clean.to_path_buf();
 
         // ============================================================
         // STEP 2: Verify destination doesn't already exist
@@ -621,11 +696,19 @@ impl Mount {
             let mut inner = self.0.lock().await;
             inner.pins.extend(node_hashes);
             inner.entry = new_entry;
-        }
 
-        // Silence unused variable warning - to_clean is computed for symmetry with from_clean
-        // and may be useful for future debugging/logging
-        let _ = to_clean;
+            // ============================================================
+            // STEP 6: Record mv operation in the ops log
+            // ============================================================
+            let peer_id = inner.peer_id;
+            inner.ops_log.record(
+                peer_id,
+                OpType::Mv { from: from_path },
+                to_path,
+                None,
+                is_dir,
+            );
+        }
 
         Ok(())
     }
@@ -1010,6 +1093,79 @@ impl Mount {
         // Pins are stored as raw blobs containing concatenated hashes
         // Note: The underlying blob is HashSeq format, but Link doesn't track this
         let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
+        Ok(link)
+    }
+
+    async fn _get_ops_log_from_blobs(
+        link: &Link,
+        secret: &Secret,
+        blobs: &BlobsStore,
+    ) -> Result<PathOpLog, MountError> {
+        let hash = link.hash();
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Checking for ops log at hash {}",
+            hash
+        );
+
+        match blobs.stat(&hash).await {
+            Ok(true) => {
+                tracing::debug!(
+                    "_get_ops_log_from_blobs: Ops log hash {} exists in blobs",
+                    hash
+                );
+            }
+            Ok(false) => {
+                tracing::error!(
+                    "_get_ops_log_from_blobs: Ops log hash {} NOT FOUND in blobs - LinkNotFound error!",
+                    hash
+                );
+                return Err(MountError::LinkNotFound(link.clone()));
+            }
+            Err(e) => {
+                tracing::error!(
+                    "_get_ops_log_from_blobs: Error checking ops log hash {}: {}",
+                    hash,
+                    e
+                );
+                return Err(e.into());
+            }
+        }
+
+        tracing::debug!("_get_ops_log_from_blobs: Reading encrypted ops log blob");
+        let blob = blobs.get(&hash).await?;
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Got {} bytes of encrypted ops log data",
+            blob.len()
+        );
+
+        tracing::debug!("_get_ops_log_from_blobs: Decrypting ops log data");
+        let data = secret.decrypt(&blob)?;
+        tracing::debug!("_get_ops_log_from_blobs: Decrypted {} bytes", data.len());
+
+        let ops_log = PathOpLog::decode(&data)?;
+        tracing::debug!(
+            "_get_ops_log_from_blobs: Successfully decoded PathOpLog with {} operations",
+            ops_log.len()
+        );
+
+        Ok(ops_log)
+    }
+
+    async fn _put_ops_log_in_blobs(
+        ops_log: &PathOpLog,
+        secret: &Secret,
+        blobs: &BlobsStore,
+    ) -> Result<Link, MountError> {
+        let _data = ops_log.encode()?;
+        let data = secret.encrypt(&_data)?;
+        let hash = blobs.put(data).await?;
+        // Ops log is stored as an encrypted raw blob
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
+        tracing::debug!(
+            "_put_ops_log_in_blobs: Stored ops log with {} operations at hash {}",
+            ops_log.len(),
+            hash
+        );
         Ok(link)
     }
 }
@@ -1542,5 +1698,65 @@ mod test {
             .await
             .unwrap();
         assert_eq!(data, b"data");
+    }
+
+    #[tokio::test]
+    async fn test_ops_log_records_operations() {
+        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
+
+        // Perform various operations
+        mount
+            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
+        mount
+            .mv(
+                &PathBuf::from("/file1.txt"),
+                &PathBuf::from("/dir/file1.txt"),
+            )
+            .await
+            .unwrap();
+        mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
+
+        // Verify ops log has recorded all operations
+        let inner = mount.inner().await;
+        let ops_log = inner.ops_log();
+
+        // Should have 4 operations: Add, Mkdir, Mv, Remove
+        assert_eq!(ops_log.len(), 4);
+
+        let ops: Vec<_> = ops_log.ops_in_order().collect();
+        assert!(matches!(ops[0].op_type, OpType::Add));
+        assert!(matches!(ops[1].op_type, OpType::Mkdir));
+        assert!(matches!(ops[2].op_type, OpType::Mv { .. }));
+        assert!(matches!(ops[3].op_type, OpType::Remove));
+    }
+
+    #[tokio::test]
+    async fn test_ops_log_persists_across_save_load() {
+        let (mut mount, blobs, secret_key, _temp) = setup_test_env().await;
+
+        // Perform some operations
+        mount
+            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
+            .await
+            .unwrap();
+        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
+
+        // Save
+        let (link, _, _) = mount.save(&blobs).await.unwrap();
+
+        // Load the mount
+        let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
+
+        // Verify ops log was loaded
+        let inner = loaded_mount.inner().await;
+        let ops_log = inner.ops_log();
+        assert_eq!(ops_log.len(), 2);
+
+        let ops: Vec<_> = ops_log.ops_in_order().collect();
+        assert!(matches!(ops[0].op_type, OpType::Add));
+        assert!(matches!(ops[1].op_type, OpType::Mkdir));
     }
 }
