@@ -1,0 +1,352 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ file_name }} - Jax{% endblock %}
+
+{% block content %}
+<div class="note-editor-container">
+    <!-- Header bar with navigation and actions -->
+    <div class="note-editor-header">
+        <div class="note-editor-header-left">
+            <a href="{{ back_url }}" class="button">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+        </div>
+        <div class="note-editor-header-center">
+            <input
+                type="text"
+                id="fileNameInput"
+                class="note-editor-filename-input"
+                value="{{ file_name }}"
+                placeholder="Filename"
+            />
+        </div>
+        <div class="note-editor-header-right">
+            <button id="cancelBtn" class="button button-danger">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button id="saveBtn" class="button button-primary">
+                <i class="fas fa-save"></i> Save
+            </button>
+        </div>
+    </div>
+
+    <!-- Editor/Preview toggle -->
+    <div class="note-editor-toolbar">
+        <button id="editModeBtn" class="toolbar-button active">
+            <i class="fas fa-edit"></i> Edit
+        </button>
+        <button id="previewModeBtn" class="toolbar-button">
+            <i class="fas fa-eye"></i> Preview
+        </button>
+        <button id="splitModeBtn" class="toolbar-button">
+            <i class="fas fa-columns"></i> Split
+        </button>
+    </div>
+
+    <!-- Full-screen editor with preview -->
+    <div class="note-editor-content">
+        <div id="editor" class="editor-pane"></div>
+        <div id="preview" class="preview-pane" style="display: none;"></div>
+    </div>
+
+    <!-- Hidden content textarea -->
+    <textarea id="initialContent" style="display: none;">{{ content }}</textarea>
+
+    <!-- Hidden metadata for JavaScript -->
+    <div id="editorMetadata" style="display: none;"
+         data-bucket-id="{{ bucket_id }}"
+         data-file-path="{{ file_path }}"
+         data-current-path="{{ current_path }}"
+         data-is-new-file="{{ is_new_file }}"
+         data-original-filename="{{ file_name }}"
+         data-api-url="{{ api_url }}"
+         data-back-url="{{ back_url }}">
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<!-- CodeMirror 6 CSS -->
+<style>
+    .note-editor-container {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 64px); /* Full viewport height minus nav */
+        overflow: hidden;
+    }
+
+    .note-editor-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 0;
+        background: hsl(var(--card));
+        border-bottom: 1px solid hsl(var(--border));
+        flex-shrink: 0;
+    }
+
+    .note-editor-header-left,
+    .note-editor-header-right {
+        display: flex;
+        gap: 0.5rem;
+        flex: 1;
+    }
+
+    .note-editor-header-right {
+        justify-content: flex-end;
+    }
+
+    .note-editor-header-center {
+        flex: 2;
+        display: flex;
+        justify-content: center;
+        padding: 0 1rem;
+    }
+
+    .note-editor-filename-input {
+        font-size: 1.125rem;
+        font-weight: 600;
+        text-align: center;
+        padding: 0.5rem 1rem;
+        border: 2px solid transparent;
+        background: transparent;
+        color: hsl(var(--foreground));
+        border-radius: 6px;
+        transition: all 0.2s;
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .note-editor-filename-input:hover {
+        background: hsl(var(--muted));
+    }
+
+    .note-editor-filename-input:focus {
+        outline: none;
+        border-color: hsl(var(--primary));
+        background: hsl(var(--background));
+    }
+
+    .note-editor-toolbar {
+        display: flex;
+        gap: 0.25rem;
+        padding: 0.5rem 0;
+        background: hsl(var(--muted));
+        border-bottom: 1px solid hsl(var(--border));
+        flex-shrink: 0;
+    }
+
+    .toolbar-button {
+        padding: 0.5rem 1rem;
+        border: none;
+        background: transparent;
+        color: hsl(var(--muted-foreground));
+        cursor: pointer;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        transition: all 0.2s;
+    }
+
+    .toolbar-button:hover {
+        background: hsl(var(--background));
+        color: hsl(var(--foreground));
+    }
+
+    .toolbar-button.active {
+        background: hsl(var(--background));
+        color: hsl(var(--primary));
+        font-weight: 600;
+    }
+
+    .note-editor-content {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+        background: hsl(var(--background));
+        display: flex;
+    }
+
+    .editor-pane,
+    .preview-pane {
+        flex: 1;
+        overflow-y: auto;
+        height: 100%;
+    }
+
+    .editor-pane {
+        border-right: 1px solid hsl(var(--border));
+    }
+
+    .preview-pane {
+        padding: 1rem 0;
+        background: hsl(var(--card));
+    }
+
+    .cm-editor {
+        height: 100%;
+        font-size: 1rem;
+        border: none;
+    }
+
+    .cm-editor .cm-scroller {
+        font-family: 'Monaco', 'Courier New', monospace;
+        line-height: 1.6;
+        padding: 0 !important;
+    }
+
+    .cm-editor .cm-content {
+        padding: 1rem 0 !important;
+    }
+
+    .cm-editor.cm-focused {
+        outline: none;
+    }
+
+    /* Markdown preview styling (reuse from viewer.html) */
+    #preview {
+        line-height: 1.7;
+        color: inherit;
+    }
+
+    #preview h1, #preview h2, #preview h3,
+    #preview h4, #preview h5, #preview h6 {
+        margin-top: 1.5em;
+        margin-bottom: 0.75em;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+
+    #preview h1 { font-size: 2em; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 0.3em; }
+    #preview h2 { font-size: 1.5em; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 0.3em; }
+    #preview h3 { font-size: 1.25em; }
+    #preview h4 { font-size: 1.1em; }
+    #preview h5 { font-size: 1em; }
+    #preview h6 { font-size: 0.9em; color: #6b7280; }
+
+    .dark #preview h1, .dark #preview h2 { border-bottom-color: rgba(255,255,255,0.1); }
+    .dark #preview h6 { color: #9ca3af; }
+
+    #preview p { margin-bottom: 1em; }
+    #preview a { color: #3b82f6; text-decoration: underline; }
+    #preview a:hover { color: #2563eb; }
+    .dark #preview a { color: #60a5fa; }
+    .dark #preview a:hover { color: #93c5fd; }
+
+    #preview ul, #preview ol { margin-left: 1.5em; margin-bottom: 1em; }
+    #preview li { margin-bottom: 0.5em; }
+    #preview ul { list-style-type: disc; }
+    #preview ol { list-style-type: decimal; }
+
+    #preview code {
+        background: rgba(0,0,0,0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-family: 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
+    }
+    .dark #preview code { background: rgba(255,255,255,0.1); }
+
+    #preview pre {
+        background: rgba(0,0,0,0.05);
+        padding: 1em;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin-bottom: 1em;
+    }
+    .dark #preview pre { background: rgba(255,255,255,0.05); }
+
+    #preview pre code {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+    }
+
+    #preview blockquote {
+        border-left: 4px solid #e5e7eb;
+        padding-left: 1em;
+        margin-left: 0;
+        margin-bottom: 1em;
+        color: #6b7280;
+        font-style: italic;
+    }
+    .dark #preview blockquote { border-left-color: #374151; color: #9ca3af; }
+
+    #preview table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 1em;
+    }
+    #preview th, #preview td {
+        border: 1px solid #e5e7eb;
+        padding: 0.5em 1em;
+        text-align: left;
+    }
+    .dark #preview th, .dark #preview td { border-color: #374151; }
+    #preview th { background: rgba(0,0,0,0.05); font-weight: 600; }
+    .dark #preview th { background: rgba(255,255,255,0.05); }
+
+    #preview hr {
+        border: none;
+        border-top: 1px solid #e5e7eb;
+        margin: 2em 0;
+    }
+    .dark #preview hr { border-top-color: #374151; }
+
+    #preview img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 6px;
+        margin: 1em 0;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .note-editor-header {
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .note-editor-header-center {
+            order: -1;
+            width: 100%;
+            flex: none;
+            padding: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        .note-editor-filename-input {
+            max-width: none;
+        }
+    }
+</style>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+
+<!-- Note editor script -->
+<script type="module">
+    // This will be imported from note-editor.js
+    import { initNoteEditor } from '/static/js/note-editor.js';
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const metadata = document.getElementById('editorMetadata');
+        const bucketId = metadata.dataset.bucketId;
+        const filePath = metadata.dataset.filePath;
+        const currentPath = metadata.dataset.currentPath;
+        const isNewFile = metadata.dataset.isNewFile === 'true';
+        const originalFilename = metadata.dataset.originalFilename;
+        const apiUrl = metadata.dataset.apiUrl;
+        const backUrl = metadata.dataset.backUrl;
+
+        initNoteEditor({
+            bucketId,
+            filePath,
+            currentPath,
+            isNewFile,
+            originalFilename,
+            apiUrl,
+            backUrl
+        });
+    });
+</script>
+{% endblock %}

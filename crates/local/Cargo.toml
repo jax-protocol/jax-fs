@@ -1,0 +1,50 @@
+[package]
+name = "jax-local"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Full-featured local peer for JaxBucket with write API"
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "jax-local"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+service = { package = "jax-service", version = "0.1.0", path = "../service" }
+common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+
+# web
+axum = { workspace = true }
+axum-extra = { version = "^0.10", features = ["typed-header"] }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "cors", "trace", "limit"] }
+http = { workspace = true }
+
+# async
+tokio = { workspace = true }
+futures = { workspace = true }
+
+# observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
+
+# cli
+clap = { workspace = true }
+
+# core
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+base64 = "0.22"
+reqwest = { workspace = true }
+url = { workspace = true }
+time = { workspace = true }
+mime_guess = { workspace = true }

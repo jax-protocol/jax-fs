@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT DISTINCT bucket_id\n            FROM bucket_log\n            ORDER BY bucket_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bucket_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b8841aff2bbb1b933337588b7169c6243e9ed2961e86851b02ee6e10f1931bd3"
+}

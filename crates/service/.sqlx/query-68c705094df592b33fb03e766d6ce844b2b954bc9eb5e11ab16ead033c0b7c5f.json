@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT COUNT(*) as count\n                FROM bucket_log\n                WHERE bucket_id = $1 AND current_link = $2 AND height = $3\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "count",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "68c705094df592b33fb03e766d6ce844b2b954bc9eb5e11ab16ead033c0b7c5f"
+}

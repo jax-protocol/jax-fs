@@ -1,0 +1,70 @@
+{% extends "layouts/base.html" %}
+
+{% block nav_actions %}
+<button id="mobile-menu-toggle" class="mobile-menu-toggle">
+    <i class="fas fa-bars"></i>
+</button>
+{% endblock %}
+
+{% block main %}
+<main class="flex-1 explorer-layout">
+    <!-- Mobile Menu Overlay -->
+    <div id="mobile-menu-overlay" class="mobile-menu-overlay">
+        <div class="mobile-menu-content">
+            <div class="mobile-menu-header">
+                <h2 class="text-lg font-semibold">Menu</h2>
+                <button id="mobile-menu-close" class="mobile-menu-close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="mobile-menu-body">
+                {% block sidebar %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar (Desktop) -->
+    <aside class="explorer-sidebar">
+        {% block sidebar %}{% endblock %}
+    </aside>
+
+    <!-- Main Content -->
+    <div class="explorer-main">
+        {% block content %}{% endblock %}
+    </div>
+</main>
+
+<script>
+// Mobile menu toggle
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('mobile-menu-toggle');
+    const closeBtn = document.getElementById('mobile-menu-close');
+    const overlay = document.getElementById('mobile-menu-overlay');
+
+    function openMobileMenu() {
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeMobileMenu() {
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', openMobileMenu);
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeMobileMenu);
+    }
+
+    // Close on overlay click
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) {
+            closeMobileMenu();
+        }
+    });
+});
+</script>
+{% endblock %}

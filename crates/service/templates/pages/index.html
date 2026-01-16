@@ -1,0 +1,207 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Jax Storage{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Main content -->
+    <div class="max-w-7xl mx-auto px-8 py-8">
+        <!-- Page header with peer ID and create button -->
+        <div class="flex justify-between items-stretch gap-4 mb-6">
+            <div class="peer-id-card">
+                <div class="peer-id-label">Peer ID</div>
+                <div class="peer-id-value" onclick="copyPeerId()" title="Click to copy full peer ID">
+                    <code class="peer-id-desktop">{{ peer_id }}</code>
+                    <code class="peer-id-mobile">{{ peer_id_short }}</code>
+                    <i class="fas fa-copy peer-id-copy-icon"></i>
+                </div>
+                <input type="hidden" id="fullPeerId" value="{{ peer_id }}">
+            </div>
+            {% if !read_only %}
+            <button class="button button-primary create-bucket-btn" uk-toggle="target: #create-bucket-modal">
+                <i class="fas fa-plus"></i> Create Bucket
+            </button>
+            {% endif %}
+        </div>
+
+        {% if buckets.is_empty() %}
+        <div class="card mt-8">
+            <div class="p-12 text-center text-muted-foreground">
+                <i class="fas fa-inbox text-5xl mb-4"></i>
+                <h2 class="text-xl font-semibold mb-2">No buckets found</h2>
+                <p class="text-sm">Create a bucket to get started</p>
+            </div>
+        </div>
+        {% else %}
+        <!-- Bucket Gallery - Card Grid -->
+        <div class="bucket-grid">
+            {% for bucket in buckets %}
+            <div class="bucket-card" onclick="window.location.href='/buckets/{{ bucket.bucket_id }}'">
+                <div class="bucket-card-header">
+                    <div class="bucket-info">
+                        <div class="bucket-icon">{{ bucket.bucket_icon }}</div>
+                        <div class="bucket-details">
+                            <h3>{{ bucket.bucket_name }}</h3>
+                            <p>{{ bucket.file_count }} files</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bucket-stats">
+                    <div class="bucket-stat-row">
+                        <label>Files</label>
+                        <span class="value">{{ bucket.file_count }}</span>
+                    </div>
+                    <div class="bucket-stat-row">
+                        <label>Updated</label>
+                        <span class="value">{{ bucket.last_modified }}</span>
+                    </div>
+                    <div class="bucket-stat-row border-top">
+                        <label>Replicated on</label>
+                        <div class="peer-indicator">
+                            <span class="peer-dot"></span>
+                            <span class="value">{{ bucket.peer_count }} peers</span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="bucket-open-btn" onclick="event.stopPropagation(); window.location.href='/buckets/{{ bucket.bucket_id }}'">
+                    Open Bucket
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Create Bucket Modal -->
+    {% if !read_only %}
+    <div id="create-bucket-modal" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body">
+            <button class="uk-modal-close-default" type="button" uk-close></button>
+            <h2 class="uk-modal-title">Create New Bucket</h2>
+            <form id="createBucketForm" class="space-y-4">
+                <div>
+                    <label for="bucketName" class="block text-sm font-medium mb-2">Bucket Name</label>
+                    <input
+                        type="text"
+                        id="bucketName"
+                        name="name"
+                        class="uk-input"
+                        placeholder="my-documents"
+                        required
+                        pattern="[a-z0-9-]+"
+                        title="Bucket name must contain only lowercase letters, numbers, and hyphens"
+                    >
+                    <p class="text-xs text-muted-foreground mt-1">Use lowercase letters, numbers, and hyphens only</p>
+                </div>
+                <div id="createStatus" class="hidden"></div>
+                <div class="flex gap-4 justify-end mt-4">
+                    <button class="button uk-modal-close" type="button">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="submit" class="button button-primary">
+                        <i class="fas fa-plus"></i> Create Bucket
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.peer-id-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.875rem 1.5rem;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    flex: 1;
+}
+
+.create-bucket-btn {
+    flex-shrink: 0;
+    padding-top: 0.875rem;
+    padding-bottom: 0.875rem;
+}
+
+.peer-id-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+}
+
+.peer-id-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.peer-id-value:hover {
+    color: hsl(var(--primary));
+}
+
+.peer-id-value code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: inherit;
+}
+
+.peer-id-copy-icon {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.peer-id-value:hover .peer-id-copy-icon {
+    opacity: 1;
+}
+
+/* Show desktop version by default, hide mobile */
+.peer-id-desktop {
+    display: inline;
+}
+
+.peer-id-mobile {
+    display: none;
+}
+
+/* On mobile/tablet, show short version */
+@media (max-width: 768px) {
+    .peer-id-desktop {
+        display: none;
+    }
+
+    .peer-id-mobile {
+        display: inline;
+    }
+}
+</style>
+
+<script>
+window.JAX_API_URL = '{{ api_url }}';
+
+function copyPeerId() {
+    const fullPeerId = document.getElementById('fullPeerId').value;
+    navigator.clipboard.writeText(fullPeerId).then(() => {
+        const icon = document.querySelector('.peer-id-copy-icon');
+        const originalClass = icon.className;
+        icon.className = 'fas fa-check peer-id-copy-icon';
+        setTimeout(() => {
+            icon.className = originalClass;
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

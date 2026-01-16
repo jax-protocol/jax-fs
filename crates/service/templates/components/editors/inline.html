@@ -1,0 +1,41 @@
+<!-- Inline Editor Component -->
+<!-- Required parameters: content, file_metadata, is_editable, bucket_id, file_path -->
+
+{% if is_editable %}
+<!-- View Mode (default) -->
+<div id="viewMode">
+    {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
+    <!-- Rendered markdown content -->
+    <div id="markdownContent">
+        <!-- Content will be rendered here by marked.js -->
+    </div>
+    {% else %}
+    <!-- Plain text content -->
+    <pre class="bg-muted p-4 rounded overflow-x-auto"><code id="textContent">{{ content }}</code></pre>
+    {% endif %}
+</div>
+
+<!-- Edit Mode (hidden by default) -->
+<div id="editMode" class="hidden">
+    <div id="editor">
+        <textarea id="editorContent" style="display:none;">{{ content }}</textarea>
+    </div>
+</div>
+
+<!-- Store original content for markdown rendering and change detection -->
+<textarea id="originalContent" style="display:none;">{{ content }}</textarea>
+{% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
+<textarea id="markdownSource" style="display:none;">{{ content }}</textarea>
+{% endif %}
+
+{% else %}
+<!-- Non-editable content -->
+{% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
+<div id="markdownContent">
+    <!-- Content will be rendered here by marked.js -->
+</div>
+<textarea id="markdownSource" style="display:none;">{{ content }}</textarea>
+{% else %}
+<pre class="bg-muted p-4 rounded overflow-x-auto"><code>{{ content }}</code></pre>
+{% endif %}
+{% endif %}

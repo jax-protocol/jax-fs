@@ -1,0 +1,38 @@
+[package]
+name = "jax-gateway"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Read-only gateway for serving published JaxBucket content"
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "jax-gateway"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+service = { package = "jax-service", version = "0.1.0", path = "../service" }
+common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+
+# web
+axum = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "cors", "trace"] }
+http = { workspace = true }
+
+# async
+tokio = { workspace = true }
+
+# observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = "0.2"
+
+# cli
+clap = { workspace = true }
+
+# core
+anyhow = { workspace = true }

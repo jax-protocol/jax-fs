@@ -1,0 +1,51 @@
+use axum::routing::{delete as delete_method, post};
+use axum::Router;
+
+use service::ServiceState;
+
+pub mod add;
+pub mod cat;
+pub mod create;
+pub mod delete;
+pub mod export;
+pub mod list;
+pub mod ls;
+pub mod mirror;
+pub mod mkdir;
+pub mod mv;
+pub mod ping;
+pub mod publish;
+pub mod rename;
+pub mod share;
+pub mod update;
+
+// Re-export for convenience
+pub use create::CreateRequest;
+pub use list::ListRequest;
+pub use share::ShareRequest;
+
+pub fn router(state: ServiceState) -> Router<ServiceState> {
+    Router::new()
+        .route("/", post(create::handler))
+        .route("/list", post(list::handler))
+        .route("/add", post(add::handler))
+        .route("/update", post(update::handler))
+        .route("/rename", post(rename::handler))
+        .route("/mv", post(mv::handler))
+        .route("/delete", post(delete::handler))
+        .route("/mkdir", post(mkdir::handler))
+        .route("/ls", post(ls::handler))
+        .route("/cat", post(cat::handler).get(cat::handler_get))
+        .route("/ping", post(ping::handler))
+        .route("/share", post(share::handler))
+        .route("/export", post(export::handler))
+        // Mirror management endpoints
+        .route("/{bucket_id}/mirror", post(mirror::add_handler))
+        .route(
+            "/{bucket_id}/mirror/{public_key}",
+            delete_method(mirror::remove_handler),
+        )
+        // Publish endpoint
+        .route("/{bucket_id}/publish", post(publish::handler))
+        .with_state(state)
+}

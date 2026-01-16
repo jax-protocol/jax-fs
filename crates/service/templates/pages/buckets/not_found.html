@@ -1,0 +1,205 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Bucket Not Found - Jax{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto text-center">
+        <div class="not-found-container">
+            <div class="not-found-icon">
+                <i class="fas fa-folder-open"></i>
+            </div>
+
+            <h1 class="not-found-title">Bucket Not Found</h1>
+
+            <p class="not-found-message">
+                The bucket you're looking for doesn't exist or you don't have access to it.
+            </p>
+
+            <div class="not-found-details">
+                <div class="not-found-detail-item">
+                    <i class="fas fa-fingerprint"></i>
+                    <code class="text-xs">{{ bucket_id }}</code>
+                </div>
+            </div>
+
+            <div class="not-found-actions">
+                <a href="/" class="not-found-btn not-found-btn-primary">
+                    <i class="fas fa-home"></i> Go Home
+                </a>
+                <a href="/buckets" class="not-found-btn not-found-btn-secondary">
+                    <i class="fas fa-folder"></i> View All Buckets
+                </a>
+            </div>
+
+            <p class="not-found-hint">
+                <i class="fas fa-info-circle"></i>
+                If you just created this bucket, it may still be initializing
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+.not-found-container {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, rgba(220, 38, 38, 0.05) 100%);
+    border: 2px solid rgba(239, 68, 68, 0.2);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    margin-top: 4rem;
+}
+
+.dark .not-found-container {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.08) 100%);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.not-found-icon {
+    font-size: 5rem;
+    color: #ef4444;
+    margin-bottom: 1.5rem;
+    opacity: 0.8;
+}
+
+.dark .not-found-icon {
+    color: #f87171;
+}
+
+.not-found-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 1rem;
+}
+
+.dark .not-found-title {
+    color: #f1f5f9;
+}
+
+.not-found-message {
+    font-size: 1.125rem;
+    color: #64748b;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.dark .not-found-message {
+    color: #94a3b8;
+}
+
+.not-found-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+}
+
+.dark .not-found-details {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.not-found-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #475569;
+    font-size: 0.875rem;
+    justify-content: center;
+}
+
+.dark .not-found-detail-item {
+    color: #cbd5e1;
+}
+
+.not-found-detail-item i {
+    color: #ef4444;
+    width: 1.25rem;
+}
+
+.dark .not-found-detail-item i {
+    color: #f87171;
+}
+
+.not-found-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.not-found-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.not-found-btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.not-found-btn-primary:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.dark .not-found-btn-primary {
+    background: #60a5fa;
+    color: #0f172a;
+}
+
+.dark .not-found-btn-primary:hover {
+    background: #93c5fd;
+}
+
+.not-found-btn-secondary {
+    background: rgba(0, 0, 0, 0.05);
+    color: #374151;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.not-found-btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.dark .not-found-btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e5e7eb;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .not-found-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.not-found-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+.dark .not-found-hint {
+    color: #94a3b8;
+}
+
+.not-found-hint i {
+    color: #f59e0b;
+}
+</style>
+{% endblock %}

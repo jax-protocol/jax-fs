@@ -308,6 +308,13 @@ impl SecretShare {
     pub fn bytes(&self) -> &[u8] {
         &self.0
     }
+
+    /// Check if this share is a placeholder (all zeros).
+    /// Placeholder shares are used for mirrors that haven't been granted access
+    /// to the bucket's encryption key (i.e., the bucket is not published).
+    pub fn is_placeholder(&self) -> bool {
+        self.0.iter().all(|&b| b == 0)
+    }
 }
 
 #[cfg(test)]

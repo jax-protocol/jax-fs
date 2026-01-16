@@ -2794,6 +2794,88 @@ dependencies = [
 ]
 
 [[package]]
+name = "jax-gateway"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "clap",
+ "http",
+ "jax-common",
+ "jax-service",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "jax-local"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "axum-extra",
+ "base64",
+ "clap",
+ "futures",
+ "http",
+ "jax-common",
+ "jax-service",
+ "mime_guess",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "jax-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "askama",
+ "askama_axum",
+ "async-trait",
+ "axum 0.7.9",
+ "axum-extra",
+ "base64",
+ "chrono",
+ "flume",
+ "futures",
+ "http",
+ "iroh",
+ "jax-common",
+ "mime_guess",
+ "pulldown-cmark",
+ "regex",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "jni"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

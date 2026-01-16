@@ -1,0 +1,727 @@
+{% extends "layouts/explorer.html" %}
+
+{% block title %}{{ file_metadata.as_ref().unwrap().name }} - Jax{% endblock %}
+
+{% block sidebar %}
+{% include "components/sidebars/bucket.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="px-8 py-6 space-y-6">
+    <!-- Historical version banner -->
+    {% if viewing_history %} {% include "components/banners/historical.html" %}
+    {% endif %}
+
+    <!-- File header with actions -->
+    <div class="flex items-center mb-4 gap-2">
+        <a href="{{ back_url }}" class="button">
+            <i class="fas fa-arrow-left"></i>
+        </a>
+        <button id="shareBtn" class="button">
+            <i class="fas fa-share-alt"></i>
+        </button>
+        <button id="downloadBtn" class="button" title="Download file">
+            <i class="fas fa-download"></i>
+        </button>
+        {% if is_editable && at_hash.is_none() && !read_only %} {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}
+        <a
+            href="/buckets/{{ bucket_id }}/edit?path={{ file_path }}&from=view"
+            class="button button-primary"
+            title="Edit file"
+        >
+            <i class="fas fa-edit"></i>
+        </a>
+        {% else %}
+        <button id="toggleEditBtn" class="button button-primary" title="Edit file">
+            <i class="fas fa-edit"></i>
+        </button>
+        <button
+            id="saveBtn"
+            class="button button-primary"
+            style="display: none"
+            title="Save file"
+        >
+            <i class="fas fa-save"></i>
+        </button>
+        {% endif %} {% endif %}
+    </div>
+
+    <!-- Shareable links (hidden by default) -->
+    <div
+        id="shareLinkSection"
+        class="share-link-container hidden mb-4"
+    >
+        <div class="flex items-center gap-2 mb-3">
+            <i class="fas fa-link text-green-600"></i>
+            <h3 class="font-semibold text-sm">Share File</h3>
+        </div>
+
+        <!-- Viewer URL -->
+        <div class="mb-3">
+            <div class="text-xs text-muted-foreground mb-1">
+                <i class="fas fa-eye"></i> Viewer URL
+            </div>
+            <div class="flex gap-2">
+                <input
+                    type="text"
+                    id="viewerLink"
+                    readonly
+                    class="share-link-input flex-1 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    value=""
+                />
+                <button
+                    onclick="copyShareLink('viewer', event)"
+                    class="button button-sm whitespace-nowrap"
+                >
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Gateway URL -->
+        <div>
+            <div class="text-xs text-muted-foreground mb-1">
+                <i class="fas fa-globe"></i> Direct URL (Gateway)
+            </div>
+            <div class="flex gap-2">
+                <input
+                    type="text"
+                    id="gatewayLink"
+                    readonly
+                    class="share-link-input flex-1 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    value=""
+                />
+                <button
+                    onclick="copyShareLink('gateway', event)"
+                    class="button button-sm whitespace-nowrap"
+                >
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File content card -->
+    <div class="card">
+        <div class="p-4 border-b">
+            <h2 class="text-lg font-semibold">
+                <i class="fas fa-file mr-2"></i>{{ file_metadata.as_ref().unwrap().name }}
+            </h2>
+        </div>
+
+        <!-- Images -->
+        {% if file_metadata.as_ref().unwrap().mime_type.starts_with("image/") %}
+        <div class="p-4 text-center">
+            <div class="media-viewer-container" id="imageViewerContainer">
+                <button class="fullscreen-btn" id="imageFullscreenBtn" title="Fullscreen">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <img
+                    src="data:{{ file_metadata.as_ref().unwrap().mime_type }};base64,{{ content }}"
+                    alt="{{ file_metadata.as_ref().unwrap().name }}"
+                    class="max-w-full h-auto mx-auto border rounded"
+                />
+            </div>
+        </div>
+
+        <!-- Videos -->
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("video/") %}
+        <div class="p-4">
+            <div class="media-viewer-container" id="videoViewerContainer">
+                <button class="fullscreen-btn" id="videoFullscreenBtn" title="Fullscreen">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <video controls class="w-full max-w-4xl mx-auto rounded" id="videoPlayer">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        </div>
+
+        <!-- Audio -->
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("audio/") %}
+        <div class="p-4">
+            <audio controls class="w-full max-w-2xl mx-auto" id="audioPlayer">
+                Your browser does not support the audio tag.
+            </audio>
+        </div>
+
+        <!-- PDF files -->
+        {% else if file_metadata.as_ref().unwrap().mime_type == "application/pdf" %}
+        <div class="p-4">
+            <div class="pdf-viewer-container" id="pdfViewerContainer">
+                <button class="fullscreen-btn" id="pdfFullscreenBtn" title="Fullscreen">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <iframe
+                    id="pdfViewer"
+                    class="pdf-viewer"
+                    title="{{ file_metadata.as_ref().unwrap().name }}"
+                ></iframe>
+            </div>
+        </div>
+
+        <!-- Text files -->
+        {% else if file_metadata.as_ref().unwrap().mime_type.starts_with("text/") %}
+        <div class="p-4">{% include "components/editors/inline.html" %}</div>
+
+        <!-- Binary files -->
+        {% else %}
+        <div class="card-header">
+            <i class="fas fa-file-alt"></i>
+            <h2>Content</h2>
+        </div>
+        <div class="p-4 text-center">
+            <p class="text-muted-foreground mb-4">
+                <i class="fas fa-file-code text-4xl mb-2"></i><br />
+                Binary file ({{ file_metadata.as_ref().unwrap().size_formatted }})
+            </p>
+            <details class="text-left">
+                <summary
+                    class="cursor-pointer text-primary hover:underline mb-2"
+                >
+                    Show hex dump
+                </summary>
+                <pre
+                    class="bg-muted p-4 rounded overflow-x-auto text-xs"
+                ><code>{{ content }}</code></pre>
+            </details>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% include "components/modals/share.html" %}
+{% include "components/modals/manifest.html" %}
+{% endblock %}
+
+{% block head %}
+<!-- CodeMirror 6 CSS (only loaded if file is editable) -->
+{% if is_editable && at_hash.is_none() && !read_only %}
+<style>
+    .cm-editor {
+        height: 70vh;
+        min-height: 500px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .dark .cm-editor {
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+</style>
+{% endif %}
+
+<style>
+    /* Shareable link section */
+    .share-link-container {
+        background: linear-gradient(
+            135deg,
+            rgba(16, 185, 129, 0.1) 0%,
+            rgba(5, 150, 105, 0.1) 100%
+        );
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+        animation: slideIn 0.3s ease;
+    }
+
+    .dark .share-link-container {
+        background: linear-gradient(
+            135deg,
+            rgba(16, 185, 129, 0.15) 0%,
+            rgba(5, 150, 105, 0.15) 100%
+        );
+        border-color: rgba(16, 185, 129, 0.3);
+    }
+
+    .share-link-input {
+        font-family: "Monaco", "Courier New", monospace;
+        font-size: 0.875rem;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 8px;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .dark .share-link-input {
+        background: rgba(0, 0, 0, 0.3);
+        border-color: rgba(255, 255, 255, 0.2);
+        color: #e5e5e5;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* PDF Viewer */
+    .pdf-viewer-container,
+    .media-viewer-container {
+        position: relative;
+        width: 100%;
+        height: 80vh;
+        min-height: 600px;
+        background: hsl(var(--muted));
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid hsl(var(--border));
+    }
+
+    .media-viewer-container {
+        height: auto;
+        min-height: auto;
+        display: inline-block;
+    }
+
+    .pdf-viewer {
+        width: 100%;
+        height: 100%;
+        border: none;
+    }
+
+    /* Fullscreen button */
+    .fullscreen-btn {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        z-index: 10;
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(4px);
+    }
+
+    .fullscreen-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        transform: scale(1.05);
+    }
+
+    .fullscreen-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* Fullscreen mode styles */
+    .pdf-viewer-container:fullscreen,
+    .media-viewer-container:fullscreen {
+        background: black;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .pdf-viewer-container:fullscreen .pdf-viewer,
+    .media-viewer-container:fullscreen img,
+    .media-viewer-container:fullscreen video {
+        max-width: 100vw;
+        max-height: 100vh;
+        width: auto;
+        height: auto;
+    }
+
+    .pdf-viewer-container:fullscreen .pdf-viewer {
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Change icon when in fullscreen */
+    .pdf-viewer-container:fullscreen .fullscreen-btn i::before,
+    .media-viewer-container:fullscreen .fullscreen-btn i::before {
+        content: "\f066"; /* fa-compress */
+    }
+
+    @media (max-width: 768px) {
+        .pdf-viewer-container {
+            height: 70vh;
+            min-height: 500px;
+        }
+
+        .fullscreen-btn {
+            width: 36px;
+            height: 36px;
+            top: 0.5rem;
+            right: 0.5rem;
+        }
+    }
+
+    /* Markdown content styling */
+    #markdownContent {
+        line-height: 1.7;
+        color: inherit;
+    }
+
+    #markdownContent h1,
+    #markdownContent h2,
+    #markdownContent h3,
+    #markdownContent h4,
+    #markdownContent h5,
+    #markdownContent h6 {
+        margin-top: 1.5em;
+        margin-bottom: 0.75em;
+        font-weight: 600;
+        line-height: 1.25;
+    }
+
+    #markdownContent h1 {
+        font-size: 2em;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        padding-bottom: 0.3em;
+    }
+    #markdownContent h2 {
+        font-size: 1.5em;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        padding-bottom: 0.3em;
+    }
+    #markdownContent h3 {
+        font-size: 1.25em;
+    }
+    #markdownContent h4 {
+        font-size: 1.1em;
+    }
+    #markdownContent h5 {
+        font-size: 1em;
+    }
+    #markdownContent h6 {
+        font-size: 0.9em;
+        color: #6b7280;
+    }
+
+    .dark #markdownContent h1,
+    .dark #markdownContent h2 {
+        border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+    .dark #markdownContent h6 {
+        color: #9ca3af;
+    }
+
+    #markdownContent p {
+        margin-bottom: 1em;
+    }
+    #markdownContent a {
+        color: #3b82f6;
+        text-decoration: underline;
+    }
+    #markdownContent a:hover {
+        color: #2563eb;
+    }
+    .dark #markdownContent a {
+        color: #60a5fa;
+    }
+    .dark #markdownContent a:hover {
+        color: #93c5fd;
+    }
+
+    #markdownContent ul,
+    #markdownContent ol {
+        margin-left: 1.5em;
+        margin-bottom: 1em;
+    }
+    #markdownContent li {
+        margin-bottom: 0.5em;
+    }
+    #markdownContent ul {
+        list-style-type: disc;
+    }
+    #markdownContent ol {
+        list-style-type: decimal;
+    }
+
+    #markdownContent code {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 0.2em 0.4em;
+        border-radius: 3px;
+        font-family: "Monaco", "Courier New", monospace;
+        font-size: 0.9em;
+    }
+    .dark #markdownContent code {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    #markdownContent pre {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 1em;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin-bottom: 1em;
+    }
+    .dark #markdownContent pre {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    #markdownContent pre code {
+        background: none;
+        padding: 0;
+        border-radius: 0;
+    }
+
+    #markdownContent blockquote {
+        border-left: 4px solid #e5e7eb;
+        padding-left: 1em;
+        margin-left: 0;
+        margin-bottom: 1em;
+        color: #6b7280;
+        font-style: italic;
+    }
+    .dark #markdownContent blockquote {
+        border-left-color: #374151;
+        color: #9ca3af;
+    }
+
+    #markdownContent table {
+        border-collapse: collapse;
+        width: 100%;
+        margin-bottom: 1em;
+    }
+    #markdownContent th,
+    #markdownContent td {
+        border: 1px solid #e5e7eb;
+        padding: 0.5em 1em;
+        text-align: left;
+    }
+    .dark #markdownContent th,
+    .dark #markdownContent td {
+        border-color: #374151;
+    }
+    #markdownContent th {
+        background: rgba(0, 0, 0, 0.05);
+        font-weight: 600;
+    }
+    .dark #markdownContent th {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    #markdownContent hr {
+        border: none;
+        border-top: 1px solid #e5e7eb;
+        margin: 2em 0;
+    }
+    .dark #markdownContent hr {
+        border-top-color: #374151;
+    }
+
+    #markdownContent img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 6px;
+        margin: 1em 0;
+    }
+</style>
+
+<script>
+    // Global configuration
+    window.JAX_API_URL = '{{ api_url }}';
+    window.JAX_BUCKET_ID = '{{ bucket_id }}';
+    window.JAX_FILE_PATH = '{{ file_path }}';
+    window.JAX_IS_MARKDOWN = {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}true{% else %}false{% endif %};
+    window.JAX_IS_EDITABLE = {{ is_editable }};
+    {% if at_hash.is_none() %}
+    window.JAX_AT_HASH = null;
+    {% else %}
+    window.JAX_AT_HASH = '{{ at_hash.as_ref().unwrap() }}';
+    {% endif %}
+
+    // Share link functionality
+    function copyShareLink(type, event) {
+        const inputId = type === 'viewer' ? 'viewerLink' : 'gatewayLink';
+        const input = document.getElementById(inputId);
+
+        navigator.clipboard.writeText(input.value).then(() => {
+            const btn = event.target.closest('button');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            btn.style.background = 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.2) 100%)';
+
+            setTimeout(() => {
+                btn.innerHTML = originalHTML;
+                btn.style.background = '';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy:', err);
+        });
+    }
+
+    // Helper function to build gateway URL with optional at parameter
+    function buildGatewayUrl() {
+        let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
+        if (window.JAX_AT_HASH) {
+            url += `?at=${window.JAX_AT_HASH}`;
+        }
+        return url;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const shareBtn = document.getElementById('shareBtn');
+        if (shareBtn) {
+            shareBtn.addEventListener('click', function() {
+                const section = document.getElementById('shareLinkSection');
+                const viewerInput = document.getElementById('viewerLink');
+                const gatewayInput = document.getElementById('gatewayLink');
+
+                // Generate viewer link (current URL)
+                const viewerUrl = window.location.href;
+                viewerInput.value = viewerUrl;
+
+                // Generate gateway link
+                const bucketId = window.JAX_BUCKET_ID;
+                const filePath = window.JAX_FILE_PATH;
+                const host = window.location.origin;
+                const gatewayUrl = `${host}/gw/${bucketId}${filePath}`;
+                gatewayInput.value = gatewayUrl;
+
+                // Toggle visibility
+                section.classList.toggle('hidden');
+            });
+        }
+
+        // Download button functionality
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (downloadBtn) {
+            downloadBtn.addEventListener('click', function() {
+                // Use gateway URL (same as share button)
+                const host = window.location.origin;
+                let url = `${host}/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
+
+                // Add at_hash if viewing history
+                if (window.JAX_AT_HASH) {
+                    url += `?at=${window.JAX_AT_HASH}`;
+                }
+
+                // Trigger download by navigating to URL
+                window.location.href = url;
+            });
+        }
+
+        // Fullscreen functionality
+        function toggleFullscreen(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.error('Error attempting to enable fullscreen:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // PDF fullscreen
+        const pdfFullscreenBtn = document.getElementById('pdfFullscreenBtn');
+        if (pdfFullscreenBtn) {
+            pdfFullscreenBtn.addEventListener('click', () => toggleFullscreen('pdfViewerContainer'));
+        }
+
+        // Image fullscreen
+        const imageFullscreenBtn = document.getElementById('imageFullscreenBtn');
+        if (imageFullscreenBtn) {
+            imageFullscreenBtn.addEventListener('click', () => toggleFullscreen('imageViewerContainer'));
+        }
+
+        // Video fullscreen
+        const videoFullscreenBtn = document.getElementById('videoFullscreenBtn');
+        if (videoFullscreenBtn) {
+            videoFullscreenBtn.addEventListener('click', () => toggleFullscreen('videoViewerContainer'));
+        }
+
+        // PDF Viewer - load PDF via gateway URL
+        const pdfViewer = document.getElementById('pdfViewer');
+        if (pdfViewer) {
+            fetch(buildGatewayUrl())
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    pdfViewer.src = blobUrl + '#toolbar=0';
+                })
+                .catch(error => {
+                    console.error('Error loading PDF:', error);
+                    pdfViewer.srcdoc = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:sans-serif;color:#666;">Failed to load PDF</div>';
+                });
+        }
+
+        // Video player - load video via gateway URL
+        const videoPlayer = document.getElementById('videoPlayer');
+        if (videoPlayer) {
+            fetch(buildGatewayUrl())
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    videoPlayer.src = blobUrl;
+                })
+                .catch(error => {
+                    console.error('Error loading video:', error);
+                });
+        }
+
+        // Audio player - load audio via gateway URL
+        const audioPlayer = document.getElementById('audioPlayer');
+        if (audioPlayer) {
+            fetch(buildGatewayUrl())
+                .then(response => response.blob())
+                .then(blob => {
+                    const blobUrl = URL.createObjectURL(blob);
+                    audioPlayer.src = blobUrl;
+                })
+                .catch(error => {
+                    console.error('Error loading audio:', error);
+                });
+        }
+    });
+</script>
+
+<!-- Marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11/marked.min.js"></script>
+
+<!-- Initialize inline editor module -->
+{% if is_editable && at_hash.is_none() && !read_only %}
+<script type="module">
+    import {
+        initInlineEditor,
+        initMarkdownRendering,
+    } from "/static/js/inline-editor.js";
+
+    document.addEventListener("DOMContentLoaded", function () {
+        initInlineEditor(
+            window.JAX_BUCKET_ID,
+            window.JAX_FILE_PATH,
+            window.JAX_IS_MARKDOWN,
+        );
+
+        if (window.JAX_IS_MARKDOWN) {
+            // Wait for marked.js to load
+            if (window.marked) {
+                initMarkdownRendering();
+            } else {
+                window.addEventListener("load", initMarkdownRendering);
+            }
+        }
+    });
+</script>
+{% else %}
+<script type="module">
+    import { initMarkdownRendering } from "/static/js/inline-editor.js";
+
+    document.addEventListener("DOMContentLoaded", function () {
+        if (window.JAX_IS_MARKDOWN) {
+            // Wait for marked.js to load
+            if (window.marked) {
+                initMarkdownRendering();
+            } else {
+                window.addEventListener("load", initMarkdownRendering);
+            }
+        }
+    });
+</script>
+{% endif %} {% endblock %}

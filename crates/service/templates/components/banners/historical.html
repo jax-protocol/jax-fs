@@ -1,0 +1,41 @@
+<!-- Historical Version Banner Component -->
+<!-- Expects both: viewing_history (bool) AND at_hash (Option<String>) -->
+<!-- Required parameter: return_url -->
+
+{% if viewing_history %}
+<div class="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4 shadow-lg">
+    <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <i class="fas fa-history text-yellow-600 dark:text-yellow-400 text-2xl"></i>
+            <div>
+                <h3 class="font-bold text-yellow-900 dark:text-yellow-100 text-lg">Viewing Historical Version</h3>
+                <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                    You are viewing a read-only snapshot from the history.
+                </p>
+            </div>
+        </div>
+        <a href="{{ return_url }}" class="historical-return-button">
+            <i class="fas fa-arrow-right"></i> Return to Current Version
+        </a>
+    </div>
+</div>
+{% else %}
+  {% if at_hash.is_some() %}
+  <div class="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4 shadow-lg">
+      <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+              <i class="fas fa-history text-yellow-600 dark:text-yellow-400 text-2xl"></i>
+              <div>
+                  <h3 class="font-bold text-yellow-900 dark:text-yellow-100 text-lg">Viewing Historical Version</h3>
+                  <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                      You are viewing a read-only snapshot from the history.
+                  </p>
+              </div>
+          </div>
+          <a href="{{ return_url }}" class="historical-return-button">
+              <i class="fas fa-arrow-right"></i> Return to Current Version
+          </a>
+      </div>
+  </div>
+  {% endif %}
+{% endif %}

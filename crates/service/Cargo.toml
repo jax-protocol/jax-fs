@@ -1,0 +1,64 @@
+[package]
+name = "jax-service"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Shared service infrastructure for JaxBucket gateway and local peer"
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+name = "service"
+path = "src/lib.rs"
+
+[dependencies]
+# Workspace crates
+common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+
+# iroh for peer networking
+iroh = { workspace = true }
+
+# web + service
+axum = { workspace = true, features = ["macros", "multipart"] }
+axum-extra = { version = "^0.10", features = ["typed-header"] }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "cors", "trace"] }
+
+# observability
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# async
+tokio = { workspace = true }
+async-trait = "0.1"
+flume = "0.11"
+
+# http/templates
+askama = { workspace = true }
+askama_axum = { workspace = true }
+rust-embed = "8.5"
+
+# sql
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "macros", "uuid"] }
+time = { workspace = true }
+
+# core
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+http = { workspace = true }
+futures = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true }
+base64 = "0.22"
+regex = "1.11"
+pulldown-cmark = "0.12"
+mime_guess = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

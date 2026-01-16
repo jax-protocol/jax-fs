@@ -26,12 +26,53 @@ impl Share {
         }
     }
 
+    /// Create a new mirror share with a placeholder (empty) secret.
+    /// Mirrors with placeholder shares cannot decrypt bucket content.
+    /// Use `upgrade_to_published` to grant access when publishing.
+    pub fn new_mirror(public_key: PublicKey) -> Self {
+        Self {
+            principal: Principal {
+                role: PrincipalRole::Mirror,
+                identity: public_key,
+            },
+            share: SecretShare::default(), // Placeholder - all zeros
+        }
+    }
+
     pub fn principal(&self) -> &Principal {
         &self.principal
     }
 
     pub fn share(&self) -> &SecretShare {
         &self.share
+    }
+
+    /// Check if this share grants decryption access.
+    /// Returns false for mirrors with placeholder shares (unpublished buckets).
+    pub fn can_decrypt(&self) -> bool {
+        !self.share.is_placeholder()
+    }
+
+    /// Check if this is a mirror share
+    pub fn is_mirror(&self) -> bool {
+        self.principal.role == PrincipalRole::Mirror
+    }
+
+    /// Check if this is an owner share
+    pub fn is_owner(&self) -> bool {
+        self.principal.role == PrincipalRole::Owner
+    }
+
+    /// Create a share with a specific role and secret share.
+    /// This is used when updating shares during save operations.
+    pub fn with_role(role: PrincipalRole, public_key: PublicKey, share: SecretShare) -> Self {
+        Self {
+            principal: Principal {
+                role,
+                identity: public_key,
+            },
+            share,
+        }
     }
 }
 
@@ -146,6 +187,10 @@ impl Manifest {
         &self.shares
     }
 
+    pub fn shares_mut(&mut self) -> &mut BTreeMap<String, Share> {
+        &mut self.shares
+    }
+
     pub fn version(&self) -> &Version {
         &self.version
     }
@@ -196,6 +241,77 @@ impl Manifest {
 
     pub fn set_ops_log(&mut self, link: Link) {
         self.ops_log = Some(link);
+    }
+
+    /// Add a mirror to the bucket. Mirrors start with placeholder shares
+    /// and can only decrypt content after the bucket is published.
+    pub fn add_mirror(&mut self, public_key: PublicKey) {
+        let mirror_share = Share::new_mirror(public_key);
+        self.shares.insert(public_key.to_hex(), mirror_share);
+    }
+
+    /// Remove a mirror from the bucket.
+    pub fn remove_mirror(&mut self, public_key: &PublicKey) -> Option<Share> {
+        self.shares.remove(&public_key.to_hex())
+    }
+
+    /// Get all mirrors in the bucket.
+    pub fn get_mirrors(&self) -> Vec<&Share> {
+        self.shares.values().filter(|s| s.is_mirror()).collect()
+    }
+
+    /// Get all owners in the bucket.
+    pub fn get_owners(&self) -> Vec<&Share> {
+        self.shares.values().filter(|s| s.is_owner()).collect()
+    }
+
+    /// Check if the bucket is published (mirrors can decrypt).
+    /// A bucket is published if at least one mirror has a non-placeholder share.
+    pub fn is_published(&self) -> bool {
+        self.shares
+            .values()
+            .any(|s| s.is_mirror() && s.can_decrypt())
+    }
+
+    /// Publish the bucket by granting decryption access to all mirrors.
+    /// This encrypts the secret to each mirror's public key.
+    pub fn publish(&mut self, secret: Secret) -> Result<(), SecretShareError> {
+        let mirror_keys: Vec<PublicKey> = self
+            .shares
+            .values()
+            .filter(|s| s.is_mirror())
+            .map(|s| s.principal().identity)
+            .collect();
+
+        for public_key in mirror_keys {
+            let share = SecretShare::new(&secret, &public_key)?;
+            // Create a new Share with Mirror role and real secret
+            let mirror_share = Share {
+                principal: Principal {
+                    role: PrincipalRole::Mirror,
+                    identity: public_key,
+                },
+                share,
+            };
+            self.shares.insert(public_key.to_hex(), mirror_share);
+        }
+        Ok(())
+    }
+
+    /// Unpublish the bucket by revoking decryption access from all mirrors.
+    /// Mirrors are reverted to placeholder shares.
+    pub fn unpublish(&mut self) {
+        let mirror_keys: Vec<PublicKey> = self
+            .shares
+            .values()
+            .filter(|s| s.is_mirror())
+            .map(|s| s.principal().identity)
+            .collect();
+
+        for public_key in mirror_keys {
+            self.shares
+                .insert(public_key.to_hex(), Share::new_mirror(public_key));
+        }
     }
 }
 

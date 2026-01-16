@@ -1,0 +1,51 @@
+<!-- Bucket Card Component -->
+<!-- Parameters:
+     - bucket_id: String
+     - bucket_name: String
+     - bucket_icon: String (first letter of name)
+     - file_count: usize
+     - peer_count: usize
+     - last_modified: String (formatted date)
+-->
+
+<div class="bucket-card" onclick="window.location.href='/buckets/{{ bucket_id }}'">
+    <div class="bucket-card-header">
+        <div class="bucket-info">
+            <div class="bucket-icon">{{ bucket_icon }}</div>
+            <div class="bucket-details">
+                <h3>{{ bucket_name }}</h3>
+                <p>ID: {{ bucket_id }}</p>
+            </div>
+        </div>
+        <button class="bucket-more-btn" onclick="event.stopPropagation()">⋮</button>
+    </div>
+
+    <div class="bucket-preview-grid">
+        <div class="bucket-preview-item">📄</div>
+        <div class="bucket-preview-item">🖼️</div>
+        <div class="bucket-preview-item">📊</div>
+        <div class="bucket-preview-item">📁</div>
+    </div>
+
+    <div class="bucket-stats">
+        <div class="bucket-stat-row">
+            <label>📄 Files</label>
+            <span class="value">{{ file_count }}</span>
+        </div>
+        <div class="bucket-stat-row">
+            <label>🕐 Updated</label>
+            <span class="value">{{ last_modified }}</span>
+        </div>
+        <div class="bucket-stat-row border-top">
+            <label>Replicated on</label>
+            <div class="peer-indicator">
+                <span class="peer-dot"></span>
+                <span class="value">{{ peer_count }} peers</span>
+            </div>
+        </div>
+    </div>
+
+    <button class="bucket-open-btn" onclick="event.stopPropagation(); window.location.href='/buckets/{{ bucket_id }}'">
+        Open Bucket
+    </button>
+</div>

@@ -1,0 +1,244 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Syncing - Jax{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <div class="max-w-2xl mx-auto text-center">
+        <div class="syncing-container">
+            <div class="syncing-spinner">
+                <i class="fas fa-sync-alt fa-spin"></i>
+            </div>
+
+            <h1 class="syncing-title">Bucket is Syncing</h1>
+
+            <p class="syncing-message">
+                We're still downloading and syncing the bucket data.
+                This usually takes just a moment.
+            </p>
+
+            <div class="syncing-details">
+                <div class="syncing-detail-item">
+                    <i class="fas fa-folder"></i>
+                    <span>{{ bucket_name }}</span>
+                </div>
+                <div class="syncing-detail-item">
+                    <i class="fas fa-fingerprint"></i>
+                    <code class="text-xs">{{ bucket_id }}</code>
+                </div>
+            </div>
+
+            <div class="syncing-actions">
+                <button onclick="window.location.reload()" class="syncing-btn syncing-btn-primary">
+                    <i class="fas fa-redo"></i> Refresh Page
+                </button>
+                <a href="/buckets" class="syncing-btn syncing-btn-secondary">
+                    <i class="fas fa-folder"></i> All Buckets
+                </a>
+            </div>
+
+            <p class="syncing-hint">
+                <i class="fas fa-info-circle"></i>
+                The page will automatically refresh in <span id="countdown">5</span> seconds
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+let countdown = 5;
+const countdownEl = document.getElementById('countdown');
+
+const interval = setInterval(() => {
+    countdown--;
+    if (countdownEl) {
+        countdownEl.textContent = countdown;
+    }
+
+    if (countdown <= 0) {
+        clearInterval(interval);
+        window.location.reload();
+    }
+}, 1000);
+</script>
+
+<style>
+.syncing-container {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(96, 165, 250, 0.05) 100%);
+    border: 2px solid rgba(59, 130, 246, 0.2);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    margin-top: 4rem;
+}
+
+.dark .syncing-container {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%);
+    border-color: rgba(96, 165, 250, 0.2);
+}
+
+.syncing-spinner {
+    font-size: 4rem;
+    color: #3b82f6;
+    margin-bottom: 1.5rem;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.dark .syncing-spinner {
+    color: #60a5fa;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.syncing-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 1rem;
+}
+
+.dark .syncing-title {
+    color: #f1f5f9;
+}
+
+.syncing-message {
+    font-size: 1.125rem;
+    color: #64748b;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.dark .syncing-message {
+    color: #94a3b8;
+}
+
+.syncing-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+}
+
+.dark .syncing-details {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.syncing-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #475569;
+    font-size: 0.875rem;
+}
+
+.dark .syncing-detail-item {
+    color: #cbd5e1;
+}
+
+.syncing-detail-item i {
+    color: #3b82f6;
+    width: 1.25rem;
+}
+
+.dark .syncing-detail-item i {
+    color: #60a5fa;
+}
+
+.syncing-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.syncing-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+}
+
+.syncing-btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.syncing-btn-primary:hover {
+    background: #2563eb;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.dark .syncing-btn-primary {
+    background: #60a5fa;
+    color: #0f172a;
+}
+
+.dark .syncing-btn-primary:hover {
+    background: #93c5fd;
+}
+
+.syncing-btn-secondary {
+    background: rgba(0, 0, 0, 0.05);
+    color: #374151;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.syncing-btn-secondary:hover {
+    background: rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.dark .syncing-btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    color: #e5e7eb;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .syncing-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.syncing-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+.dark .syncing-hint {
+    color: #94a3b8;
+}
+
+.syncing-hint i {
+    color: #f59e0b;
+}
+
+#countdown {
+    font-weight: 700;
+    color: #3b82f6;
+}
+
+.dark #countdown {
+    color: #60a5fa;
+}
+</style>
+{% endblock %}

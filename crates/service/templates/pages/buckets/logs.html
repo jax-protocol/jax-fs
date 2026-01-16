@@ -1,0 +1,144 @@
+{% extends "layouts/explorer.html" %}
+
+{% block title %}{{ bucket_name }} - History - Jax{% endblock %}
+
+{% block sidebar %}
+    {% include "components/sidebars/bucket.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="px-8 py-6 space-y-6">
+    <div>
+        <h1 class="text-3xl font-bold">
+            <i class="fas fa-history mr-2"></i>{{ bucket_name }} - History
+        </h1>
+        <p class="text-sm text-muted-foreground mt-2">
+            Viewing {{ total_entries }} log entries
+        </p>
+    </div>
+
+    {% if entries.is_empty() %}
+    <div class="card">
+        <div class="p-8 text-center text-muted-foreground">
+            <i class="fas fa-history text-4xl mb-4"></i>
+            <p>No log entries found</p>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <table class="uk-table uk-table-divider uk-table-hover">
+            <thead>
+                <tr>
+                    <th>Height</th>
+                    <th>Name</th>
+                    <th>Current Link</th>
+                    <th>Previous Link</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in entries %}
+                <tr>
+                    <td>
+                        <span class="inline-block px-3 py-1 bg-primary text-white rounded font-mono text-sm">
+                            #{{ entry.height }}
+                        </span>
+                    </td>
+                    <td class="font-semibold">{{ entry.name }}</td>
+                    <td>
+                        <code class="text-xs bg-muted px-2 py-1 rounded cursor-pointer hover:bg-gray-200"
+                              onclick="navigator.clipboard.writeText('{{ entry.current_link }}')"
+                              title="{{ entry.current_link }} (click to copy)">
+                            {{ entry.current_link_short }}
+                        </code>
+                    </td>
+                    <td>
+                        {% if entry.previous_link.is_some() %}
+                        <code class="text-xs bg-muted px-2 py-1 rounded cursor-pointer hover:bg-gray-200"
+                              onclick="navigator.clipboard.writeText('{{ entry.previous_link_full }}')"
+                              title="{{ entry.previous_link_full }} (click to copy)">
+                            {{ entry.previous_link_short }}
+                        </code>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground italic">Genesis</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-sm text-muted-foreground">
+                        {{ entry.created_at_formatted }}
+                    </td>
+                    <td>
+                        <a href="/buckets/{{ bucket_id }}?at={{ entry.current_link }}" class="button button-sm button-primary">
+                            <i class="fas fa-folder-open"></i> Browse
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination Controls -->
+    <div class="flex justify-between items-center">
+        <div class="text-sm text-muted-foreground">
+            Showing {{ start_entry }} to {{ end_entry }} of {{ total_entries }} entries
+        </div>
+        <div class="flex gap-2">
+            {% if page > 0 %}
+            <a href="/buckets/{{ bucket_id }}/logs?page=0&page_size={{ page_size }}" class="button button-sm">
+                <i class="fas fa-angle-double-left"></i> First
+            </a>
+            <a href="/buckets/{{ bucket_id }}/logs?page={{ prev_page }}&page_size={{ page_size }}" class="button button-sm">
+                <i class="fas fa-angle-left"></i> Previous
+            </a>
+            {% endif %}
+
+            <span class="button button-sm button-primary">
+                Page {{ page_display }} of {{ total_pages }}
+            </span>
+
+            {% if has_next %}
+            <a href="/buckets/{{ bucket_id }}/logs?page={{ next_page }}&page_size={{ page_size }}" class="button button-sm">
+                Next <i class="fas fa-angle-right"></i>
+            </a>
+            <a href="/buckets/{{ bucket_id }}/logs?page={{ last_page }}&page_size={{ page_size }}" class="button button-sm">
+                Last <i class="fas fa-angle-double-right"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% include "components/modals/share.html" %}
+
+{% include "components/modals/manifest.html" %}
+
+<!-- Upload Modal -->
+<div id="upload-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Upload File</h2>
+        <form id="uploadForm" class="space-y-4">
+            <div>
+                <label for="uploadFile" class="block text-sm font-medium mb-2">Select File</label>
+                <input
+                    type="file"
+                    id="uploadFile"
+                    name="file"
+                    class="uk-input"
+                    required
+                >
+            </div>
+            <div id="uploadStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-upload"></i> Upload
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

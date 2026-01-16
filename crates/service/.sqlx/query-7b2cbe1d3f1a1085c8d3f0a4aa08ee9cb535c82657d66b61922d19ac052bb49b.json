@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                bucket_id as \"bucket_id!\",\n                name as \"name!\",\n                current_link as \"current_link!: DCid\",\n                previous_link as \"previous_link: DCid\",\n                height as \"height!\",\n                created_at as \"created_at!\"\n            FROM bucket_log\n            WHERE bucket_id = ?1\n            ORDER BY height DESC\n            LIMIT ?2 OFFSET ?3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bucket_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_link!: DCid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "previous_link: DCid",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "height!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7b2cbe1d3f1a1085c8d3f0a4aa08ee9cb535c82657d66b61922d19ac052bb49b"
+}

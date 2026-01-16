@@ -1,0 +1,465 @@
+{% extends "layouts/explorer.html" %}
+
+{% block title %}{{ bucket_name }} - Jax{% endblock %}
+
+{% block sidebar %}
+    {% include "components/sidebars/bucket.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="px-8 py-6 space-y-6">
+    <!-- Historical version banner -->
+    {% if viewing_history %}
+    {% include "components/banners/historical.html" %}
+    {% endif %}
+
+    <!-- Breadcrumb navigation -->
+    {% if !path_segments.is_empty() %}
+    <nav aria-label="Breadcrumb">
+        <ol class="flex items-center gap-2 text-sm">
+            <li><a href="/buckets/{{ bucket_id }}{% if viewing_history %}?at={{ bucket_link }}{% endif %}" class="text-primary hover:underline">{{ bucket_name }}</a></li>
+            {% for segment in path_segments %}
+            <li><i class="fas fa-chevron-right text-muted-foreground"></i></li>
+            <li><a href="/buckets/{{ bucket_id }}?path={{ segment.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary hover:underline">{{ segment.name }}</a></li>
+            {% endfor %}
+        </ol>
+    </nav>
+    {% endif %}
+
+    <!-- File browser toolbar -->
+    <div class="browser-toolbar">
+        <div class="toolbar-left">
+            {% if current_path != "/" %}
+            <a href="{{ parent_path_url }}" class="button">
+                <i class="fas fa-arrow-up"></i> Up
+            </a>
+            {% endif %}
+        </div>
+        <div class="toolbar-right">
+            {% if !read_only %}
+            <button uk-toggle="target: #new-folder-modal" class="button">
+                <i class="fas fa-folder-plus"></i>
+            </button>
+            <a href="/buckets/{{ bucket_id }}/edit?path={{ current_path }}&new=true" class="button">
+                <i class="fas fa-plus"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- File list -->
+    {% if items.is_empty() %}
+    <div class="card">
+        <div class="p-8 text-center text-muted-foreground">
+            <i class="fas fa-folder-open text-4xl mb-4"></i>
+            <p>This directory is empty</p>
+            {% if !read_only %}
+            <p class="text-sm">Upload files or create new ones to get started</p>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <table class="uk-table uk-table-divider uk-table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Modified</th>
+                    <th>Type</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>
+                        <div class="flex items-center gap-2">
+                            {% if item.is_dir %}
+                            <i class="fas fa-folder file-icon-dir"></i>
+                            <a href="/buckets/{{ bucket_id }}?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary font-medium hover:underline">
+                                {{ item.name }}
+                            </a>
+                            {% else %}
+                            {# Icon based on MIME type #}
+                            {% if item.mime_type.starts_with("image/") %}
+                            <i class="fas fa-file-image file-icon-image"></i>
+                            {% else if item.mime_type.starts_with("video/") %}
+                            <i class="fas fa-file-video file-icon-video"></i>
+                            {% else if item.mime_type.starts_with("audio/") %}
+                            <i class="fas fa-file-audio file-icon-audio"></i>
+                            {% else if item.mime_type.starts_with("text/") || item.mime_type == "application/json" || item.mime_type == "application/xml" %}
+                            <i class="fas fa-file-alt file-icon-text"></i>
+                            {% else if item.mime_type == "text/markdown" || item.name.ends_with(".md") %}
+                            <i class="fab fa-markdown file-icon-markdown"></i>
+                            {% else if item.mime_type == "application/pdf" %}
+                            <i class="fas fa-file-pdf file-icon-pdf"></i>
+                            {% else if item.mime_type.starts_with("application/zip") || item.mime_type.starts_with("application/x-") %}
+                            <i class="fas fa-file-archive file-icon-archive"></i>
+                            {% else if item.mime_type == "application/vnd.ms-excel" || item.mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" %}
+                            <i class="fas fa-file-excel file-icon-excel"></i>
+                            {% else if item.mime_type == "application/msword" || item.mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" %}
+                            <i class="fas fa-file-word file-icon-word"></i>
+                            {% else if item.mime_type == "application/vnd.ms-powerpoint" || item.mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation" %}
+                            <i class="fas fa-file-powerpoint file-icon-powerpoint"></i>
+                            {% else %}
+                            <i class="fas fa-file file-icon-default"></i>
+                            {% endif %}
+                            <a href="/buckets/{{ bucket_id }}/view?path={{ item.path }}{% if viewing_history %}&at={{ bucket_link }}{% endif %}" class="text-primary font-medium hover:underline">
+                                {{ item.name }}
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td class="text-sm text-muted-foreground">{{ item.modified_at }}</td>
+                    <td class="text-xs">
+                        <span class="file-type-badge{% if item.is_dir %} file-type-dir{% endif %}">
+                            {{ item.mime_type }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if !read_only %}
+                        <div class="relative">
+                            <button class="button button-sm" onclick="toggleActionMenu(event, '{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})">
+                                <i class="fas fa-ellipsis-h"></i>
+                            </button>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modals -->
+{% if !read_only %}
+<!-- New Folder Modal -->
+<div id="new-folder-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Create New Folder</h2>
+        <form id="newFolderForm" class="space-y-4">
+            <div>
+                <label for="newFolderName" class="block text-sm font-medium mb-2">Folder Name</label>
+                <input type="text" id="newFolderName" name="foldername" class="uk-input"
+                       placeholder="my-folder" required>
+                <p class="text-xs text-muted-foreground mt-1">Enter a name for the new folder</p>
+            </div>
+            <div id="newFolderStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Create
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- New File Modal -->
+<div id="new-file-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Create New File</h2>
+        <form id="newFileForm" class="space-y-4">
+            <div>
+                <label for="newFileName" class="block text-sm font-medium mb-2">File Name</label>
+                <input type="text" id="newFileName" name="filename" class="uk-input"
+                       placeholder="example.txt or example.md" required>
+                <p class="text-xs text-muted-foreground mt-1">Supported: .txt and .md files</p>
+            </div>
+            <div>
+                <label for="newFileContent" class="block text-sm font-medium mb-2">Initial Content (Optional)</label>
+                <textarea id="newFileContent" name="content" class="uk-input" rows="6"
+                          placeholder="Start typing or leave empty..."></textarea>
+            </div>
+            <div id="newFileStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Create & Edit
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+{% include "components/modals/upload.html" %}
+{% include "components/modals/share.html" %}
+
+<!-- Rename Modal -->
+<div id="rename-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Rename <span id="renameItemType"></span></h2>
+        <form id="renameForm" class="space-y-4">
+            <input type="hidden" id="renameOldPath" name="old_path">
+            <div>
+                <label for="renameNewName" class="block text-sm font-medium mb-2">New Name</label>
+                <input type="text" id="renameNewName" name="new_name" class="uk-input" required>
+            </div>
+            <div id="renameStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-check"></i> Rename
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="delete-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Delete <span id="deleteItemType"></span></h2>
+        <p>Are you sure you want to delete <strong id="deleteItemName"></strong>?</p>
+        <p class="text-sm text-muted-foreground">This action cannot be undone.</p>
+        <input type="hidden" id="deleteItemPath">
+        <div id="deleteStatus" class="hidden"></div>
+        <div class="flex gap-4 justify-end mt-4">
+            <button class="button uk-modal-close" type="button">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+            <button onclick="confirmDelete()" class="button button-danger">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Move Modal -->
+<div id="move-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body">
+        <h2 class="uk-modal-title">Move <span id="moveItemType"></span></h2>
+        <form id="moveForm" class="space-y-4">
+            <input type="hidden" id="moveSourcePath" name="source_path">
+            <div>
+                <label class="block text-sm font-medium mb-2">From</label>
+                <input type="text" id="moveSourceDisplay" class="uk-input" disabled>
+            </div>
+            <div>
+                <label for="moveDestDir" class="block text-sm font-medium mb-2">Destination Folder</label>
+                <select id="moveDestDir" class="uk-select" required>
+                    <option value="/">/ (root)</option>
+                </select>
+                <p class="text-xs text-muted-foreground mt-1">Select the folder to move to</p>
+            </div>
+            <div>
+                <label for="moveDestName" class="block text-sm font-medium mb-2">Name</label>
+                <input type="text" id="moveDestName" name="dest_name" class="uk-input" required>
+                <p class="text-xs text-muted-foreground mt-1">You can rename the item while moving</p>
+            </div>
+            <div id="moveStatus" class="hidden"></div>
+            <div class="flex gap-4 justify-end mt-4">
+                <button class="button button-danger uk-modal-close" type="button">
+                    <i class="fas fa-times"></i> Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    <i class="fas fa-arrows-alt"></i> Move
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% include "components/modals/manifest.html" %}
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<script>
+window.JAX_API_URL = '{{ api_url }}';
+window.JAX_BUCKET_ID = '{{ bucket_id }}';
+window.JAX_CURRENT_PATH = '{{ current_path }}';
+</script>
+
+<script>
+// New Folder functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const newFolderForm = document.getElementById('newFolderForm');
+
+    if (newFolderForm) {
+        newFolderForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const folderNameInput = document.getElementById('newFolderName');
+            const statusDiv = document.getElementById('newFolderStatus');
+            const submitBtn = this.querySelector('button[type="submit"]');
+
+            const folderName = folderNameInput.value.trim();
+
+            if (!folderName) {
+                showStatus(statusDiv, 'Please enter a folder name', 'error');
+                return;
+            }
+
+            // Validate folder name (no slashes, no dots at start)
+            if (folderName.includes('/') || folderName.startsWith('.')) {
+                showStatus(statusDiv, 'Invalid folder name. Cannot contain slashes or start with a dot.', 'error');
+                return;
+            }
+
+            // Construct the full path
+            let fullPath;
+            if (window.JAX_CURRENT_PATH === '/') {
+                fullPath = '/' + folderName;
+            } else {
+                fullPath = window.JAX_CURRENT_PATH + '/' + folderName;
+            }
+
+            // Disable submit button
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+
+            try {
+                const response = await fetch(window.JAX_API_URL + '/api/v0/bucket/mkdir', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        bucket_id: window.JAX_BUCKET_ID,
+                        path: fullPath
+                    })
+                });
+
+                if (response.ok) {
+                    showStatus(statusDiv, 'Folder created successfully!', 'success');
+
+                    // Reload the page after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                } else {
+                    const error = await response.json();
+                    showStatus(statusDiv, 'Error: ' + (error.error || 'Failed to create folder'), 'error');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fas fa-check"></i> Create';
+                }
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                showStatus(statusDiv, 'Error: ' + error.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-check"></i> Create';
+            }
+        });
+    }
+});
+
+function showStatus(element, message, type) {
+    let colorClass;
+    if (type === 'success') {
+        colorClass = 'bg-green-100 text-green-800';
+    } else if (type === 'warning') {
+        colorClass = 'bg-yellow-100 text-yellow-800';
+    } else {
+        colorClass = 'bg-red-100 text-red-800';
+    }
+    element.className = 'p-3 rounded text-sm ' + colorClass;
+    element.textContent = message;
+    element.classList.remove('hidden');
+}
+
+// Action menu functionality
+let currentActionMenu = null;
+
+function toggleActionMenu(event, path, name, isDir) {
+    event.stopPropagation();
+
+    // Close any existing menu
+    if (currentActionMenu) {
+        currentActionMenu.remove();
+        currentActionMenu = null;
+    }
+
+    // Create menu
+    const menu = document.createElement('div');
+    menu.className = 'action-menu';
+    menu.innerHTML = `
+        <button onclick="openRenameModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item">
+            <i class="fas fa-i-cursor"></i> Rename
+        </button>
+        <button onclick="openMoveModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item">
+            <i class="fas fa-arrows-alt"></i> Move
+        </button>
+        <button onclick="openDeleteModal('${path}', '${name}', ${isDir}); closeActionMenu();" class="action-menu-item action-menu-item-danger">
+            <i class="fas fa-trash"></i> Delete
+        </button>
+    `;
+
+    // Position menu
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = rect.bottom + 5 + 'px';
+    menu.style.left = rect.left + 'px';
+
+    document.body.appendChild(menu);
+    currentActionMenu = menu;
+
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', closeActionMenu);
+    }, 0);
+}
+
+function closeActionMenu() {
+    if (currentActionMenu) {
+        currentActionMenu.remove();
+        currentActionMenu = null;
+    }
+    document.removeEventListener('click', closeActionMenu);
+}
+</script>
+
+<style>
+.action-menu {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 8px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    z-index: 1000;
+    min-width: 150px;
+    padding: 0.25rem;
+}
+
+.action-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: hsl(var(--foreground));
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    transition: background-color 0.2s;
+}
+
+.action-menu-item:hover {
+    background: hsl(var(--muted));
+}
+
+.action-menu-item-danger {
+    color: #dc2626;
+}
+
+.action-menu-item-danger:hover {
+    background: #fee2e2;
+}
+
+.dark .action-menu-item-danger:hover {
+    background: rgba(220, 38, 38, 0.1);
+}
+</style>
+{% endblock %}

@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                bl.bucket_id as \"bucket_id!\",\n                bl.name as \"name!\",\n                bl.current_link as \"current_link!: DCid\",\n                MIN(bl.created_at) as \"created_at!\"\n            FROM bucket_log bl\n            INNER JOIN (\n                SELECT bucket_id, MAX(height) as max_height\n                FROM bucket_log\n                GROUP BY bucket_id\n            ) latest ON bl.bucket_id = latest.bucket_id AND bl.height = latest.max_height\n            WHERE bl.name LIKE ?1\n            GROUP BY bl.bucket_id, bl.name, bl.current_link\n            ORDER BY created_at DESC\n            LIMIT ?2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bucket_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "current_link!: DCid",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "8741a5eeaae327cfc05403909145c4cb0ead1eb2a2bf82922e64642c6aa61f02"
+}

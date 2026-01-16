@@ -1,0 +1,396 @@
+<!-- Manifest Modal -->
+<div id="bucket-data-modal" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body" style="max-width: 800px;">
+        <button class="uk-modal-close-default" type="button" uk-close></button>
+        <h2 class="uk-modal-title">
+            <i class="fas fa-file-code mr-2"></i>Bucket Manifest
+        </h2>
+
+        <div class="manifest-container">
+                <div class="manifest-structured space-y-4">
+                    <!-- Metadata Section -->
+                    <div class="manifest-section">
+                        <h3 class="manifest-section-title">
+                            <i class="fas fa-info-circle"></i> Metadata
+                        </h3>
+                        <div class="manifest-fields">
+                            <div class="manifest-field">
+                                <label class="manifest-label">Bucket ID</label>
+                                <div class="manifest-value-group">
+                                    <code class="manifest-value">{{ bucket_id }}</code>
+                                    <button onclick="copyToClipboard('{{ bucket_id }}')" class="manifest-copy-btn" title="Copy">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="manifest-field">
+                                <label class="manifest-label">Name</label>
+                                <div class="manifest-value-group">
+                                    <span class="manifest-value">{{ bucket_name }}</span>
+                                </div>
+                            </div>
+                            <div class="manifest-field">
+                                <label class="manifest-label">Height</label>
+                                <div class="manifest-value-group">
+                                    <span class="manifest-value">{{ manifest_height }}</span>
+                                </div>
+                            </div>
+                            <div class="manifest-field">
+                                <label class="manifest-label">Version</label>
+                                <div class="manifest-value-group">
+                                    <code class="manifest-value">{{ manifest_version }}</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Entry Points Section -->
+                    <div class="manifest-section">
+                        <h3 class="manifest-section-title">
+                            <i class="fas fa-link"></i> Entry Points
+                        </h3>
+                        <div class="manifest-fields">
+                            <div class="manifest-field">
+                                <label class="manifest-label">Entry Link</label>
+                                <div class="manifest-value-group">
+                                    <code class="manifest-value manifest-link">{{ manifest_entry_link }}</code>
+                                    <button onclick="copyToClipboard('{{ manifest_entry_link }}')" class="manifest-copy-btn" title="Copy">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="manifest-field">
+                                <label class="manifest-label">Pins Link</label>
+                                <div class="manifest-value-group">
+                                    <code class="manifest-value manifest-link">{{ manifest_pins_link }}</code>
+                                    <button onclick="copyToClipboard('{{ manifest_pins_link }}')" class="manifest-copy-btn" title="Copy">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {% if manifest_previous_link.is_some() %}
+                            <div class="manifest-field">
+                                <label class="manifest-label">Previous Link</label>
+                                <div class="manifest-value-group">
+                                    <code class="manifest-value manifest-link">{{ manifest_previous_link.as_ref().unwrap() }}</code>
+                                    <button onclick="copyToClipboard('{{ manifest_previous_link.as_ref().unwrap() }}')" class="manifest-copy-btn" title="Copy">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="manifest-field">
+                                <label class="manifest-label">Previous Link</label>
+                                <div class="manifest-value-group">
+                                    <span class="manifest-value text-muted-foreground italic">Genesis (no previous)</span>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Shares Section -->
+                    <div class="manifest-section">
+                        <h3 class="manifest-section-title">
+                            <i class="fas fa-users"></i> Shares
+                        </h3>
+                        <div class="manifest-shares">
+                            {% for share in manifest_shares %}
+                            <div class="manifest-share-card">
+                                <div class="manifest-share-header">
+                                    <span class="manifest-share-role">{{ share.role }}</span>
+                                </div>
+                                <div class="manifest-field">
+                                    <label class="manifest-label">Public Key</label>
+                                    <div class="manifest-value-group">
+                                        <code class="manifest-value manifest-pubkey">{{ share.public_key }}</code>
+                                        <button onclick="copyToClipboard('{{ share.public_key }}')" class="manifest-copy-btn" title="Copy">
+                                            <i class="fas fa-copy"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+            <!-- Raw JSON (Collapsible) -->
+            <div class="manifest-raw-section">
+                <button onclick="toggleRawJson()" class="manifest-raw-toggle">
+                    <i class="fas fa-code"></i> <span id="rawJsonToggleText">View Raw JSON</span>
+                    <i class="fas fa-chevron-down" id="rawJsonChevron"></i>
+                </button>
+                <div id="rawJsonContent" class="manifest-raw-content" style="display: none;">
+                    <pre class="bg-muted p-4 rounded text-xs overflow-auto max-h-64 font-mono">{{ bucket_data_formatted }}</pre>
+                    <button onclick="copyToClipboard(document.querySelector('#bucket-data-modal pre').textContent.trim())"
+                            class="button button-sm mt-2">
+                        <i class="fas fa-copy"></i> Copy JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Manifest Modal Styles */
+.manifest-container {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.manifest-section {
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 8px;
+    padding: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.dark .manifest-section {
+    background: rgba(255, 255, 255, 0.02);
+    border-color: rgba(255, 255, 255, 0.05);
+}
+
+.manifest-section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--color-primary, #3b82f6);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.manifest-fields {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.manifest-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.manifest-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+}
+
+.dark .manifest-label {
+    color: #9ca3af;
+}
+
+.manifest-value-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: white;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.dark .manifest-value-group {
+    background: rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.manifest-value {
+    flex: 1;
+    font-size: 0.875rem;
+    word-break: break-all;
+}
+
+.manifest-value code,
+code.manifest-value {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.8125rem;
+}
+
+.manifest-link {
+    color: #3b82f6;
+}
+
+.dark .manifest-link {
+    color: #60a5fa;
+}
+
+.manifest-pubkey {
+    color: #8b5cf6;
+}
+
+.dark .manifest-pubkey {
+    color: #a78bfa;
+}
+
+.manifest-copy-btn {
+    flex-shrink: 0;
+    padding: 0.25rem 0.5rem;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 4px;
+    color: #3b82f6;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.75rem;
+}
+
+.manifest-copy-btn:hover {
+    background: rgba(59, 130, 246, 0.2);
+}
+
+.dark .manifest-copy-btn {
+    background: rgba(96, 165, 250, 0.1);
+    border-color: rgba(96, 165, 250, 0.2);
+    color: #60a5fa;
+}
+
+.dark .manifest-copy-btn:hover {
+    background: rgba(96, 165, 250, 0.2);
+}
+
+.manifest-shares {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.manifest-share-card {
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
+    padding: 0.75rem;
+}
+
+.dark .manifest-share-card {
+    background: rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.manifest-share-header {
+    margin-bottom: 0.5rem;
+}
+
+.manifest-share-role {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.dark .manifest-share-role {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+}
+
+/* Raw JSON Section */
+.manifest-raw-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    padding-top: 1rem;
+}
+
+.dark .manifest-raw-section {
+    border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.manifest-raw-toggle {
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #6b7280;
+    padding: 0.75rem;
+    border-radius: 6px;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: transparent;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.manifest-raw-toggle:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.dark .manifest-raw-toggle {
+    color: #9ca3af;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .manifest-raw-toggle:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+#rawJsonChevron {
+    margin-left: auto;
+    transition: transform 0.2s;
+}
+
+#rawJsonChevron.rotated {
+    transform: rotate(180deg);
+}
+
+.manifest-raw-content {
+    margin-top: 0.75rem;
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+</style>
+
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        // Optional: Show a toast or temporary success message
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i>';
+        btn.style.background = 'rgba(16, 185, 129, 0.2)';
+        btn.style.color = '#10b981';
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.style.background = '';
+            btn.style.color = '';
+        }, 1500);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+    });
+}
+
+function toggleRawJson() {
+    const content = document.getElementById('rawJsonContent');
+    const text = document.getElementById('rawJsonToggleText');
+    const chevron = document.getElementById('rawJsonChevron');
+
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        text.textContent = 'Hide Raw JSON';
+        chevron.classList.add('rotated');
+    } else {
+        content.style.display = 'none';
+        text.textContent = 'View Raw JSON';
+        chevron.classList.remove('rotated');
+    }
+}
+</script>

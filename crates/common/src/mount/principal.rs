@@ -33,7 +33,12 @@ use crate::crypto::PublicKey;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrincipalRole {
+    /// Owner principals have full read/write access and receive encryption shares.
     Owner,
+    /// Mirror principals can sync and serve published buckets.
+    /// They only receive encryption shares when the bucket is published.
+    /// When unpublished, mirrors have placeholder shares and cannot decrypt content.
+    Mirror,
 }
 
 // NOTE (amiller68): we omit the key from the Principal struct
