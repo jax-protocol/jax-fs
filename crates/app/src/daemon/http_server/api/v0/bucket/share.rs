@@ -1,5 +1,6 @@
 use axum::extract::{Json, State};
 use axum::response::{IntoResponse, Response};
+use common::mount::PrincipalRole;
 use common::prelude::MountError;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,15 @@ pub struct ShareRequest {
     /// Public key of the peer to share with (hex-encoded)
     #[arg(long)]
     pub peer_public_key: String,
+
+    /// Role for the peer (owner or mirror). Defaults to owner.
+    #[arg(long, default_value = "owner")]
+    #[serde(default = "default_role")]
+    pub role: String,
+}
+
+fn default_role() -> String {
+    "owner".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,10 +43,18 @@ pub async fn handler(
     Json(req): Json<ShareRequest>,
 ) -> Result<impl IntoResponse, ShareError> {
     tracing::info!(
-        "SHARE API: Received share request for bucket {} with peer {}",
+        "SHARE API: Received share request for bucket {} with peer {} as {}",
         req.bucket_id,
-        req.peer_public_key
+        req.peer_public_key,
+        req.role
     );
+
+    // Parse the role
+    let role = match req.role.to_lowercase().as_str() {
+        "owner" => PrincipalRole::Owner,
+        "mirror" => PrincipalRole::Mirror,
+        _ => return Err(ShareError::InvalidRole(req.role.clone())),
+    };
 
     // Parse the peer's public key from hex
     let peer_public_key = PublicKey::from_hex(&req.peer_public_key)
@@ -48,11 +66,12 @@ pub async fn handler(
     let mut mount = state.peer().mount(req.bucket_id).await?;
     tracing::info!("SHARE API: Loaded mount for bucket {}", req.bucket_id);
 
-    // Share bucket with peer
-    mount.share(peer_public_key).await?;
+    // Add principal with specified role
+    mount.add_principal(peer_public_key, role.clone()).await?;
     tracing::info!(
-        "SHARE API: Mount.share() completed for peer {}",
-        req.peer_public_key
+        "SHARE API: Added peer {} as {:?}",
+        req.peer_public_key,
+        role
     );
 
     tracing::info!("SHARE API: Calling save_mount for bucket {}", req.bucket_id);
@@ -81,6 +100,8 @@ pub async fn handler(
 pub enum ShareError {
     #[error("Invalid public key: {0}")]
     InvalidPublicKey(String),
+    #[error("Invalid role: {0}. Must be 'owner' or 'mirror'")]
+    InvalidRole(String),
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
 }
@@ -91,6 +112,11 @@ impl IntoResponse for ShareError {
             ShareError::InvalidPublicKey(msg) => (
                 http::StatusCode::BAD_REQUEST,
                 format!("Invalid public key: {}", msg),
+            )
+                .into_response(),
+            ShareError::InvalidRole(msg) => (
+                http::StatusCode::BAD_REQUEST,
+                format!("Invalid role: {}. Must be 'owner' or 'mirror'", msg),
             )
                 .into_response(),
             ShareError::Mount(_) => (

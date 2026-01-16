@@ -13,6 +13,7 @@ pub mod ls;
 pub mod mkdir;
 pub mod mv;
 pub mod ping;
+pub mod publish;
 pub mod rename;
 pub mod share;
 pub mod update;
@@ -37,5 +38,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/ping", post(ping::handler))
         .route("/share", post(share::handler))
         .route("/export", post(export::handler))
+        .route("/{bucket_id}/publish", post(publish::handler))
         .with_state(state)
 }

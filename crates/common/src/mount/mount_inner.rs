@@ -96,6 +96,8 @@ pub enum MountError {
     Share(#[from] crate::crypto::SecretShareError),
     #[error("peers share was not found. this should be impossible")]
     ShareNotFound,
+    #[error("mirror cannot mount: bucket is not published")]
+    MirrorCannotMount,
 }
 
 impl Mount {
@@ -152,15 +154,37 @@ impl Mount {
 
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
-        // Update the bucket's share with the new root link
-        // (add_share creates the Share internally)
+        // Update the bucket's shares with the new secret
+        // - Owners always get the new secret
+        // - Mirrors only get the new secret if they were already published (had access)
+        // - Unpublished mirrors keep their None share
         let mut manifest = manifest_template;
-        let _m = manifest.clone();
-        let shares = _m.shares();
+        let old_shares: Vec<_> = manifest.shares().values().cloned().collect();
         manifest.unset_shares();
-        for share in shares.values() {
-            let public_key = share.principal().identity;
-            manifest.add_share(public_key, secret.clone())?;
+
+        for old_share in old_shares {
+            let public_key = old_share.principal().identity;
+
+            if old_share.is_owner() {
+                // Owners always get the new secret
+                manifest.add_share(public_key, secret.clone())?;
+            } else if old_share.is_mirror() {
+                if old_share.can_decrypt() {
+                    // Published mirror: update with new secret, preserve Mirror role
+                    let new_secret_share = SecretShare::new(&secret, &public_key)?;
+                    let mirror_share = super::manifest::Share::with_role(
+                        super::principal::PrincipalRole::Mirror,
+                        public_key,
+                        Some(new_secret_share),
+                    );
+                    manifest
+                        .shares_mut()
+                        .insert(public_key.to_hex(), mirror_share);
+                } else {
+                    // Unpublished mirror: keep without access
+                    manifest.add_mirror(public_key);
+                }
+            }
         }
         manifest.set_pins(pins_link.clone());
         manifest.set_previous(previous_link.clone());
@@ -239,12 +263,17 @@ impl Mount {
         let public_key = &secret_key.public();
         let manifest = Self::_get_manifest_from_blobs(link, blobs).await?;
 
-        let _share = manifest.get_share(public_key);
-
-        let share = match _share {
-            Some(share) => share.share(),
+        let bucket_share = match manifest.get_share(public_key) {
+            Some(share) => share,
             None => return Err(MountError::ShareNotFound),
         };
+
+        // Mirrors can only mount if they have access (bucket is published)
+        if bucket_share.is_mirror() && !bucket_share.can_decrypt() {
+            return Err(MountError::MirrorCannotMount);
+        }
+
+        let share = bucket_share.share().ok_or(MountError::MirrorCannotMount)?;
 
         let secret = share.recover(secret_key)?;
 
@@ -286,6 +315,57 @@ impl Mount {
         let mut inner = self.0.lock().await;
         inner.manifest.add_share(peer, Secret::default())?;
         Ok(())
+    }
+
+    /// Add a principal with a specific role.
+    /// Owners get an encrypted share immediately, mirrors get None until published.
+    pub async fn add_principal(
+        &mut self,
+        peer: PublicKey,
+        role: super::principal::PrincipalRole,
+    ) -> Result<(), MountError> {
+        let mut inner = self.0.lock().await;
+        // For owners, we need to provide a secret (placeholder for now, will be updated on save)
+        // For mirrors, no secret needed - they start without access
+        let secret = if role == super::principal::PrincipalRole::Owner {
+            Some(Secret::default())
+        } else {
+            None
+        };
+        inner.manifest.add_principal(peer, role, secret.as_ref())?;
+        Ok(())
+    }
+
+    /// Add a mirror peer to this bucket. Mirrors can sync the bucket's data
+    /// but cannot decrypt content until the bucket is published.
+    pub async fn add_mirror(&mut self, peer: PublicKey) {
+        let mut inner = self.0.lock().await;
+        inner.manifest.add_mirror(peer);
+    }
+
+    /// Remove a principal from this bucket.
+    pub async fn remove_principal(&mut self, peer: &PublicKey) -> bool {
+        let mut inner = self.0.lock().await;
+        inner.manifest.remove_principal(peer).is_some()
+    }
+
+    /// Check if this bucket is published (mirrors can decrypt).
+    pub async fn is_published(&self) -> bool {
+        let inner = self.0.lock().await;
+        inner.manifest.is_published()
+    }
+
+    /// Publish this bucket, granting decryption access to all mirrors.
+    pub async fn publish(&mut self, secret: &Secret) -> Result<(), MountError> {
+        let mut inner = self.0.lock().await;
+        inner.manifest.publish(secret)?;
+        Ok(())
+    }
+
+    /// Unpublish this bucket, revoking decryption access from all mirrors.
+    pub async fn unpublish(&mut self) {
+        let mut inner = self.0.lock().await;
+        inner.manifest.unpublish();
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>

@@ -12,14 +12,44 @@ use super::principal::{Principal, PrincipalRole};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Share {
     principal: Principal,
-    share: SecretShare,
+    /// The encrypted share of the bucket's secret key.
+    /// `None` for mirrors that haven't been granted access (unpublished bucket).
+    share: Option<SecretShare>,
 }
 
 impl Share {
+    /// Create a new owner share with an encrypted secret.
     pub fn new(share: SecretShare, public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
                 role: PrincipalRole::Owner,
+                identity: public_key,
+            },
+            share: Some(share),
+        }
+    }
+
+    /// Create a new mirror share without access to the secret.
+    /// Mirrors only get access when the bucket is published.
+    pub fn new_mirror(public_key: PublicKey) -> Self {
+        Self {
+            principal: Principal {
+                role: PrincipalRole::Mirror,
+                identity: public_key,
+            },
+            share: None,
+        }
+    }
+
+    /// Create a share with a specific role and optional secret share.
+    pub fn with_role(
+        role: PrincipalRole,
+        public_key: PublicKey,
+        share: Option<SecretShare>,
+    ) -> Self {
+        Self {
+            principal: Principal {
+                role,
                 identity: public_key,
             },
             share,
@@ -30,8 +60,24 @@ impl Share {
         &self.principal
     }
 
-    pub fn share(&self) -> &SecretShare {
-        &self.share
+    /// Get the secret share. Returns None for unpublished mirrors.
+    pub fn share(&self) -> Option<&SecretShare> {
+        self.share.as_ref()
+    }
+
+    /// Check if this share grants decryption access.
+    pub fn can_decrypt(&self) -> bool {
+        self.share.is_some()
+    }
+
+    /// Check if this is a mirror principal.
+    pub fn is_mirror(&self) -> bool {
+        self.principal.role == PrincipalRole::Mirror
+    }
+
+    /// Check if this is an owner principal.
+    pub fn is_owner(&self) -> bool {
+        self.principal.role == PrincipalRole::Owner
     }
 }
 
@@ -103,7 +149,7 @@ impl Manifest {
                         role: PrincipalRole::Owner,
                         identity: owner,
                     },
-                    share,
+                    share: Some(share),
                 },
             )]),
             entry,
@@ -196,6 +242,91 @@ impl Manifest {
 
     pub fn set_ops_log(&mut self, link: Link) {
         self.ops_log = Some(link);
+    }
+
+    pub fn shares_mut(&mut self) -> &mut BTreeMap<String, Share> {
+        &mut self.shares
+    }
+
+    /// Add a principal with a specific role.
+    /// Owners get an encrypted share immediately, mirrors get None until published.
+    pub fn add_principal(
+        &mut self,
+        public_key: PublicKey,
+        role: PrincipalRole,
+        secret: Option<&Secret>,
+    ) -> Result<(), SecretShareError> {
+        let share = match role {
+            PrincipalRole::Owner => {
+                let secret = secret.ok_or_else(|| {
+                    SecretShareError::Default(anyhow::anyhow!("Owner requires a secret"))
+                })?;
+                Share::new(SecretShare::new(secret, &public_key)?, public_key)
+            }
+            PrincipalRole::Mirror => Share::new_mirror(public_key),
+        };
+        self.shares.insert(public_key.to_hex(), share);
+        Ok(())
+    }
+
+    /// Add a mirror to the bucket. Mirrors start without access until published.
+    pub fn add_mirror(&mut self, public_key: PublicKey) {
+        self.shares
+            .insert(public_key.to_hex(), Share::new_mirror(public_key));
+    }
+
+    /// Remove a principal from the bucket.
+    pub fn remove_principal(&mut self, public_key: &PublicKey) -> Option<Share> {
+        self.shares.remove(&public_key.to_hex())
+    }
+
+    /// Get all mirrors in the bucket.
+    pub fn get_mirrors(&self) -> Vec<&Share> {
+        self.shares.values().filter(|s| s.is_mirror()).collect()
+    }
+
+    /// Get all owners in the bucket.
+    pub fn get_owners(&self) -> Vec<&Share> {
+        self.shares.values().filter(|s| s.is_owner()).collect()
+    }
+
+    /// Check if the bucket is published (any mirror has access).
+    pub fn is_published(&self) -> bool {
+        self.shares
+            .values()
+            .any(|s| s.is_mirror() && s.can_decrypt())
+    }
+
+    /// Publish the bucket by granting decryption access to all mirrors.
+    pub fn publish(&mut self, secret: &Secret) -> Result<(), SecretShareError> {
+        let mirror_keys: Vec<PublicKey> = self
+            .shares
+            .values()
+            .filter(|s| s.is_mirror())
+            .map(|s| s.principal().identity)
+            .collect();
+
+        for public_key in mirror_keys {
+            let encrypted_share = SecretShare::new(secret, &public_key)?;
+            let share = Share::with_role(PrincipalRole::Mirror, public_key, Some(encrypted_share));
+            self.shares.insert(public_key.to_hex(), share);
+        }
+        Ok(())
+    }
+
+    /// Unpublish the bucket by revoking decryption access from all mirrors.
+    pub fn unpublish(&mut self) {
+        let mirror_keys: Vec<PublicKey> = self
+            .shares
+            .values()
+            .filter(|s| s.is_mirror())
+            .map(|s| s.principal().identity)
+            .collect();
+
+        for public_key in mirror_keys {
+            self.shares
+                .insert(public_key.to_hex(), Share::new_mirror(public_key));
+        }
     }
 }
 
