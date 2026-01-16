@@ -8,8 +8,8 @@ use common::bucket_log::BucketLogProvider;
 use common::mount::{MountError, NodeLink};
 use common::prelude::Mount;
 
-use crate::ops::bucket::clone_state::PathHashMap;
-use crate::ServiceState;
+use crate::daemon::types::PathHashMap;
+use crate::daemon::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExportRequest {

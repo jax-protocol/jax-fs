@@ -11,6 +11,10 @@ categories.workspace = true
 readme = "../../README.md"
 build = "build.rs"
 
+[lib]
+name = "jax_bucket"
+path = "src/lib.rs"
+
 [[bin]]
 name = "jax"
 path = "src/main.rs"

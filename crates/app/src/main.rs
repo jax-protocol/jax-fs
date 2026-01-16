@@ -4,11 +4,9 @@ mod op;
 mod ops;
 mod state;
 
-// Daemon/service modules (HTTP server, database, P2P sync)
-mod daemon;
-
-// Re-export types that daemon modules need
-pub use daemon::ServiceState;
+// Use daemon from library
+pub use jax_bucket::daemon;
+pub use jax_bucket::ServiceState;
 
 use args::Args;
 use clap::{Parser, Subcommand};
