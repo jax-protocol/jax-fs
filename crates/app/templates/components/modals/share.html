@@ -288,7 +288,7 @@
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
+            const apiUrl = window.JAX_API_URL || 'http://localhost:5001';
             const bucketId = window.JAX_BUCKET_ID;
             const peerPublicKeyInput = document.getElementById('peerPublicKeyInput');
             const status = document.getElementById('shareStatus');

@@ -23,7 +23,7 @@ pub struct Config {
     ///  if not set then 0.0.0.0:8080 will be used
     pub html_listen_addr: Option<SocketAddr>,
     /// address for the API server to listen on.
-    ///  if not set then 0.0.0.0:3000 will be used
+    ///  if not set then 0.0.0.0:5001 will be used
     pub api_listen_addr: Option<SocketAddr>,
 
     // data store configuration
@@ -48,7 +48,7 @@ impl Default for Config {
             node_secret: None,
             node_blobs_store_path: None,
             html_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080)),
-            api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 3000)),
+            api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 5001)),
             sqlite_path: None,
             log_level: tracing::Level::INFO,
             ui_read_only: false,

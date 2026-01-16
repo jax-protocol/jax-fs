@@ -173,7 +173,7 @@ pub async fn handler(
     let api_url = config
         .api_url
         .clone()
-        .unwrap_or_else(|| "http://localhost:5000".to_string());
+        .unwrap_or_else(|| "http://localhost:5001".to_string());
 
     let peers_json = serde_json::to_string(&peers).unwrap_or_else(|_| "[]".to_string());
 

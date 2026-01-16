@@ -1,5 +1,6 @@
 pub mod bucket_log_provider;
 mod bucket_queries;
+pub mod mount_queries;
 mod sqlite;
 mod types;
 

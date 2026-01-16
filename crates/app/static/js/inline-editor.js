@@ -153,7 +153,7 @@ export function initInlineEditor(bucketId, filePath, isMarkdown) {
     }
 
     async function saveFile(bucketId, filePath, content) {
-        const apiUrl = window.JAX_API_URL || 'http://localhost:3000';
+        const apiUrl = window.JAX_API_URL || 'http://localhost:5001';
 
         const formData = new FormData();
         formData.append('bucket_id', bucketId);

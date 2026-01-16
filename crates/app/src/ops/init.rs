@@ -8,8 +8,8 @@ pub struct Init {
     #[arg(long, default_value = "0.0.0.0:8080")]
     pub html_addr: String,
 
-    /// API server listen address (default: 0.0.0.0:3000)
-    #[arg(long, default_value = "0.0.0.0:3000")]
+    /// API server listen address (default: 0.0.0.0:5001)
+    #[arg(long, default_value = "0.0.0.0:5001")]
     pub api_addr: String,
 
     /// Peer (P2P) node listen port (optional, defaults to ephemeral port if not specified)

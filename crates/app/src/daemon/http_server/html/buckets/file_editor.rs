@@ -117,7 +117,7 @@ pub async fn handler(
     let api_url = config
         .api_url
         .clone()
-        .unwrap_or_else(|| "http://localhost:3000".to_string());
+        .unwrap_or_else(|| "http://localhost:5001".to_string());
 
     let template = FileEditorTemplate {
         bucket_id: bucket_id.to_string(),

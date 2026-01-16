@@ -50,7 +50,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:8080").unwrap());
     let api_listen_addr = service_config
         .api_listen_addr
-        .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:3000").unwrap());
+        .unwrap_or_else(|| SocketAddr::from_str("0.0.0.0:5001").unwrap());
 
     // Spawn peer router
     let peer = state.peer().clone();
@@ -95,7 +95,18 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
     });
     handles.push(api_handle);
 
+    // Start auto-mount configured FUSE mounts (non-blocking)
+    let mount_manager = state.mount_manager().clone();
+    tokio::spawn(async move {
+        tracing::info!("Starting auto-mount of configured FUSE mounts...");
+        mount_manager.start_auto_mounts().await;
+    });
+
     let _ = graceful_waiter.await;
+
+    // Graceful shutdown: stop all running FUSE mounts
+    tracing::info!("Stopping all FUSE mounts...");
+    state.mount_manager().stop_all_mounts().await;
 
     if timeout(FINAL_SHUTDOWN_TIMEOUT, join_all(handles))
         .await

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO fuse_mounts (\n                mount_id, bucket_id, mount_point, enabled, auto_mount,\n                read_only, cache_size_mb, cache_ttl_secs, status\n            ) VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6, ?7, 'stopped')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "eb11686ff82a60218ed5f4bd2f03105358c9b4978b943440dd2dcdcc8474ac32"
+}

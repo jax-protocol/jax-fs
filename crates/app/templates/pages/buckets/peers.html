@@ -147,7 +147,7 @@ const bucketId = '{{ bucket_id }}';
 const peers = {{ peers_json }};
 
 async function pingPeer(peerPublicKey) {
-    const apiUrl = window.JAX_API_URL || 'http://localhost:5000';
+    const apiUrl = window.JAX_API_URL || 'http://localhost:5001';
 
     console.log(`Pinging peer ${peerPublicKey} for bucket ${bucketId}`);
 

@@ -495,7 +495,7 @@ async function openMoveModal(path, name, isDir) {
 // Initialize modules when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
   // Get API URL from data attribute on body or window
-  const apiUrl = window.JAX_API_URL || "http://localhost:3000";
+  const apiUrl = window.JAX_API_URL || "http://localhost:5001";
   const bucketId = window.JAX_BUCKET_ID;
   const currentPath = window.JAX_CURRENT_PATH || "/";
 

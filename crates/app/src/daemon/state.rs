@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use url::Url;
 
 use super::config::Config;
+use super::mount_manager::MountManager;
 use crate::daemon::database::{Database, DatabaseSetupError};
 
 use common::crypto::SecretKey;
@@ -13,6 +16,7 @@ use super::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
 pub struct State {
     database: Database,
     peer: Peer<Database>,
+    mount_manager: Arc<MountManager>,
 }
 
 impl State {
@@ -82,7 +86,20 @@ impl State {
             super::sync_provider::run_worker(peer_for_worker, job_stream).await;
         });
 
-        Ok(Self { database, peer })
+        // 5. Create mount manager
+        // Build API endpoint URL from config
+        let api_port = config
+            .api_listen_addr
+            .map(|a| a.port())
+            .unwrap_or(5001);
+        let api_endpoint = format!("http://localhost:{}", api_port);
+        let mount_manager = Arc::new(MountManager::new(database.clone(), api_endpoint));
+
+        Ok(Self {
+            database,
+            peer,
+            mount_manager,
+        })
     }
 
     pub fn peer(&self) -> &Peer<Database> {
@@ -96,6 +113,10 @@ impl State {
 
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    pub fn mount_manager(&self) -> &Arc<MountManager> {
+        &self.mount_manager
     }
 }
 

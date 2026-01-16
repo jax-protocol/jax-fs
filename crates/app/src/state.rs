@@ -24,7 +24,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             html_listen_addr: "0.0.0.0:8080".to_string(),
-            api_listen_addr: "0.0.0.0:3000".to_string(),
+            api_listen_addr: "0.0.0.0:5001".to_string(),
             peer_port: None,
         }
     }

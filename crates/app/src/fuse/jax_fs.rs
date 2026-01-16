@@ -2,7 +2,7 @@
 //!
 //! Maps FUSE operations to daemon HTTP API calls.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -55,6 +55,9 @@ pub struct JaxFs {
 
     /// LRU cache for file content
     cache: FileCache,
+
+    /// Paths that are pending creation (created but not yet flushed to daemon)
+    pending_creates: RwLock<HashSet<PathBuf>>,
 }
 
 /// Buffer for accumulating writes before flush
@@ -90,6 +93,7 @@ impl JaxFs {
             next_fh: AtomicU64::new(1),
             size_cache: RwLock::new(HashMap::new()),
             cache: FileCache::new(cache_config),
+            pending_creates: RwLock::new(HashSet::new()),
         }
     }
 
@@ -260,17 +264,38 @@ impl JaxFs {
         let client = self.client.clone();
         let bucket_id = self.bucket_id;
 
+        // Detect MIME type from path
+        let mime_type = mime_guess::from_path(path)
+            .first_or_octet_stream()
+            .to_string();
+
         self.rt.block_on(async {
             let url = client.base_url().join("/api/v0/bucket/add").unwrap();
 
+            // Extract filename and parent directory from path
+            // The server appends filename to mount_path, so mount_path should be the parent dir
+            let path_obj = std::path::Path::new(path);
+            let filename = path_obj
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string();
+            let parent_path = path_obj
+                .parent()
+                .and_then(|p| p.to_str())
+                .unwrap_or("/")
+                .to_string();
+            // Ensure parent_path is "/" if empty
+            let parent_path = if parent_path.is_empty() { "/".to_string() } else { parent_path };
+
             let form = reqwest::multipart::Form::new()
                 .text("bucket_id", bucket_id.to_string())
-                .text("mount_path", path.to_string())
+                .text("mount_path", parent_path)
                 .part(
                     "file",
                     reqwest::multipart::Part::bytes(data)
-                        .file_name("file")
-                        .mime_str("application/octet-stream")
+                        .file_name(filename)
+                        .mime_str(&mime_type)
                         .unwrap(),
                 );
 
@@ -298,6 +323,11 @@ impl Filesystem for JaxFs {
             Some(s) => s,
             None => return reply.error(libc::ENOENT),
         };
+
+        // Filter out macOS resource fork files (AppleDouble files)
+        if name_str.starts_with("._") {
+            return reply.error(libc::ENOENT);
+        }
 
         // Get parent path
         let parent_path = {
@@ -353,6 +383,22 @@ impl Filesystem for JaxFs {
                 None => return reply.error(libc::ENOENT),
             }
         };
+
+        // Check if this is a pending file (created but not yet flushed)
+        {
+            let pending = self.pending_creates.read().unwrap();
+            if pending.contains(&path) {
+                // Return attributes for pending file (size from size_cache or 0)
+                let size = self.size_cache
+                    .read()
+                    .unwrap()
+                    .get(&path)
+                    .copied()
+                    .unwrap_or(0);
+                let attr = self.make_attr(ino, false, size);
+                return reply.attr(&TTL, &attr);
+            }
+        }
 
         // Get parent to list and find this item
         let parent_path = path.parent().unwrap_or(&PathBuf::from("/")).to_path_buf();
@@ -521,8 +567,15 @@ impl Filesystem for JaxFs {
                 }
             };
 
-            // If not truncating, we need to load existing content for modify-in-place
-            let (initial_data, original_loaded) = if truncate {
+            // Check if this is a pending file (created but not yet flushed)
+            let is_pending = {
+                let pending = self.pending_creates.read().unwrap();
+                pending.contains(&path)
+            };
+
+            // If not truncating and not a pending file, load existing content
+            let (initial_data, original_loaded) = if truncate || is_pending {
+                // Truncate: start fresh; Pending: file is new, no content on daemon
                 (Vec::new(), false)
             } else {
                 // Try to load existing file content
@@ -561,39 +614,89 @@ impl Filesystem for JaxFs {
         _lock_owner: Option<u64>,
         reply: ReplyWrite,
     ) {
-        let mut buffers = self.write_buffers.write().unwrap();
+        tracing::debug!("FUSE write: fh={}, offset={}, len={}", fh, offset, data.len());
 
-        if let Some(buffer) = buffers.get_mut(&fh) {
-            // Handle O_APPEND: always write at end
-            let write_offset = if flags & libc::O_APPEND != 0 {
-                buffer.data.len()
+        // First, update the buffer with the new data
+        let (path, buffer_data, was_pending) = {
+            let mut buffers = self.write_buffers.write().unwrap();
+
+            if let Some(buffer) = buffers.get_mut(&fh) {
+                // Handle O_APPEND: always write at end
+                let write_offset = if flags & libc::O_APPEND != 0 {
+                    buffer.data.len()
+                } else {
+                    offset as usize
+                };
+
+                // Extend buffer if needed (fill with zeros)
+                if buffer.data.len() < write_offset {
+                    buffer.data.resize(write_offset, 0);
+                }
+
+                // Write data at offset
+                let end = write_offset + data.len();
+                if buffer.data.len() < end {
+                    buffer.data.resize(end, 0);
+                }
+                buffer.data[write_offset..end].copy_from_slice(data);
+
+                // Check if this is first write to a pending file
+                let was_pending_and_first_write = if !buffer.dirty {
+                    let pending = self.pending_creates.read().unwrap();
+                    pending.contains(&buffer.path)
+                } else {
+                    false
+                };
+
+                // Mark as dirty
+                buffer.dirty = true;
+
+                (buffer.path.clone(), buffer.data.clone(), was_pending_and_first_write)
             } else {
-                offset as usize
-            };
+                return reply.error(libc::EBADF);
+            }
+        };
 
-            // Extend buffer if needed (fill with zeros)
-            if buffer.data.len() < write_offset {
-                buffer.data.resize(write_offset, 0);
+        // If this was the first write to a pending file, flush immediately
+        // This ensures the file exists on the daemon before any other operations
+        if was_pending {
+            tracing::debug!("FUSE write: first write to pending file, flushing immediately");
+            let path_str = path.to_string_lossy().to_string();
+            if let Err(e) = self.api_add(&path_str, buffer_data) {
+                tracing::error!("Failed to create file on first write: {}", e);
+                return reply.error(libc::EIO);
             }
 
-            // Write data at offset
-            let end = write_offset + data.len();
-            if buffer.data.len() < end {
-                buffer.data.resize(end, 0);
+            // Remove from pending - file now exists on daemon
+            {
+                let mut pending = self.pending_creates.write().unwrap();
+                pending.remove(&path);
             }
-            buffer.data[write_offset..end].copy_from_slice(data);
 
-            // Mark as dirty
-            buffer.dirty = true;
+            // Update size cache
+            {
+                let buffers = self.write_buffers.read().unwrap();
+                if let Some(buffer) = buffers.get(&fh) {
+                    let mut size_cache = self.size_cache.write().unwrap();
+                    size_cache.insert(path.clone(), buffer.data.len() as u64);
+                }
+            }
 
-            reply.written(data.len() as u32)
-        } else {
-            reply.error(libc::EBADF)
+            // Update content cache
+            {
+                let buffers = self.write_buffers.read().unwrap();
+                if let Some(buffer) = buffers.get(&fh) {
+                    self.cache.put(path, buffer.data.clone());
+                }
+            }
         }
+
+        reply.written(data.len() as u32)
     }
 
     /// Flush file data (called before close)
     fn flush(&mut self, _req: &Request<'_>, _ino: u64, fh: u64, _lock_owner: u64, reply: ReplyEmpty) {
+        tracing::debug!("FUSE flush: fh={}", fh);
         // Check if we have buffered writes
         let buffer_info = {
             let buffers = self.write_buffers.read().unwrap();
@@ -603,11 +706,19 @@ impl Filesystem for JaxFs {
         };
 
         if let Some((path, data, dirty)) = buffer_info {
+            tracing::debug!("FUSE flush: path={}, dirty={}, data_len={}", path.display(), dirty, data.len());
             // Only upload if the buffer was modified
             if dirty {
                 let path_str = path.to_string_lossy().to_string();
-                if let Err(_) = self.api_add(&path_str, data.clone()) {
+                if let Err(e) = self.api_add(&path_str, data.clone()) {
+                    tracing::error!("FUSE flush api_add failed: {}", e);
                     return reply.error(libc::EIO);
+                }
+
+                // Remove from pending_creates since file now exists on daemon
+                {
+                    let mut pending = self.pending_creates.write().unwrap();
+                    pending.remove(&path);
                 }
 
                 // Invalidate cache for this path (we just wrote to it)
@@ -653,13 +764,20 @@ impl Filesystem for JaxFs {
         name: &OsStr,
         _mode: u32,
         _umask: u32,
-        flags: i32,
+        _flags: i32,
         reply: fuser::ReplyCreate,
     ) {
         let name_str = match name.to_str() {
             Some(s) => s,
             None => return reply.error(libc::EINVAL),
         };
+
+        // Filter out macOS resource fork files (AppleDouble files)
+        if name_str.starts_with("._") {
+            return reply.error(libc::EACCES); // Permission denied for resource fork files
+        }
+
+        tracing::debug!("FUSE create: name={}", name_str);
 
         let parent_path = {
             let inodes = self.inodes.read().unwrap();
@@ -670,14 +788,8 @@ impl Filesystem for JaxFs {
         };
 
         let file_path = parent_path.join(name_str);
-        let file_path_str = file_path.to_string_lossy().to_string();
 
-        // Create empty file
-        if let Err(_) = self.api_add(&file_path_str, Vec::new()) {
-            return reply.error(libc::EIO);
-        }
-
-        // Create inode
+        // Create inode for the new file
         let ino = {
             let mut inodes = self.inodes.write().unwrap();
             inodes.get_or_create(&file_path)
@@ -685,17 +797,23 @@ impl Filesystem for JaxFs {
 
         let fh = self.next_fh.fetch_add(1, Ordering::SeqCst);
 
-        // Set up write buffer if needed
-        let write_mode = (flags & libc::O_WRONLY != 0) || (flags & libc::O_RDWR != 0);
-        if write_mode {
+        // Track this file as pending creation
+        {
+            let mut pending = self.pending_creates.write().unwrap();
+            pending.insert(file_path.clone());
+        }
+
+        // Always set up write buffer for new files - they need to be flushed on close
+        // Don't upload empty file now; wait for flush with actual content
+        {
             let mut buffers = self.write_buffers.write().unwrap();
             buffers.insert(
                 fh,
                 WriteBuffer {
-                    path: file_path,
+                    path: file_path.clone(),
                     data: Vec::new(),
                     original_loaded: false,
-                    dirty: false,
+                    dirty: true, // Mark as dirty so flush will upload
                 },
             );
         }

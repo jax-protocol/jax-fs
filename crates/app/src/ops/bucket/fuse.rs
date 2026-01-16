@@ -14,17 +14,25 @@ use crate::op::Op;
 
 #[derive(Args, Debug, Clone)]
 pub struct Fuse {
-    /// Bucket ID (or use --name)
-    #[arg(long, group = "bucket_identifier")]
+    /// Bucket name or ID (positional argument)
+    #[arg(index = 1)]
+    pub bucket: Option<String>,
+
+    /// Local directory to mount the bucket at (positional argument)
+    #[arg(index = 2)]
+    pub mount_point: Option<PathBuf>,
+
+    /// Bucket ID (alternative to positional)
+    #[arg(long)]
     pub bucket_id: Option<Uuid>,
 
-    /// Bucket name (or use --bucket-id)
-    #[arg(long, group = "bucket_identifier")]
+    /// Bucket name (alternative to positional)
+    #[arg(long)]
     pub name: Option<String>,
 
-    /// Local directory to mount the bucket at
-    #[arg(long)]
-    pub mount_point: PathBuf,
+    /// Mount point (alternative to positional)
+    #[arg(long, short = 'm')]
+    pub mount: Option<PathBuf>,
 
     /// Allow other users to access the mount (requires user_allow_other in /etc/fuse.conf)
     #[arg(long, default_value = "false")]
@@ -65,8 +73,10 @@ pub enum FuseError {
     Api(#[from] ApiError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Either --bucket-id or --name must be provided")]
+    #[error("Bucket name or ID required. Usage: bucket fuse <name> <mount-point>")]
     NoBucketIdentifier,
+    #[error("Mount point required. Usage: bucket fuse <name> <mount-point>")]
+    NoMountPoint,
     #[error("Mount point does not exist: {0}")]
     MountPointNotFound(PathBuf),
     #[error("Mount point is not a directory: {0}")]
@@ -80,12 +90,36 @@ pub enum FuseError {
 }
 
 impl Fuse {
+    /// Get the resolved mount point from positional or named args
+    fn get_mount_point(&self) -> Result<PathBuf, FuseError> {
+        self.mount_point
+            .clone()
+            .or_else(|| self.mount.clone())
+            .ok_or(FuseError::NoMountPoint)
+    }
+
+    /// Get the bucket identifier (name or ID string) from positional or named args
+    fn get_bucket_identifier(&self) -> Result<String, FuseError> {
+        // Priority: positional bucket > --bucket-id > --name
+        if let Some(ref bucket) = self.bucket {
+            Ok(bucket.clone())
+        } else if let Some(id) = self.bucket_id {
+            Ok(id.to_string())
+        } else if let Some(ref name) = self.name {
+            Ok(name.clone())
+        } else {
+            Err(FuseError::NoBucketIdentifier)
+        }
+    }
+
     /// Perform unmount operation
     fn do_unmount(&self) -> Result<String, FuseError> {
+        let mount_point = self.get_mount_point()?;
+
         #[cfg(target_os = "linux")]
         {
             let status = std::process::Command::new("fusermount")
-                .args(["-u", &self.mount_point.to_string_lossy()])
+                .args(["-u", &mount_point.to_string_lossy()])
                 .status()
                 .map_err(|e| FuseError::Unmount(e.to_string()))?;
 
@@ -100,7 +134,7 @@ impl Fuse {
         #[cfg(target_os = "macos")]
         {
             let status = std::process::Command::new("umount")
-                .arg(&self.mount_point)
+                .arg(&mount_point)
                 .status()
                 .map_err(|e| FuseError::Unmount(e.to_string()))?;
 
@@ -112,7 +146,7 @@ impl Fuse {
             }
         }
 
-        Ok(format!("Unmounted {}", self.mount_point.display()))
+        Ok(format!("Unmounted {}", mount_point.display()))
     }
 
     /// Get default jax directory
@@ -123,10 +157,9 @@ impl Fuse {
     }
 
     /// Get PID file path for this mount
-    fn get_pid_file(&self) -> PathBuf {
+    fn get_pid_file(&self, mount_point: &PathBuf) -> PathBuf {
         self.pid_file.clone().unwrap_or_else(|| {
-            let mount_name = self
-                .mount_point
+            let mount_name = mount_point
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("mount");
@@ -135,10 +168,9 @@ impl Fuse {
     }
 
     /// Get log file path for this mount
-    fn get_log_file(&self) -> PathBuf {
+    fn get_log_file(&self, mount_point: &PathBuf) -> PathBuf {
         self.log_file.clone().unwrap_or_else(|| {
-            let mount_name = self
-                .mount_point
+            let mount_name = mount_point
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("mount");
@@ -160,23 +192,26 @@ impl Op for Fuse {
 
         let mut client = ctx.client.clone();
 
-        // Resolve bucket name to UUID if needed
-        let bucket_id = if let Some(id) = self.bucket_id {
+        // Get bucket identifier and resolve to UUID
+        let bucket_str = self.get_bucket_identifier()?;
+        let bucket_id = if let Ok(id) = bucket_str.parse::<Uuid>() {
             id
-        } else if let Some(ref name) = self.name {
-            client.resolve_bucket_name(name).await?
         } else {
-            return Err(FuseError::NoBucketIdentifier);
+            // It's a name, resolve it
+            client.resolve_bucket_name(&bucket_str).await?
         };
 
+        // Get mount point
+        let mount_point = self.get_mount_point()?;
+
         // Create mount point if it doesn't exist
-        if !self.mount_point.exists() {
-            std::fs::create_dir_all(&self.mount_point)?;
+        if !mount_point.exists() {
+            std::fs::create_dir_all(&mount_point)?;
         }
 
         // Verify mount point is a directory
-        if !self.mount_point.is_dir() {
-            return Err(FuseError::MountPointNotDirectory(self.mount_point.clone()));
+        if !mount_point.is_dir() {
+            return Err(FuseError::MountPointNotDirectory(mount_point.clone()));
         }
 
         // Get the tokio runtime handle
@@ -206,21 +241,19 @@ impl Op for Fuse {
             options.push(MountOption::RO);
         }
 
-        let mount_point = self.mount_point.clone();
-
         // Handle daemon mode
         if self.daemon {
             // Ensure jax directory exists
             let jax_dir = Self::jax_dir();
             std::fs::create_dir_all(&jax_dir)?;
 
-            let pid_file = self.get_pid_file();
-            let log_file = self.get_log_file();
+            let pid_file = self.get_pid_file(&mount_point);
+            let log_file = self.get_log_file(&mount_point);
 
             println!(
                 "Daemonizing FUSE mount for bucket {} at {}",
                 bucket_id,
-                self.mount_point.display()
+                mount_point.display()
             );
             println!("PID file: {}", pid_file.display());
             println!("Log file: {}", log_file.display());
@@ -256,10 +289,12 @@ impl Op for Fuse {
         println!(
             "Mounting bucket {} at {}",
             bucket_id,
-            self.mount_point.display()
+            mount_point.display()
         );
         println!("Press Ctrl+C to unmount");
         println!();
+
+        let mount_point_display = mount_point.display().to_string();
 
         // Run the FUSE mount in a blocking thread
         let result = tokio::task::spawn_blocking(move || fuser::mount2(fs, &mount_point, &options))
@@ -268,6 +303,6 @@ impl Op for Fuse {
 
         result.map_err(FuseError::Io)?;
 
-        Ok(format!("Unmounted {}", self.mount_point.display()))
+        Ok(format!("Unmounted {}", mount_point_display))
     }
 }

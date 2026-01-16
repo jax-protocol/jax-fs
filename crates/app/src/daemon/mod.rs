@@ -1,6 +1,7 @@
 mod config;
 mod database;
 pub mod http_server;
+pub mod mount_manager;
 mod process;
 mod state;
 mod sync_provider;

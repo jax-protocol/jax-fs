@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT height\n            FROM bucket_log\n            WHERE bucket_id = $1 AND current_link = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "height",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e5ef65561e0b90fdb6aebc1dec02bd1ec17a919b3177792d3dc502da50307cac"
+}

@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                mount_id as \"mount_id!\",\n                bucket_id as \"bucket_id!\",\n                mount_point as \"mount_point!\",\n                enabled as \"enabled!\",\n                auto_mount as \"auto_mount!\",\n                read_only as \"read_only!\",\n                cache_size_mb as \"cache_size_mb!\",\n                cache_ttl_secs as \"cache_ttl_secs!\",\n                pid,\n                status as \"status!\",\n                error_message,\n                created_at as \"created_at!\",\n                updated_at as \"updated_at!\"\n            FROM fuse_mounts\n            WHERE bucket_id = ?1\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "mount_id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "bucket_id!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "mount_point!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "enabled!",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "auto_mount!",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "read_only!",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cache_size_mb!",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cache_ttl_secs!",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "pid",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "status!",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 10,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at!",
+        "ordinal": 11,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "updated_at!",
+        "ordinal": 12,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "ac983da7a85c3a235d8f69e78010a3db577dcdc75de634f8c209692795679731"
+}

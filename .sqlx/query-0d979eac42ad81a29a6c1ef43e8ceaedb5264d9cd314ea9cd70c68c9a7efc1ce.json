@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE fuse_mounts\n                SET enabled = ?1, auto_mount = ?2, read_only = ?3,\n                    cache_size_mb = ?4, cache_ttl_secs = ?5, updated_at = CURRENT_TIMESTAMP\n                WHERE mount_id = ?6\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "0d979eac42ad81a29a6c1ef43e8ceaedb5264d9cd314ea9cd70c68c9a7efc1ce"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE fuse_mounts\n            SET status = ?1, pid = ?2, error_message = ?3, updated_at = CURRENT_TIMESTAMP\n            WHERE mount_id = ?4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f06e80d3ba52460d9e2e91f9ed9fdfb700f58b304d2cce9c6270726b0b3cbca6"
+}
