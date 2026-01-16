@@ -13,13 +13,13 @@ use super::principal::{Principal, PrincipalRole};
 pub struct Share {
     principal: Principal,
     /// The encrypted share of the bucket's secret key.
-    /// `None` for mirrors that haven't been granted access (unpublished bucket).
+    /// Only owners have this; mirrors use the manifest's published_secret instead.
     share: Option<SecretShare>,
 }
 
 impl Share {
     /// Create a new owner share with an encrypted secret.
-    pub fn new(share: SecretShare, public_key: PublicKey) -> Self {
+    pub fn new_owner(share: SecretShare, public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
                 role: PrincipalRole::Owner,
@@ -29,8 +29,7 @@ impl Share {
         }
     }
 
-    /// Create a new mirror share without access to the secret.
-    /// Mirrors only get access when the bucket is published.
+    /// Create a new mirror share. Mirrors use the manifest's published_secret for decryption.
     pub fn new_mirror(public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
@@ -41,43 +40,17 @@ impl Share {
         }
     }
 
-    /// Create a share with a specific role and optional secret share.
-    pub fn with_role(
-        role: PrincipalRole,
-        public_key: PublicKey,
-        share: Option<SecretShare>,
-    ) -> Self {
-        Self {
-            principal: Principal {
-                role,
-                identity: public_key,
-            },
-            share,
-        }
-    }
-
     pub fn principal(&self) -> &Principal {
         &self.principal
     }
 
-    /// Get the secret share. Returns None for unpublished mirrors.
+    /// Get the secret share. Only owners have this; mirrors use published_secret.
     pub fn share(&self) -> Option<&SecretShare> {
         self.share.as_ref()
     }
 
-    /// Check if this share grants decryption access.
-    pub fn can_decrypt(&self) -> bool {
-        self.share.is_some()
-    }
-
-    /// Check if this is a mirror principal.
-    pub fn is_mirror(&self) -> bool {
-        self.principal.role == PrincipalRole::Mirror
-    }
-
-    /// Check if this is an owner principal.
-    pub fn is_owner(&self) -> bool {
-        self.principal.role == PrincipalRole::Owner
+    pub fn role(&self) -> &PrincipalRole {
+        &self.principal.role
     }
 }
 
@@ -124,6 +97,10 @@ pub struct Manifest {
     // This is stored separately to avoid leaking directory structure
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ops_log: Option<Link>,
+    // Published secret - when set, mirrors can decrypt the bucket
+    // This is the plaintext secret, making the bucket publicly readable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    published_secret: Option<Secret>,
 }
 
 impl BlockEncoded<DagCborCodec> for Manifest {}
@@ -158,6 +135,7 @@ impl Manifest {
             height,
             version: Version::default(),
             ops_log: None,
+            published_secret: None,
         }
     }
 
@@ -171,7 +149,7 @@ impl Manifest {
         secret: Secret,
     ) -> Result<(), SecretShareError> {
         let share = SecretShare::new(&secret, &public_key)?;
-        let bucket_share = Share::new(share, public_key);
+        let bucket_share = Share::new_owner(share, public_key);
         self.shares.insert(public_key.to_hex(), bucket_share);
         Ok(())
     }
@@ -261,7 +239,7 @@ impl Manifest {
                 let secret = secret.ok_or_else(|| {
                     SecretShareError::Default(anyhow::anyhow!("Owner requires a secret"))
                 })?;
-                Share::new(SecretShare::new(secret, &public_key)?, public_key)
+                Share::new_owner(SecretShare::new(secret, &public_key)?, public_key)
             }
             PrincipalRole::Mirror => Share::new_mirror(public_key),
         };
@@ -282,51 +260,34 @@ impl Manifest {
 
     /// Get all mirrors in the bucket.
     pub fn get_mirrors(&self) -> Vec<&Share> {
-        self.shares.values().filter(|s| s.is_mirror()).collect()
+        self.shares
+            .values()
+            .filter(|s| *s.role() == PrincipalRole::Mirror)
+            .collect()
     }
 
     /// Get all owners in the bucket.
     pub fn get_owners(&self) -> Vec<&Share> {
-        self.shares.values().filter(|s| s.is_owner()).collect()
-    }
-
-    /// Check if the bucket is published (any mirror has access).
-    pub fn is_published(&self) -> bool {
         self.shares
             .values()
-            .any(|s| s.is_mirror() && s.can_decrypt())
+            .filter(|s| *s.role() == PrincipalRole::Owner)
+            .collect()
     }
 
-    /// Publish the bucket by granting decryption access to all mirrors.
-    pub fn publish(&mut self, secret: &Secret) -> Result<(), SecretShareError> {
-        let mirror_keys: Vec<PublicKey> = self
-            .shares
-            .values()
-            .filter(|s| s.is_mirror())
-            .map(|s| s.principal().identity)
-            .collect();
-
-        for public_key in mirror_keys {
-            let encrypted_share = SecretShare::new(secret, &public_key)?;
-            let share = Share::with_role(PrincipalRole::Mirror, public_key, Some(encrypted_share));
-            self.shares.insert(public_key.to_hex(), share);
-        }
-        Ok(())
+    /// Check if the bucket is published.
+    pub fn is_published(&self) -> bool {
+        self.published_secret.is_some()
     }
 
-    /// Unpublish the bucket by revoking decryption access from all mirrors.
-    pub fn unpublish(&mut self) {
-        let mirror_keys: Vec<PublicKey> = self
-            .shares
-            .values()
-            .filter(|s| s.is_mirror())
-            .map(|s| s.principal().identity)
-            .collect();
+    /// Get the published secret if the bucket is published.
+    pub fn published_secret(&self) -> Option<&Secret> {
+        self.published_secret.as_ref()
+    }
 
-        for public_key in mirror_keys {
-            self.shares
-                .insert(public_key.to_hex(), Share::new_mirror(public_key));
-        }
+    /// Publish the bucket by storing the secret in plaintext.
+    /// Once published, cannot be unpublished - the secret is out.
+    pub fn publish(&mut self, secret: &Secret) {
+        self.published_secret = Some(secret.clone());
     }
 }
 

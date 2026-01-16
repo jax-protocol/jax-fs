@@ -14,6 +14,7 @@ use super::manifest::Manifest;
 use super::node::{Node, NodeError, NodeLink};
 use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
+use super::principal::PrincipalRole;
 
 pub fn clean_path(path: &Path) -> PathBuf {
     if !path.is_absolute() {
@@ -154,10 +155,9 @@ impl Mount {
 
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
-        // Update the bucket's shares with the new secret
-        // - Owners always get the new secret
-        // - Mirrors only get the new secret if they were already published (had access)
-        // - Unpublished mirrors keep their None share
+        // Update shares with the new secret
+        // - Owners get re-encrypted shares with the new secret
+        // - Mirrors just stay as mirrors (they use published_secret for access)
         let mut manifest = manifest_template;
         let old_shares: Vec<_> = manifest.shares().values().cloned().collect();
         manifest.unset_shares();
@@ -165,26 +165,19 @@ impl Mount {
         for old_share in old_shares {
             let public_key = old_share.principal().identity;
 
-            if old_share.is_owner() {
-                // Owners always get the new secret
-                manifest.add_share(public_key, secret.clone())?;
-            } else if old_share.is_mirror() {
-                if old_share.can_decrypt() {
-                    // Published mirror: update with new secret, preserve Mirror role
-                    let new_secret_share = SecretShare::new(&secret, &public_key)?;
-                    let mirror_share = super::manifest::Share::with_role(
-                        super::principal::PrincipalRole::Mirror,
-                        public_key,
-                        Some(new_secret_share),
-                    );
-                    manifest
-                        .shares_mut()
-                        .insert(public_key.to_hex(), mirror_share);
-                } else {
-                    // Unpublished mirror: keep without access
+            match old_share.role() {
+                PrincipalRole::Owner => {
+                    manifest.add_share(public_key, secret.clone())?;
+                }
+                PrincipalRole::Mirror => {
                     manifest.add_mirror(public_key);
                 }
             }
+        }
+
+        // If the bucket was published, update the published_secret with the new secret
+        if manifest.is_published() {
+            manifest.publish(&secret);
         }
         manifest.set_pins(pins_link.clone());
         manifest.set_previous(previous_link.clone());
@@ -268,14 +261,21 @@ impl Mount {
             None => return Err(MountError::ShareNotFound),
         };
 
-        // Mirrors can only mount if they have access (bucket is published)
-        if bucket_share.is_mirror() && !bucket_share.can_decrypt() {
-            return Err(MountError::MirrorCannotMount);
-        }
-
-        let share = bucket_share.share().ok_or(MountError::MirrorCannotMount)?;
-
-        let secret = share.recover(secret_key)?;
+        // Get the secret based on role
+        let secret = match bucket_share.role() {
+            PrincipalRole::Owner => {
+                // Owners decrypt their individual share
+                let share = bucket_share.share().ok_or(MountError::ShareNotFound)?;
+                share.recover(secret_key)?
+            }
+            PrincipalRole::Mirror => {
+                // Mirrors use the published secret (if bucket is published)
+                manifest
+                    .published_secret()
+                    .cloned()
+                    .ok_or(MountError::MirrorCannotMount)?
+            }
+        };
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
         let entry = Self::_get_node_from_blobs(
@@ -356,16 +356,11 @@ impl Mount {
     }
 
     /// Publish this bucket, granting decryption access to all mirrors.
+    /// Once published, cannot be unpublished - the secret is out.
     pub async fn publish(&mut self, secret: &Secret) -> Result<(), MountError> {
         let mut inner = self.0.lock().await;
-        inner.manifest.publish(secret)?;
+        inner.manifest.publish(secret);
         Ok(())
-    }
-
-    /// Unpublish this bucket, revoking decryption access from all mirrors.
-    pub async fn unpublish(&mut self) {
-        let mut inner = self.0.lock().await;
-        inner.manifest.unpublish();
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>
