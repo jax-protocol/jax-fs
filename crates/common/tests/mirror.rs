@@ -1,4 +1,4 @@
-//! Integration tests for Mount operations
+//! Integration tests for Mount mirror and publish operations
 
 use std::io::Cursor;
 use std::path::PathBuf;
