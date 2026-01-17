@@ -203,11 +203,18 @@ pub use principal::{Principal, PrincipalRole};
 
 ## Type Patterns
 
-### Builder Pattern for Complex Construction
+### Method Ordering
+
+Organize `impl` blocks with methods in this order:
+
+1. **Constructors** (`new`, `new_*`, `with_*`, `from_*`)
+2. **Getters** (prefixed with `/* Getters */` comment)
+3. **Setters/Mutators** (prefixed with `/* Setters */` comment)
 
 ```rust
 impl Share {
-    pub fn new(share: SecretShare, public_key: PublicKey) -> Self {
+    /// Create an owner share with an encrypted secret.
+    pub fn new_owner(share: SecretShare, public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
                 role: PrincipalRole::Owner,
@@ -217,6 +224,7 @@ impl Share {
         }
     }
 
+    /// Create a mirror share (no secret until published).
     pub fn new_mirror(public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
@@ -227,21 +235,20 @@ impl Share {
         }
     }
 
-    pub fn with_role(role: PrincipalRole, public_key: PublicKey, share: Option<SecretShare>) -> Self {
-        Self {
-            principal: Principal { role, identity: public_key },
-            share,
-        }
+    /* Getters */
+
+    pub fn principal(&self) -> &Principal {
+        &self.principal
     }
-}
-```
 
-### Predicate Methods
+    pub fn share(&self) -> Option<&SecretShare> {
+        self.share.as_ref()
+    }
 
-Use `is_*` and `can_*` naming for boolean queries:
+    pub fn role(&self) -> &PrincipalRole {
+        &self.principal.role
+    }
 
-```rust
-impl Share {
     pub fn is_mirror(&self) -> bool {
         self.principal.role == PrincipalRole::Mirror
     }
@@ -253,8 +260,22 @@ impl Share {
     pub fn can_decrypt(&self) -> bool {
         self.share.is_some()
     }
+
+    /* Setters */
+
+    pub fn set_share(&mut self, share: SecretShare) {
+        self.share = Some(share);
+    }
 }
 ```
+
+### Predicate Methods
+
+Use `is_*` and `can_*` naming for boolean queries (these go in the getters section):
+
+- `is_*` - checks state or type (`is_mirror`, `is_published`, `is_empty`)
+- `can_*` - checks capability (`can_decrypt`, `can_write`)
+- `has_*` - checks presence (`has_share`, `has_previous`)
 
 ---
 
@@ -321,3 +342,5 @@ async fn setup_test_env() -> (Mount, BlobsStore, SecretKey, TempDir) {
 | Serialize | `#[derive(Serialize, Deserialize)]` |
 | Option field | `#[serde(skip_serializing_if = "Option::is_none")]` |
 | Public export | `pub use module::Type;` |
+| Method order | constructors → `/* Getters */` → `/* Setters */` |
+| Predicate names | `is_*`, `can_*`, `has_*` |
