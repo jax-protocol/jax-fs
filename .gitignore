@@ -1,2 +1,6 @@
 target/
 data/*
+
+# Runtime data directories
+crates/app/here/
+crates/app/data/
