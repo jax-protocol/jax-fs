@@ -300,7 +300,9 @@ impl Mount {
         ))
     }
 
-    pub async fn share(&mut self, peer: PublicKey) -> Result<(), MountError> {
+    /// Add an owner to this bucket.
+    /// Owners get an encrypted share immediately.
+    pub async fn add_owner(&mut self, peer: PublicKey) -> Result<(), MountError> {
         let mut inner = self.0.lock().await;
         let secret_share = SecretShare::new(&Secret::default(), &peer)?;
         inner
@@ -309,27 +311,8 @@ impl Mount {
         Ok(())
     }
 
-    /// Add a principal with a specific role.
-    /// Owners get an encrypted share immediately, mirrors get None until published.
-    pub async fn add_principal(
-        &mut self,
-        peer: PublicKey,
-        role: PrincipalRole,
-    ) -> Result<(), MountError> {
-        let mut inner = self.0.lock().await;
-        let share = match role {
-            PrincipalRole::Owner => {
-                let secret_share = SecretShare::new(&Secret::default(), &peer)?;
-                Share::new_owner(secret_share, peer)
-            }
-            PrincipalRole::Mirror => Share::new_mirror(peer),
-        };
-        inner.manifest.add_share(share);
-        Ok(())
-    }
-
-    /// Add a mirror peer to this bucket. Mirrors can sync the bucket's data
-    /// but cannot decrypt content until the bucket is published.
+    /// Add a mirror to this bucket.
+    /// Mirrors can sync bucket data but cannot decrypt until published.
     pub async fn add_mirror(&mut self, peer: PublicKey) {
         let mut inner = self.0.lock().await;
         inner.manifest.add_share(Share::new_mirror(peer));

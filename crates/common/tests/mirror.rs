@@ -4,7 +4,7 @@ use std::io::Cursor;
 use std::path::PathBuf;
 
 use common::crypto::{Secret, SecretKey};
-use common::mount::{Mount, MountError, PrincipalRole};
+use common::mount::{Mount, MountError};
 use common::peer::BlobsStore;
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -33,9 +33,8 @@ async fn test_mirror_cannot_mount_unpublished_bucket() {
     // Add a mirror peer (without publishing)
     let mirror_key = SecretKey::generate();
     mount
-        .add_principal(mirror_key.public(), PrincipalRole::Mirror)
-        .await
-        .unwrap();
+        .add_mirror(mirror_key.public())
+        .await;
 
     // Save the mount
     let (link, _, _) = mount.save(&blobs).await.unwrap();
@@ -72,9 +71,8 @@ async fn test_mirror_can_mount_published_bucket() {
     // Add a mirror peer
     let mirror_key = SecretKey::generate();
     mount
-        .add_principal(mirror_key.public(), PrincipalRole::Mirror)
-        .await
-        .unwrap();
+        .add_mirror(mirror_key.public())
+        .await;
 
     // Publish the bucket - this grants decryption access to mirrors
     let secret = Secret::generate();
@@ -117,9 +115,8 @@ async fn test_owner_can_always_mount() {
     // Add a mirror (unpublished)
     let mirror_key = SecretKey::generate();
     mount
-        .add_principal(mirror_key.public(), PrincipalRole::Mirror)
-        .await
-        .unwrap();
+        .add_mirror(mirror_key.public())
+        .await;
 
     // Save
     let (link, _, _) = mount.save(&blobs).await.unwrap();

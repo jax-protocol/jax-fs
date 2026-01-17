@@ -67,7 +67,10 @@ pub async fn handler(
     tracing::info!("SHARE API: Loaded mount for bucket {}", req.bucket_id);
 
     // Add principal with specified role
-    mount.add_principal(peer_public_key, role.clone()).await?;
+    match role {
+        PrincipalRole::Owner => mount.add_owner(peer_public_key).await?,
+        PrincipalRole::Mirror => mount.add_mirror(peer_public_key).await,
+    }
     tracing::info!(
         "SHARE API: Added peer {} as {:?}",
         req.peer_public_key,
