@@ -268,19 +268,11 @@ impl Manifest {
             .collect()
     }
 
-    /// Get all owner shares.
-    pub fn get_owners(&self) -> Vec<&Share> {
+    /// Get all shares with a specific role.
+    pub fn get_shares_by_role(&self, role: PrincipalRole) -> Vec<&Share> {
         self.shares
             .values()
-            .filter(|s| *s.role() == PrincipalRole::Owner)
-            .collect()
-    }
-
-    /// Get all mirror shares.
-    pub fn get_mirrors(&self) -> Vec<&Share> {
-        self.shares
-            .values()
-            .filter(|s| *s.role() == PrincipalRole::Mirror)
+            .filter(|s| *s.role() == role)
             .collect()
     }
 
@@ -330,16 +322,6 @@ impl Manifest {
     pub fn add_share(&mut self, share: Share) {
         let key = share.principal().identity.to_hex();
         self.shares.insert(key, share);
-    }
-
-    /// Remove all shares from the manifest.
-    pub fn unset_shares(&mut self) {
-        self.shares.clear();
-    }
-
-    /// Remove a principal from the bucket.
-    pub fn remove_principal(&mut self, public_key: &PublicKey) -> Option<Share> {
-        self.shares.remove(&public_key.to_hex())
     }
 
     /// Publish the bucket by storing the secret in plaintext.

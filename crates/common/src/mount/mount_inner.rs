@@ -160,7 +160,7 @@ impl Mount {
         // - Mirrors just stay as mirrors (they use published_secret for access)
         let mut manifest = manifest_template;
         let old_shares: Vec<_> = manifest.shares().values().cloned().collect();
-        manifest.unset_shares();
+        manifest.shares_mut().clear();
 
         for old_share in old_shares {
             let public_key = old_share.principal().identity;
@@ -349,7 +349,7 @@ impl Mount {
     /// Remove a principal from this bucket.
     pub async fn remove_principal(&mut self, peer: &PublicKey) -> bool {
         let mut inner = self.0.lock().await;
-        inner.manifest.remove_principal(peer).is_some()
+        inner.manifest.shares_mut().remove(&peer.to_hex()).is_some()
     }
 
     /// Check if this bucket is published (mirrors can decrypt).

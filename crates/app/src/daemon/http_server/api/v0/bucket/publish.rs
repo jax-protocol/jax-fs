@@ -1,6 +1,7 @@
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use common::crypto::Secret;
+use common::mount::PrincipalRole;
 use common::prelude::MountError;
 use serde::Serialize;
 use uuid::Uuid;
@@ -30,7 +31,7 @@ pub async fn handler(
     if mount.is_published().await {
         tracing::info!("PUBLISH API: Bucket {} is already published", bucket_id);
         let inner = mount.inner().await;
-        let mirrors_count = inner.manifest().get_mirrors().len();
+        let mirrors_count = inner.manifest().get_shares_by_role(PrincipalRole::Mirror).len();
         return Ok((
             http::StatusCode::OK,
             axum::Json(PublishResponse {
@@ -56,7 +57,7 @@ pub async fn handler(
 
     // Get mirror count
     let inner = mount.inner().await;
-    let mirrors_count = inner.manifest().get_mirrors().len();
+    let mirrors_count = inner.manifest().get_shares_by_role(PrincipalRole::Mirror).len();
 
     tracing::info!(
         "PUBLISH API: Bucket {} published, {} mirrors now have access",
