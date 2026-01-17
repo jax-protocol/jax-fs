@@ -61,14 +61,14 @@ jax-bucket bucket ls my-bucket
 
 ## Documentation
 
-- [Concepts](./concepts.md) - High-level architecture and concepts
+- [Concepts](../agents/CONCEPTS.md) - High-level architecture and concepts
 - [Usage](./usage.md) - CLI commands, binaries, and features
 
 ## Technology Stack
 
 - **Rust** - Systems programming language
 - **iroh** - P2P networking and blob storage
-- **AES-256-GCM** - Content encryption
+- **ChaCha20-Poly1305** - Content encryption
 - **Ed25519** - Peer identity and authentication
 - **X25519** - Key exchange for sharing
 - **IPLD/DAG-CBOR** - Content-addressed data structures

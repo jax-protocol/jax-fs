@@ -73,10 +73,10 @@ Release process and crate publishing:
 - Manual release with `cargo-smart-release`
 
 ### [ISSUES.md](./ISSUES.md)
-How issues are tracked:
-- Epics for large features
-- Tickets for discrete tasks
-- Status tracking
+How issues are organized in `issues/`:
+- Standalone issues as single files
+- Epics as directories with `index.md`
+- Tickets as 0-indexed files (`0-first.md`, `1-second.md`)
 
 ---
 
@@ -86,6 +86,20 @@ How issues are tracked:
 2. **All tests must pass** - `cargo test`
 3. **Clippy must be clean** - `cargo clippy`
 4. **Follow existing patterns** - Match codebase style
+
+---
+
+## Crate-Specific Documentation
+
+Highly targeted agent docs live within each crate's `agents/` subdirectory:
+
+```
+crates/
+├── app/agents/           # App-specific docs (CLI, daemon, templates)
+└── common/agents/        # Common crate docs (if needed)
+```
+
+This keeps specialized documentation close to the code it describes.
 
 ---
 

@@ -1,6 +1,6 @@
 # Issues and Tickets
 
-Guide for AI agents and contributors on how issues are organized in this repository.
+Guide for organizing work in the `issues/` directory.
 
 ---
 
@@ -8,34 +8,45 @@ Guide for AI agents and contributors on how issues are organized in this reposit
 
 ```
 issues/
-├── gateway-local-split.md       # Epic (high-level overview)
-├── gateway-01-service-crate.md  # Ticket (specific task)
-├── gateway-02-http-handlers.md
-├── local-01-cli-setup.md
-└── ...
+├── standalone-task.md              # Standalone issue (single task)
+├── gateway-local-split/            # Epic (directory)
+│   ├── index.md                    # Epic overview
+│   ├── 0-service-crate.md          # First ticket
+│   ├── 1-http-handlers.md          # Second ticket
+│   └── 2-cli-integration.md        # Third ticket
+└── fuse-mount-system/
+    ├── index.md
+    ├── 0-basic-mount.md
+    └── 1-write-support.md
 ```
 
 ---
 
 ## Issue Types
 
+### Standalone Issues
+
+Simple tasks that don't need multiple tickets.
+
+- **Location**: `issues/descriptive-name.md`
+- **Use when**: Task is small enough for one session
+- **Lifecycle**: Delete when done, or mark complete for auditing
+
 ### Epics
 
-Large features or initiatives broken into multiple tickets.
+Large features broken into multiple tickets.
 
-- **File naming**: `feature-name.md` (descriptive, no number prefix)
-- **Purpose**: High-level overview, context, and architecture decisions
-- **Contains**: Background, phases, key technical decisions, verification checklists
-- **Links to**: Child tickets for each discrete task
+- **Location**: `issues/epic-name/index.md`
+- **Contains**: Background, architecture decisions, ticket list
+- **Tickets**: Numbered files in same directory (`0-`, `1-`, `2-`, ...)
 
 ### Tickets
 
-Focused, actionable tasks that can be completed in a single session.
+Individual tasks within an epic.
 
-- **File naming**: `feature-NN-short-description.md` (e.g., `gateway-02-http-handlers.md`)
-- **Number prefix**: Suggests execution order within a feature
-- **Purpose**: Everything needed to implement one specific task
-- **Links to**: Parent epic for full context
+- **Naming**: `N-descriptive-name.md` (0-indexed)
+- **Purpose**: Everything needed to implement one task
+- **Order**: Numbers suggest execution order
 
 ---
 
@@ -45,12 +56,10 @@ Focused, actionable tasks that can be completed in a single session.
 # [Ticket Title]
 
 **Status:** Planned | In Progress | Complete
-**Epic:** [epic-name.md](./epic-name.md)
-**Dependencies:** ticket-01 (if any)
 
 ## Objective
 
-One-sentence description of what this ticket accomplishes.
+One-sentence description of what this accomplishes.
 
 ## Implementation Steps
 
@@ -74,28 +83,27 @@ How to test that this is working.
 
 ---
 
-## Picking Up Work
+## Epic Index Format
 
-### Finding available tickets
+```markdown
+# [Epic Title]
 
-1. Look in `issues/` for tickets with `Status: Planned`
-2. Check the parent epic to understand the broader context
-3. Verify dependencies are complete before starting
+## Background
 
-### Working on a ticket
+Why this work is needed.
 
-1. Update the ticket status to `In Progress`
-2. Read the parent epic for context
-3. Follow the implementation steps
-4. Check off acceptance criteria as you go
-5. Run `cargo test` and `cargo clippy` before marking complete
-6. Update status to `Complete`
+## Tickets
 
-### Creating new tickets
+| # | Ticket | Status |
+|---|--------|--------|
+| 0 | [Service crate](./0-service-crate.md) | Complete |
+| 1 | [HTTP handlers](./1-http-handlers.md) | In Progress |
+| 2 | [CLI integration](./2-cli-integration.md) | Planned |
 
-1. If working on an existing epic, follow its naming pattern (e.g., `gateway-03-...`)
-2. For new features, consider creating an epic first if the scope is large
-3. Use the ticket format template above
+## Architecture Decisions
+
+Key technical decisions made for this epic.
+```
 
 ---
 
@@ -110,25 +118,28 @@ How to test that this is working.
 
 ---
 
-## Dependencies
+## Lifecycle
 
-Tickets can have dependencies in two ways:
+### Completing work
 
-1. **Implicit (number order)**: `gateway-01` should be done before `gateway-02`
-2. **Explicit**: Listed in the Dependencies field when non-linear
+When a ticket or issue is done:
 
-Example:
-```markdown
-**Dependencies:** gateway-01-service-crate, common-principal-role
-```
+1. Mark status as `Complete`
+2. Optionally delete the file (keeps `issues/` clean)
+3. Or keep it for auditing past work
+
+### Creating new work
+
+1. **Simple task**: Create `issues/descriptive-name.md`
+2. **Large feature**: Create `issues/epic-name/` directory with `index.md`
+3. **Add tickets**: Create `0-first-task.md`, `1-second-task.md`, etc.
 
 ---
 
 ## Best Practices
 
 - Keep tickets small enough to complete in one session
+- Use 0-indexed numbering for execution order
 - Reference specific file paths in implementation steps
-- Include code snippets for complex changes
-- Always link back to the parent epic
-- Update status immediately when starting/finishing work
-- Run full test suite before marking complete
+- Update status immediately when starting/finishing
+- Run `cargo test && cargo clippy` before marking complete
