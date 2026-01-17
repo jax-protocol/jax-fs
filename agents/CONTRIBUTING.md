@@ -42,12 +42,13 @@ This guide covers how to contribute to jax-bucket, whether you're an AI agent or
 **Examples:**
 ```rust
 // Good - descriptive
-pub async fn add_principal(&mut self, peer: PublicKey, role: PrincipalRole)
+pub async fn add_owner(&mut self, peer: PublicKey) -> Result<(), MountError>
+pub async fn add_mirror(&mut self, peer: PublicKey)
 pub fn is_published(&self) -> bool
 pub struct MirrorCannotMount;
 
 // Bad - too short or ambiguous
-pub async fn add(&mut self, p: PublicKey, r: PrincipalRole)
+pub async fn add(&mut self, p: PublicKey)
 pub fn published(&self) -> bool
 pub struct MirrorError;
 ```
