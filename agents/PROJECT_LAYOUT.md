@@ -29,8 +29,10 @@ jax-bucket/
 ├── crates/
 │   ├── app/
 │   │   ├── Cargo.toml
+│   │   ├── README.md                   # Crate README (crates.io)
 │   │   ├── build.rs
 │   │   ├── agents/                     # App-specific agent docs
+│   │   │   ├── sqlite-sync-provider-example.md
 │   │   │   └── templating/
 │   │   │       ├── template-structure.md
 │   │   │       └── templating-ui-system.md
@@ -151,6 +153,7 @@ jax-bucket/
 │   │
 │   └── common/
 │       ├── Cargo.toml
+│       ├── README.md                   # Crate README (crates.io)
 │       ├── build.rs
 │       ├── src/
 │       │   ├── lib.rs
@@ -216,11 +219,6 @@ jax-bucket/
 │   ├── RELEASE.md
 │   ├── RUST_PATTERNS.md
 │   └── SUCCESS_CRITERIA.md
-│
-├── docs/
-│   ├── README.md
-│   ├── usage.md
-│   └── sqlite-sync-provider-example.md
 │
 ├── issues/                             # Issue tracking
 │

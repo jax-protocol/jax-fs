@@ -2,13 +2,12 @@
 
 [![Crates.io](https://img.shields.io/crates/v/jax-bucket.svg)](https://crates.io/crates/jax-bucket)
 [![Documentation](https://docs.rs/jax-common/badge.svg)](https://docs.rs/jax-common)
-[![CI](https://github.com/jax-ethdenver-2025/jax-buckets/actions/workflows/ci.yml/badge.svg)](https://github.com/jax-ethdenver-2025/jax-buckets/actions/workflows/ci.yml)
+[![CI](https://github.com/jax-protocol/jax-buckets/actions/workflows/ci.yml/badge.svg)](https://github.com/jax-protocol/jax-buckets/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Rust Version](https://img.shields.io/badge/rust-1.75%2B-blue.svg)](https://www.rust-lang.org)
 
 **End-to-End Encrypted Storage Buckets with Peer-to-Peer Synchronization**
 
-> **⚠️ SECURITY DISCLAIMER**
+> **SECURITY DISCLAIMER**
 >
 > **This software has NOT been audited by security professionals and is NOT production-ready.**
 >
@@ -22,80 +21,47 @@ JaxBucket is a local-first, encrypted storage system built on [Iroh](https://iro
 
 ## Features
 
-- 🔒 **End-to-End Encryption**: All files encrypted with ChaCha20-Poly1305 AEAD
-- 🌐 **P2P Sync**: Automatic synchronization via Iroh's networking stack
-- 📦 **Content-Addressed**: Files and directories stored as immutable, hash-linked DAGs
-- 🔑 **Cryptographic Key Sharing**: ECDH + AES Key Wrap for secure multi-device access
-- 🌳 **Merkle DAG Structure**: Efficient verification and deduplication
-- 🎯 **Local-First**: Works offline, syncs when connected
-- 📌 **Selective Pinning**: Control which content to keep locally
-- 🌍 **DHT Discovery**: Find peers via distributed hash table
+- **End-to-End Encryption**: All files encrypted with ChaCha20-Poly1305
+- **P2P Sync**: Automatic synchronization via Iroh's networking stack
+- **Content-Addressed**: Files stored as immutable, hash-linked DAGs
+- **Cryptographic Access Control**: ECDH + AES Key Wrap for secure multi-device access
+- **Local-First**: Works offline, syncs when connected
 
 ## Quick Start
 
 ```bash
-# Install JaxBucket
 cargo install jax-bucket
 
-# Initialize configuration
 jax init
-
-# Start the service
-jax service
-
-# Open web UI at http://localhost:8080
+jax daemon
+jax bucket create my-bucket
+jax bucket add <bucket-id> ./file.txt
+jax bucket ls <bucket-id>
 ```
 
-For detailed installation instructions and requirements, see [INSTALL.md](INSTALL.md).
+## Crates
+
+| Crate | Description |
+|-------|-------------|
+| [jax-bucket](crates/app/) | CLI and daemon binary |
+| [jax-common](crates/common/) | Core library (crypto, mount, peer) |
 
 ## Documentation
 
-- **[INSTALL.md](INSTALL.md)** - Installation instructions and system requirements
-- **[USAGE.md](USAGE.md)** - How to use JaxBucket (CLI, Web UI, API)
-- **[PROTOCOL.md](PROTOCOL.md)** - Technical protocol specification and data model
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and environment
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[agents/RELEASE.md](agents/RELEASE.md)** - Release process
-
-## Use Cases
-
-- **Personal Cloud**: Sync files between your devices without trusting a cloud provider
-- **Collaborative Workspaces**: Share encrypted folders with team members
-- **Backup & Archive**: Distributed, encrypted backups across multiple machines
-- **Research**: Experiment with content-addressed, encrypted storage systems
-
-## Project Structure
-
-```text
-jax-bucket/
-├── crates/
-│   ├── common/          # Core data structures and crypto
-│   ├── service/         # HTTP server and sync manager
-│   └── app/             # CLI binary
-├── README.md            # This file
-├── INSTALL.md           # Installation guide
-├── USAGE.md             # Usage guide
-├── PROTOCOL.md          # Protocol specification
-├── DEVELOPMENT.md       # Development guide
-└── CONTRIBUTING.md      # Contribution guidelines
-```
+- [CLI Usage](crates/app/README.md) - Commands and API reference
+- [Library API](crates/common/README.md) - Core data structures
+- [Architecture](agents/CONCEPTS.md) - System design and concepts
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+See [agents/CONTRIBUTING.md](agents/CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details
+MIT - see [LICENSE](LICENSE)
 
-## Acknowledgments
+## Built With
 
-Built with:
-- **[Iroh](https://iroh.computer/)** - P2P networking and content storage
-- **[Rust](https://www.rust-lang.org/)** - Systems programming language
-- **[DAG-CBOR](https://ipld.io/)** - Merkle DAG serialization
-
-## Contact
-
-- **Issues**: https://github.com/jax-ethdenver-2025/jax-bucket/issues
-- **Discussions**: https://github.com/jax-ethdenver-2025/jax-bucket/discussions
+- [Iroh](https://iroh.computer/) - P2P networking
+- [Rust](https://www.rust-lang.org/) - Systems programming
+- [DAG-CBOR](https://ipld.io/) - Content-addressed serialization
