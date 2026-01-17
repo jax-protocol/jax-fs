@@ -1,6 +1,5 @@
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
-use common::crypto::Secret;
 use common::mount::PrincipalRole;
 use common::prelude::MountError;
 use serde::Serialize;
@@ -24,14 +23,17 @@ pub async fn handler(
     tracing::info!("PUBLISH API: Publishing bucket {}", bucket_id);
 
     // Load mount at current head
-    let mut mount = state.peer().mount(bucket_id).await?;
+    let mount = state.peer().mount(bucket_id).await?;
     tracing::info!("PUBLISH API: Loaded mount for bucket {}", bucket_id);
 
     // Check if already published
     if mount.is_published().await {
         tracing::info!("PUBLISH API: Bucket {} is already published", bucket_id);
         let inner = mount.inner().await;
-        let mirrors_count = inner.manifest().get_shares_by_role(PrincipalRole::Mirror).len();
+        let mirrors_count = inner
+            .manifest()
+            .get_shares_by_role(PrincipalRole::Mirror)
+            .len();
         return Ok((
             http::StatusCode::OK,
             axum::Json(PublishResponse {
@@ -43,21 +45,15 @@ pub async fn handler(
             .into_response());
     }
 
-    // Generate a secret to grant access to mirrors.
-    // This is a temporary secret - the real secret is generated during save().
-    let secret = Secret::generate();
-    mount.publish(&secret).await?;
-    tracing::info!(
-        "PUBLISH API: Granted access to mirrors for bucket {}",
-        bucket_id
-    );
-
-    // Save mount to persist the changes
-    let _new_link = state.peer().save_mount(&mount).await?;
+    // Save and publish the bucket (grants access to mirrors)
+    let _new_link = state.peer().publish_mount(&mount).await?;
 
     // Get mirror count
     let inner = mount.inner().await;
-    let mirrors_count = inner.manifest().get_shares_by_role(PrincipalRole::Mirror).len();
+    let mirrors_count = inner
+        .manifest()
+        .get_shares_by_role(PrincipalRole::Mirror)
+        .len();
 
     tracing::info!(
         "PUBLISH API: Bucket {} published, {} mirrors now have access",

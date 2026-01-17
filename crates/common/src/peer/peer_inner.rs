@@ -300,9 +300,8 @@ impl<L: BucketLogProvider> Peer<L> {
     ///
     /// # Arguments
     ///
-    /// * `bucket_id` - The UUID of the bucket
-    /// * `name` - The name of the bucket (for log metadata)
     /// * `mount` - The mount to save
+    /// * `publish` - If true, publish the bucket (grant mirror access)
     ///
     /// # Returns
     ///
@@ -313,7 +312,7 @@ impl<L: BucketLogProvider> Peer<L> {
     /// Returns error if:
     /// - Failed to save mount to blobs
     /// - Failed to append to log
-    pub async fn save_mount(&self, mount: &Mount) -> Result<Link, MountError>
+    pub async fn save_mount(&self, mount: &Mount, publish: bool) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
@@ -328,7 +327,7 @@ impl<L: BucketLogProvider> Peer<L> {
         let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
-        let (link, previous_link, height) = mount.save(self.blobs()).await?;
+        let (link, previous_link, height) = mount.save(self.blobs(), publish).await?;
         let inner = mount.inner().await;
         let shares = inner.manifest().shares();
         tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());
@@ -384,5 +383,15 @@ impl<L: BucketLogProvider> Peer<L> {
         );
 
         Ok(link)
+    }
+
+    /// Save and publish a mount, granting decryption access to mirrors.
+    ///
+    /// This is a convenience method equivalent to `save_mount(mount, true)`.
+    pub async fn publish_mount(&self, mount: &Mount) -> Result<Link, MountError>
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        self.save_mount(mount, true).await
     }
 }

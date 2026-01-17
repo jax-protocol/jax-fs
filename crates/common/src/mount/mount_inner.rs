@@ -95,7 +95,7 @@ pub enum MountError {
     Codec(#[from] CodecError),
     #[error("share error: {0}")]
     Share(#[from] crate::crypto::SecretShareError),
-    #[error("peers share was not found. this should be impossible")]
+    #[error("peers share was not found")]
     ShareNotFound,
     #[error("mirror cannot mount: bucket is not published")]
     MirrorCannotMount,
@@ -115,8 +115,15 @@ impl Mount {
         inner.link.clone()
     }
 
-    /// Save the current mount state to the blobs store
-    pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
+    /// Save the current mount state to the blobs store.
+    ///
+    /// If `publish` is true, the secret will be stored in plaintext, allowing
+    /// mirrors to decrypt the bucket contents.
+    pub async fn save(
+        &self,
+        blobs: &BlobsStore,
+        publish: bool,
+    ) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
         let (entry_node, mut pins, previous_link, previous_height, manifest_template, ops_log) = {
             let inner = self.0.lock().await;
@@ -164,8 +171,8 @@ impl Mount {
             }
         }
 
-        // If the bucket was published, update the published_secret with the new secret
-        if manifest.is_published() {
+        // Only publish if explicitly requested
+        if publish {
             manifest.publish(&secret);
         }
         manifest.set_pins(pins_link.clone());
@@ -258,9 +265,9 @@ impl Mount {
                 share.recover(secret_key)?
             }
             PrincipalRole::Mirror => {
-                // Mirrors use the published secret (if bucket is published)
+                // Mirrors use the public secret (if bucket is published)
                 manifest
-                    .published_secret()
+                    .public()
                     .cloned()
                     .ok_or(MountError::MirrorCannotMount)?
             }
@@ -318,24 +325,17 @@ impl Mount {
         inner.manifest.add_share(Share::new_mirror(peer));
     }
 
-    /// Remove a principal from this bucket.
-    pub async fn remove_principal(&mut self, peer: &PublicKey) -> bool {
-        let mut inner = self.0.lock().await;
-        inner.manifest.shares_mut().remove(&peer.to_hex()).is_some()
-    }
-
     /// Check if this bucket is published (mirrors can decrypt).
     pub async fn is_published(&self) -> bool {
         let inner = self.0.lock().await;
         inner.manifest.is_published()
     }
 
-    /// Publish this bucket, granting decryption access to all mirrors.
-    /// Once published, cannot be unpublished - the secret is out.
-    pub async fn publish(&mut self, secret: &Secret) -> Result<(), MountError> {
-        let mut inner = self.0.lock().await;
-        inner.manifest.publish(secret);
-        Ok(())
+    /// Save and publish this bucket, granting decryption access to all mirrors.
+    ///
+    /// This is a convenience method equivalent to `save(blobs, true)`.
+    pub async fn publish(&self) -> Result<(Link, Link, u64), MountError> {
+        self.save(&self.1, true).await
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>

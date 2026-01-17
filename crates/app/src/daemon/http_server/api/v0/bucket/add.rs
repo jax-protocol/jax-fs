@@ -198,7 +198,7 @@ pub async fn handler(
 
     let bucket_link = if successful > 0 {
         tracing::info!("Saving mount (at least one file succeeded)");
-        state.peer().save_mount(&mount).await.map_err(|e| {
+        state.peer().save_mount(&mount, false).await.map_err(|e| {
             tracing::error!("Failed to save mount: {}", e);
             tracing::error!("Error details: {:?}", e);
             e

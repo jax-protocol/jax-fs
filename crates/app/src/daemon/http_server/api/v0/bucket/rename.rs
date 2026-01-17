@@ -101,7 +101,7 @@ pub async fn handler(
     tracing::info!("RENAME API: Added file to {}", req.new_path);
 
     // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, false).await?;
 
     tracing::info!(
         "RENAME API: Renamed {} to {} in bucket {}, new link: {}",

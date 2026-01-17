@@ -3,7 +3,7 @@
 use std::io::Cursor;
 use std::path::PathBuf;
 
-use common::crypto::{Secret, SecretKey};
+use common::crypto::SecretKey;
 use common::mount::{Mount, MountError};
 use common::peer::BlobsStore;
 use tempfile::TempDir;
@@ -32,12 +32,10 @@ async fn test_mirror_cannot_mount_unpublished_bucket() {
 
     // Add a mirror peer (without publishing)
     let mirror_key = SecretKey::generate();
-    mount
-        .add_mirror(mirror_key.public())
-        .await;
+    mount.add_mirror(mirror_key.public()).await;
 
-    // Save the mount
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    // Save the mount (not published)
+    let (link, _, _) = mount.save(&blobs, false).await.unwrap();
 
     // Mirror tries to mount - should fail because bucket is not published
     let result = Mount::load(&link, &mirror_key, &blobs).await;
@@ -70,16 +68,10 @@ async fn test_mirror_can_mount_published_bucket() {
 
     // Add a mirror peer
     let mirror_key = SecretKey::generate();
-    mount
-        .add_mirror(mirror_key.public())
-        .await;
+    mount.add_mirror(mirror_key.public()).await;
 
-    // Publish the bucket - this grants decryption access to mirrors
-    let secret = Secret::generate();
-    mount.publish(&secret).await.unwrap();
-
-    // Save the mount
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    // Publish the bucket - this saves and grants decryption access to mirrors
+    let (link, _, _) = mount.publish().await.unwrap();
 
     // Mirror loads the mount - should succeed now that bucket is published
     let mirror_mount = Mount::load(&link, &mirror_key, &blobs)
@@ -114,12 +106,10 @@ async fn test_owner_can_always_mount() {
 
     // Add a mirror (unpublished)
     let mirror_key = SecretKey::generate();
-    mount
-        .add_mirror(mirror_key.public())
-        .await;
+    mount.add_mirror(mirror_key.public()).await;
 
-    // Save
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    // Save (not published)
+    let (link, _, _) = mount.save(&blobs, false).await.unwrap();
 
     // Owner can still mount even though there's an unpublished mirror
     let owner_mount = Mount::load(&link, &owner_key, &blobs)

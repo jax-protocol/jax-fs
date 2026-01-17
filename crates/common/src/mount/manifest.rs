@@ -11,7 +11,7 @@
 //! ## Encryption Model
 //!
 //! - **Owners** have an encrypted [`SecretShare`] that they can decrypt with their private key
-//! - **Mirrors** have no individual share; they use [`Manifest::published_secret`] when available
+//! - **Mirrors** have no individual share; they use [`Manifest::public`] when available
 //! - **Publishing** stores the bucket's secret in plaintext, making it readable by anyone with the manifest
 //!
 //! ## Versioning
@@ -39,12 +39,12 @@ use super::principal::{Principal, PrincipalRole};
 /// The share structure differs by role:
 ///
 /// - **Owners**: Always have `Some(SecretShare)` encrypted to their public key
-/// - **Mirrors**: Always have `None`; use the manifest's `published_secret` instead
+/// - **Mirrors**: Always have `None`; use the manifest's `public` secret instead
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Share {
     principal: Principal,
     /// The encrypted share of the bucket's secret key.
-    /// Only owners have this; mirrors use the manifest's published_secret instead.
+    /// Only owners have this; mirrors use the manifest's public secret instead.
     share: Option<SecretShare>,
 }
 
@@ -63,7 +63,7 @@ impl Share {
     /// Create a new mirror share.
     ///
     /// Mirrors don't have individual encrypted shares. They use the manifest's
-    /// `published_secret` field for decryption once the bucket is published.
+    /// `public` field for decryption once the bucket is published.
     pub fn new_mirror(public_key: PublicKey) -> Self {
         Self {
             principal: Principal {
@@ -158,10 +158,9 @@ pub struct Manifest {
     /// Plaintext secret for public read access.
     ///
     /// When set, anyone with the manifest can decrypt bucket contents.
-    /// Once published, the publicity of a version of bucket cannot be revoked
-    /// - the secret is exposed within the version history.
+    /// Publishing is opt-in per version via `save(publish: true)`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    published_secret: Option<Secret>,
+    public: Option<Secret>,
 }
 
 impl BlockEncoded<DagCborCodec> for Manifest {}
@@ -206,7 +205,7 @@ impl Manifest {
             height,
             version: Version::default(),
             ops_log: None,
-            published_secret: None,
+            public: None,
         }
     }
 
@@ -277,10 +276,7 @@ impl Manifest {
 
     /// Get all shares with a specific role.
     pub fn get_shares_by_role(&self, role: PrincipalRole) -> Vec<&Share> {
-        self.shares
-            .values()
-            .filter(|s| *s.role() == role)
-            .collect()
+        self.shares.values().filter(|s| *s.role() == role).collect()
     }
 
     /// Check if the bucket is published.
@@ -288,12 +284,12 @@ impl Manifest {
     /// Published buckets have their secret stored in plaintext, allowing
     /// anyone with the manifest to decrypt contents.
     pub fn is_published(&self) -> bool {
-        self.published_secret.is_some()
+        self.public.is_some()
     }
 
-    /// Get the published secret if available.
-    pub fn published_secret(&self) -> Option<&Secret> {
-        self.published_secret.as_ref()
+    /// Get the public secret if available.
+    pub fn public(&self) -> Option<&Secret> {
+        self.public.as_ref()
     }
 
     /* Setters */
@@ -333,10 +329,10 @@ impl Manifest {
 
     /// Publish the bucket by storing the secret in plaintext.
     ///
-    /// **Warning**: This is irreversible. Once published, the secret is exposed
+    /// **Warning**: Once published, this version's secret is exposed
     /// and anyone with the manifest can decrypt bucket contents.
     pub fn publish(&mut self, secret: &Secret) {
-        self.published_secret = Some(secret.clone());
+        self.public = Some(secret.clone());
     }
 }
 

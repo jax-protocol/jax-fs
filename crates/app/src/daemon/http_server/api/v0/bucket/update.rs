@@ -113,7 +113,7 @@ pub async fn handler(
     tracing::info!("UPDATE API: Added new content to {}", mount_path);
 
     // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, false).await?;
 
     tracing::info!(
         "UPDATE API: Updated {} in bucket {}, new link: {}",

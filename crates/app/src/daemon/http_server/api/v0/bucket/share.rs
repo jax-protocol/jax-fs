@@ -79,7 +79,7 @@ pub async fn handler(
 
     tracing::info!("SHARE API: Calling save_mount for bucket {}", req.bucket_id);
     // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, false).await?;
 
     tracing::info!(
         "SHARE API: Bucket {} shared with peer {}, new link: {}",

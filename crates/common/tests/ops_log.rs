@@ -52,7 +52,7 @@ async fn test_ops_log_persists_across_save_load() {
     mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
 
     // Save
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    let (link, _, _) = mount.save(&blobs, false).await.unwrap();
 
     // Load the mount
     let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
