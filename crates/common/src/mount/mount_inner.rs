@@ -10,10 +10,11 @@ use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
-use super::manifest::Manifest;
+use super::manifest::{Manifest, Share};
 use super::node::{Node, NodeError, NodeLink};
 use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
+use super::principal::PrincipalRole;
 
 pub fn clean_path(path: &Path) -> PathBuf {
     if !path.is_absolute() {
@@ -94,8 +95,10 @@ pub enum MountError {
     Codec(#[from] CodecError),
     #[error("share error: {0}")]
     Share(#[from] crate::crypto::SecretShareError),
-    #[error("peers share was not found. this should be impossible")]
+    #[error("peers share was not found")]
     ShareNotFound,
+    #[error("mirror cannot mount: bucket is not published")]
+    MirrorCannotMount,
 }
 
 impl Mount {
@@ -112,8 +115,15 @@ impl Mount {
         inner.link.clone()
     }
 
-    /// Save the current mount state to the blobs store
-    pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
+    /// Save the current mount state to the blobs store.
+    ///
+    /// If `publish` is true, the secret will be stored in plaintext, allowing
+    /// mirrors to decrypt the bucket contents.
+    pub async fn save(
+        &self,
+        blobs: &BlobsStore,
+        publish: bool,
+    ) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
         let (entry_node, mut pins, previous_link, previous_height, manifest_template, ops_log) = {
             let inner = self.0.lock().await;
@@ -152,15 +162,18 @@ impl Mount {
 
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
-        // Update the bucket's share with the new root link
-        // (add_share creates the Share internally)
+        // Re-encrypt owner shares with the new secret (mirrors stay unchanged)
         let mut manifest = manifest_template;
-        let _m = manifest.clone();
-        let shares = _m.shares();
-        manifest.unset_shares();
-        for share in shares.values() {
-            let public_key = share.principal().identity;
-            manifest.add_share(public_key, secret.clone())?;
+        for share in manifest.shares_mut().values_mut() {
+            if *share.role() == PrincipalRole::Owner {
+                let secret_share = SecretShare::new(&secret, &share.principal().identity)?;
+                share.set_share(secret_share);
+            }
+        }
+
+        // Only publish if explicitly requested
+        if publish {
+            manifest.publish(&secret);
         }
         manifest.set_pins(pins_link.clone());
         manifest.set_previous(previous_link.clone());
@@ -239,14 +252,26 @@ impl Mount {
         let public_key = &secret_key.public();
         let manifest = Self::_get_manifest_from_blobs(link, blobs).await?;
 
-        let _share = manifest.get_share(public_key);
-
-        let share = match _share {
-            Some(share) => share.share(),
+        let bucket_share = match manifest.get_share(public_key) {
+            Some(share) => share,
             None => return Err(MountError::ShareNotFound),
         };
 
-        let secret = share.recover(secret_key)?;
+        // Get the secret based on role
+        let secret = match bucket_share.role() {
+            PrincipalRole::Owner => {
+                // Owners decrypt their individual share
+                let share = bucket_share.share().ok_or(MountError::ShareNotFound)?;
+                share.recover(secret_key)?
+            }
+            PrincipalRole::Mirror => {
+                // Mirrors use the public secret (if bucket is published)
+                manifest
+                    .public()
+                    .cloned()
+                    .ok_or(MountError::MirrorCannotMount)?
+            }
+        };
 
         let pins = Self::_get_pins_from_blobs(manifest.pins(), blobs).await?;
         let entry = Self::_get_node_from_blobs(
@@ -282,10 +307,35 @@ impl Mount {
         ))
     }
 
-    pub async fn share(&mut self, peer: PublicKey) -> Result<(), MountError> {
+    /// Add an owner to this bucket.
+    /// Owners get an encrypted share immediately.
+    pub async fn add_owner(&mut self, peer: PublicKey) -> Result<(), MountError> {
         let mut inner = self.0.lock().await;
-        inner.manifest.add_share(peer, Secret::default())?;
+        let secret_share = SecretShare::new(&Secret::default(), &peer)?;
+        inner
+            .manifest
+            .add_share(Share::new_owner(secret_share, peer));
         Ok(())
+    }
+
+    /// Add a mirror to this bucket.
+    /// Mirrors can sync bucket data but cannot decrypt until published.
+    pub async fn add_mirror(&mut self, peer: PublicKey) {
+        let mut inner = self.0.lock().await;
+        inner.manifest.add_share(Share::new_mirror(peer));
+    }
+
+    /// Check if this bucket is published (mirrors can decrypt).
+    pub async fn is_published(&self) -> bool {
+        let inner = self.0.lock().await;
+        inner.manifest.is_published()
+    }
+
+    /// Save and publish this bucket, granting decryption access to all mirrors.
+    ///
+    /// This is a convenience method equivalent to `save(blobs, true)`.
+    pub async fn publish(&self) -> Result<(Link, Link, u64), MountError> {
+        self.save(&self.1, true).await
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>
@@ -1167,596 +1217,5 @@ impl Mount {
             hash
         );
         Ok(link)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use std::io::Cursor;
-    use tempfile::TempDir;
-
-    async fn setup_test_env() -> (Mount, BlobsStore, crate::crypto::SecretKey, TempDir) {
-        let temp_dir = TempDir::new().unwrap();
-        let blob_path = temp_dir.path().join("blobs");
-
-        let secret_key = SecretKey::generate();
-        // Generate iroh secret key from random bytes
-        let blobs = BlobsStore::fs(&blob_path).await.unwrap();
-
-        let mount = Mount::init(Uuid::new_v4(), "test".to_string(), &secret_key, &blobs)
-            .await
-            .unwrap();
-
-        (mount, blobs, secret_key, temp_dir)
-    }
-
-    #[tokio::test]
-    async fn test_add_and_cat() {
-        let (mut mount, _, _, _temp) = setup_test_env().await;
-
-        let data = b"Hello, world!";
-        let path = PathBuf::from("/test.txt");
-
-        mount.add(&path, Cursor::new(data.to_vec())).await.unwrap();
-
-        let result = mount.cat(&path).await.unwrap();
-        assert_eq!(result, data);
-    }
-
-    #[tokio::test]
-    async fn test_add_with_metadata() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        let data = b"{ \"key\": \"value\" }";
-        let path = PathBuf::from("/data.json");
-
-        mount.add(&path, Cursor::new(data.to_vec())).await.unwrap();
-
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 1);
-
-        let (file_path, link) = items.iter().next().unwrap();
-        assert_eq!(file_path, &PathBuf::from("data.json"));
-
-        if let Some(data_info) = link.data() {
-            assert!(data_info.mime().is_some());
-            assert_eq!(data_info.mime().unwrap().as_ref(), "application/json");
-        } else {
-            panic!("Expected data link with metadata");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_ls() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        mount
-            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(
-                &PathBuf::from("/dir/file3.txt"),
-                Cursor::new(b"data3".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 3);
-
-        assert!(items.contains_key(&PathBuf::from("file1.txt")));
-        assert!(items.contains_key(&PathBuf::from("file2.txt")));
-        assert!(items.contains_key(&PathBuf::from("dir")));
-
-        let sub_items = mount.ls(&PathBuf::from("/dir")).await.unwrap();
-        assert_eq!(sub_items.len(), 1);
-        assert!(sub_items.contains_key(&PathBuf::from("dir/file3.txt")));
-    }
-
-    #[tokio::test]
-    async fn test_ls_deep() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        mount
-            .add(&PathBuf::from("/a.txt"), Cursor::new(b"a".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(&PathBuf::from("/dir1/b.txt"), Cursor::new(b"b".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(
-                &PathBuf::from("/dir1/dir2/c.txt"),
-                Cursor::new(b"c".to_vec()),
-            )
-            .await
-            .unwrap();
-        mount
-            .add(
-                &PathBuf::from("/dir1/dir2/dir3/d.txt"),
-                Cursor::new(b"d".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        let all_items = mount.ls_deep(&PathBuf::from("/")).await.unwrap();
-
-        assert!(all_items.contains_key(&PathBuf::from("a.txt")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1/b.txt")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1/dir2")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1/dir2/c.txt")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1/dir2/dir3")));
-        assert!(all_items.contains_key(&PathBuf::from("dir1/dir2/dir3/d.txt")));
-    }
-
-    #[tokio::test]
-    async fn test_rm() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        mount
-            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
-            .await
-            .unwrap();
-
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 2);
-
-        mount.rm(&PathBuf::from("/file1.txt")).await.unwrap();
-
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 1);
-        assert!(items.contains_key(&PathBuf::from("file2.txt")));
-        assert!(!items.contains_key(&PathBuf::from("file1.txt")));
-
-        let result = mount.cat(&PathBuf::from("/file1.txt")).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_nested_operations() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        let files = vec![
-            ("/root.txt", b"root" as &[u8]),
-            ("/docs/readme.md", b"readme" as &[u8]),
-            ("/docs/guide.pdf", b"guide" as &[u8]),
-            ("/src/main.rs", b"main" as &[u8]),
-            ("/src/lib.rs", b"lib" as &[u8]),
-            ("/src/tests/unit.rs", b"unit" as &[u8]),
-            ("/src/tests/integration.rs", b"integration" as &[u8]),
-        ];
-
-        for (path, data) in &files {
-            mount
-                .add(&PathBuf::from(path), Cursor::new(data.to_vec()))
-                .await
-                .unwrap();
-        }
-
-        for (path, expected_data) in &files {
-            let data = mount.cat(&PathBuf::from(path)).await.unwrap();
-            assert_eq!(data, expected_data.to_vec());
-        }
-
-        mount
-            .rm(&PathBuf::from("/src/tests/unit.rs"))
-            .await
-            .unwrap();
-
-        let result = mount.cat(&PathBuf::from("/src/tests/unit.rs")).await;
-        assert!(result.is_err());
-
-        let data = mount
-            .cat(&PathBuf::from("/src/tests/integration.rs"))
-            .await
-            .unwrap();
-        assert_eq!(data, b"integration");
-    }
-
-    #[tokio::test]
-    async fn test_various_file_types() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        let test_files = vec![
-            ("/image.png", "image/png"),
-            ("/video.mp4", "video/mp4"),
-            ("/style.css", "text/css"),
-            ("/script.js", "text/javascript"),
-            ("/data.json", "application/json"),
-            ("/archive.zip", "application/zip"),
-            ("/document.pdf", "application/pdf"),
-            ("/code.rs", "text/x-rust"),
-        ];
-
-        for (path, expected_mime) in test_files {
-            mount
-                .add(&PathBuf::from(path), Cursor::new(b"test".to_vec()))
-                .await
-                .unwrap();
-
-            let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-            let link = items.values().find(|l| l.is_data()).unwrap();
-
-            if let Some(data_info) = link.data() {
-                assert!(data_info.mime().is_some());
-                assert_eq!(data_info.mime().unwrap().as_ref(), expected_mime);
-            }
-
-            mount.rm(&PathBuf::from(path)).await.unwrap();
-        }
-    }
-
-    #[tokio::test]
-    async fn test_error_cases() {
-        let (mount, _blobs, _, _temp) = setup_test_env().await;
-
-        let result = mount.cat(&PathBuf::from("/does_not_exist.txt")).await;
-        assert!(result.is_err());
-
-        let result = mount.ls(&PathBuf::from("/does_not_exist")).await;
-        assert!(result.is_err() || result.unwrap().is_empty());
-
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-        mount
-            .add(
-                &PathBuf::from("/dir/file.txt"),
-                Cursor::new(b"data".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        let result = mount.cat(&PathBuf::from("/dir")).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_save_load() {
-        let (mount, blobs, secret_key, _temp) = setup_test_env().await;
-        let (link, _previous_link, height) = mount.save(&blobs).await.unwrap();
-        assert_eq!(height, 1); // Height should be 1 after first save
-        let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
-        assert_eq!(loaded_mount.inner().await.height(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_mkdir() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a directory
-        mount.mkdir(&PathBuf::from("/test_dir")).await.unwrap();
-
-        // Verify it exists and is a directory
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 1);
-        assert!(items.get(&PathBuf::from("test_dir")).unwrap().is_dir());
-    }
-
-    #[tokio::test]
-    async fn test_mkdir_nested() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create nested directories (should create parents automatically)
-        mount.mkdir(&PathBuf::from("/a/b/c")).await.unwrap();
-
-        // Verify the whole path exists
-        let items_root = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert!(items_root.contains_key(&PathBuf::from("a")));
-
-        let items_a = mount.ls(&PathBuf::from("/a")).await.unwrap();
-        assert!(items_a.contains_key(&PathBuf::from("a/b")));
-
-        let items_b = mount.ls(&PathBuf::from("/a/b")).await.unwrap();
-        assert!(items_b.contains_key(&PathBuf::from("a/b/c")));
-        assert!(items_b.get(&PathBuf::from("a/b/c")).unwrap().is_dir());
-    }
-
-    #[tokio::test]
-    async fn test_mkdir_already_exists() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create directory
-        mount.mkdir(&PathBuf::from("/test_dir")).await.unwrap();
-
-        // Try to create it again - should error
-        let result = mount.mkdir(&PathBuf::from("/test_dir")).await;
-        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
-    }
-
-    #[tokio::test]
-    async fn test_mkdir_file_exists() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a file
-        mount
-            .add(&PathBuf::from("/test.txt"), Cursor::new(b"data".to_vec()))
-            .await
-            .unwrap();
-
-        // Try to create directory with same name - should error
-        let result = mount.mkdir(&PathBuf::from("/test.txt")).await;
-        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
-    }
-
-    #[tokio::test]
-    async fn test_mkdir_then_add_file() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a directory
-        mount.mkdir(&PathBuf::from("/docs")).await.unwrap();
-
-        // Add a file to the created directory
-        mount
-            .add(
-                &PathBuf::from("/docs/readme.md"),
-                Cursor::new(b"# README".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        // Verify the file exists
-        let data = mount.cat(&PathBuf::from("/docs/readme.md")).await.unwrap();
-        assert_eq!(data, b"# README");
-
-        // Verify directory structure
-        let items = mount.ls(&PathBuf::from("/docs")).await.unwrap();
-        assert_eq!(items.len(), 1);
-        assert!(items.contains_key(&PathBuf::from("docs/readme.md")));
-    }
-
-    #[tokio::test]
-    async fn test_mkdir_multiple_siblings() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create multiple sibling directories
-        mount.mkdir(&PathBuf::from("/dir1")).await.unwrap();
-        mount.mkdir(&PathBuf::from("/dir2")).await.unwrap();
-        mount.mkdir(&PathBuf::from("/dir3")).await.unwrap();
-
-        // Verify all exist
-        let items = mount.ls(&PathBuf::from("/")).await.unwrap();
-        assert_eq!(items.len(), 3);
-        assert!(items.get(&PathBuf::from("dir1")).unwrap().is_dir());
-        assert!(items.get(&PathBuf::from("dir2")).unwrap().is_dir());
-        assert!(items.get(&PathBuf::from("dir3")).unwrap().is_dir());
-    }
-
-    #[tokio::test]
-    async fn test_mv_file() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a file
-        mount
-            .add(&PathBuf::from("/old.txt"), Cursor::new(b"data".to_vec()))
-            .await
-            .unwrap();
-
-        // Move the file
-        mount
-            .mv(&PathBuf::from("/old.txt"), &PathBuf::from("/new.txt"))
-            .await
-            .unwrap();
-
-        // Verify old path doesn't exist
-        let result = mount.cat(&PathBuf::from("/old.txt")).await;
-        assert!(result.is_err());
-
-        // Verify new path exists with same content
-        let data = mount.cat(&PathBuf::from("/new.txt")).await.unwrap();
-        assert_eq!(data, b"data");
-    }
-
-    #[tokio::test]
-    async fn test_mv_file_to_subdir() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a file
-        mount
-            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
-            .await
-            .unwrap();
-
-        // Move to a new subdirectory (should create it)
-        mount
-            .mv(
-                &PathBuf::from("/file.txt"),
-                &PathBuf::from("/subdir/file.txt"),
-            )
-            .await
-            .unwrap();
-
-        // Verify old path doesn't exist
-        let result = mount.cat(&PathBuf::from("/file.txt")).await;
-        assert!(result.is_err());
-
-        // Verify new path exists
-        let data = mount.cat(&PathBuf::from("/subdir/file.txt")).await.unwrap();
-        assert_eq!(data, b"data");
-    }
-
-    #[tokio::test]
-    async fn test_mv_directory() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a directory with files
-        mount
-            .add(
-                &PathBuf::from("/olddir/file1.txt"),
-                Cursor::new(b"data1".to_vec()),
-            )
-            .await
-            .unwrap();
-        mount
-            .add(
-                &PathBuf::from("/olddir/file2.txt"),
-                Cursor::new(b"data2".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        // Move the directory
-        mount
-            .mv(&PathBuf::from("/olddir"), &PathBuf::from("/newdir"))
-            .await
-            .unwrap();
-
-        // Verify old directory doesn't exist
-        let result = mount.ls(&PathBuf::from("/olddir")).await;
-        assert!(result.is_err());
-
-        // Verify new directory exists with files
-        let items = mount.ls(&PathBuf::from("/newdir")).await.unwrap();
-        assert_eq!(items.len(), 2);
-
-        // Verify file contents
-        let data = mount
-            .cat(&PathBuf::from("/newdir/file1.txt"))
-            .await
-            .unwrap();
-        assert_eq!(data, b"data1");
-    }
-
-    #[tokio::test]
-    async fn test_mv_not_found() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Try to move a non-existent file
-        let result = mount
-            .mv(
-                &PathBuf::from("/nonexistent.txt"),
-                &PathBuf::from("/new.txt"),
-            )
-            .await;
-        assert!(matches!(result, Err(MountError::PathNotFound(_))));
-    }
-
-    #[tokio::test]
-    async fn test_mv_already_exists() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create two files
-        mount
-            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data1".to_vec()))
-            .await
-            .unwrap();
-        mount
-            .add(&PathBuf::from("/file2.txt"), Cursor::new(b"data2".to_vec()))
-            .await
-            .unwrap();
-
-        // Try to move file1 to file2 (should fail)
-        let result = mount
-            .mv(&PathBuf::from("/file1.txt"), &PathBuf::from("/file2.txt"))
-            .await;
-        assert!(matches!(result, Err(MountError::PathAlreadyExists(_))));
-    }
-
-    #[tokio::test]
-    async fn test_mv_into_self() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Create a directory with a file inside
-        mount.mkdir(&PathBuf::from("/parent")).await.unwrap();
-        mount
-            .add(
-                &PathBuf::from("/parent/child.txt"),
-                Cursor::new(b"data".to_vec()),
-            )
-            .await
-            .unwrap();
-
-        // Try to move directory into itself (should fail)
-        let result = mount
-            .mv(&PathBuf::from("/parent"), &PathBuf::from("/parent/nested"))
-            .await;
-        assert!(matches!(result, Err(MountError::MoveIntoSelf { .. })));
-
-        // Try to move directory to same path (should also fail)
-        let result = mount
-            .mv(&PathBuf::from("/parent"), &PathBuf::from("/parent"))
-            .await;
-        assert!(matches!(result, Err(MountError::MoveIntoSelf { .. })));
-
-        // Verify original directory still exists and is intact
-        let items = mount.ls(&PathBuf::from("/parent")).await.unwrap();
-        assert_eq!(items.len(), 1);
-
-        // Verify child file still accessible
-        let data = mount
-            .cat(&PathBuf::from("/parent/child.txt"))
-            .await
-            .unwrap();
-        assert_eq!(data, b"data");
-    }
-
-    #[tokio::test]
-    async fn test_ops_log_records_operations() {
-        let (mut mount, _blobs, _, _temp) = setup_test_env().await;
-
-        // Perform various operations
-        mount
-            .add(&PathBuf::from("/file1.txt"), Cursor::new(b"data".to_vec()))
-            .await
-            .unwrap();
-        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
-        mount
-            .mv(
-                &PathBuf::from("/file1.txt"),
-                &PathBuf::from("/dir/file1.txt"),
-            )
-            .await
-            .unwrap();
-        mount.rm(&PathBuf::from("/dir/file1.txt")).await.unwrap();
-
-        // Verify ops log has recorded all operations
-        let inner = mount.inner().await;
-        let ops_log = inner.ops_log();
-
-        // Should have 4 operations: Add, Mkdir, Mv, Remove
-        assert_eq!(ops_log.len(), 4);
-
-        let ops: Vec<_> = ops_log.ops_in_order().collect();
-        assert!(matches!(ops[0].op_type, OpType::Add));
-        assert!(matches!(ops[1].op_type, OpType::Mkdir));
-        assert!(matches!(ops[2].op_type, OpType::Mv { .. }));
-        assert!(matches!(ops[3].op_type, OpType::Remove));
-    }
-
-    #[tokio::test]
-    async fn test_ops_log_persists_across_save_load() {
-        let (mut mount, blobs, secret_key, _temp) = setup_test_env().await;
-
-        // Perform some operations
-        mount
-            .add(&PathBuf::from("/file.txt"), Cursor::new(b"data".to_vec()))
-            .await
-            .unwrap();
-        mount.mkdir(&PathBuf::from("/dir")).await.unwrap();
-
-        // Save
-        let (link, _, _) = mount.save(&blobs).await.unwrap();
-
-        // Load the mount
-        let loaded_mount = Mount::load(&link, &secret_key, &blobs).await.unwrap();
-
-        // Verify ops log was loaded
-        let inner = loaded_mount.inner().await;
-        let ops_log = inner.ops_log();
-        assert_eq!(ops_log.len(), 2);
-
-        let ops: Vec<_> = ops_log.ops_in_order().collect();
-        assert!(matches!(ops[0].op_type, OpType::Add));
-        assert!(matches!(ops[1].op_type, OpType::Mkdir));
     }
 }

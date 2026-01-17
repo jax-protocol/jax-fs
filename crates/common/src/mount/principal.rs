@@ -1,45 +1,62 @@
-#![allow(clippy::doc_lazy_continuation)]
-#![allow(clippy::doc_overindented_list_items)]
+//! # Principals
+//!
+//! Principals represent identities (public keys) with permissions on a bucket.
+//!
+//! Each principal has:
+//! - An **identity** (Ed25519 public key)
+//! - A **role** defining their access level ([`PrincipalRole`])
+//!
+//! ## Trust Model
+//!
+//! There is no cryptographic enforcement of roles. Role-based access control
+//! is enforced by clients validating bucket updates against the prior state.
+//! Only add principals you trust.
+//!
+//! ## Shares
+//!
+//! Principals may have an associated [`SecretShare`](crate::crypto::SecretShare)
+//! allowing them to decrypt bucket content. The share is stored separately in
+//! [`Share`](super::Share), not in the [`Principal`] struct itself.
 
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::PublicKey;
 
-// TODO (amiller68): it would be cool if I could gaurantee
-//  that principal shares are
-//  - valid (point to the up-to-date entrypoint)
-//  - point to the same entry link
-// For now I assume no one is sharing bogus data / only
-//  add principals that you trust.
-/**
- * Principals
- * ==========
- * Principals are a fancy name for public keys that
- *  have permissions on the bucket.
- * Principals:
- *  - descrive a public key
- *  - which has a role on the bucket (for now we just support 'owner')
- *  - and have a share into the bucket's encryption key
- * To be clear:
- *  - there is no cryptographic validation of the role *other* than
- *     whether or not clients are willing to accept updates given
- *     the prior state of a bucket. It is the responsibility of clients
- *     to check that bucket updates respect principal roles at a given
- *     update
- *  - shares may be assumed to point to the entry of a bucket for
- *     each principal. It is the responsibility of the updater to
- *     share to all principals st they may read the bucket
- */
-
+/// The role of a principal on a bucket.
+///
+/// Roles determine what operations a principal can perform and when they
+/// receive encryption access.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrincipalRole {
+    /// Full read/write access to the bucket.
+    ///
+    /// Owners:
+    /// - Always have an encrypted [`SecretShare`](crate::crypto::SecretShare)
+    /// - Can modify bucket contents (add, remove, move files)
+    /// - Can add/remove other principals
+    /// - Can publish the bucket to grant mirror access
     Owner,
+
+    /// Read-only access after publication.
+    ///
+    /// Mirrors:
+    /// - Can sync bucket data (encrypted blobs) at any time
+    /// - Cannot decrypt content until the bucket is published
+    /// - Once published, read the plaintext secret from the manifest
+    /// - Cannot modify bucket contents
+    /// - Useful for CDN/gateway nodes that serve published content
+    Mirror,
 }
 
-// NOTE (amiller68): we omit the key from the Principal struct
-//  since we use it to index into the Principals map
+/// A principal identity on a bucket.
+///
+/// The principal struct contains the identity and role, but not the encryption
+/// share. Shares are stored separately in [`Share`](super::Share) to allow
+/// mirrors to exist without shares until publication.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Principal {
+    /// The principal's access level.
     pub role: PrincipalRole,
+    /// The principal's Ed25519 public key.
     pub identity: PublicKey,
 }

@@ -48,10 +48,10 @@ pub async fn handler(
     let mut mount = state.peer().mount(req.bucket_id).await?;
     tracing::info!("SHARE API: Loaded mount for bucket {}", req.bucket_id);
 
-    // Share bucket with peer
-    mount.share(peer_public_key).await?;
+    // Share bucket with peer (as owner)
+    mount.add_owner(peer_public_key).await?;
     tracing::info!(
-        "SHARE API: Mount.share() completed for peer {}",
+        "SHARE API: Mount.add_owner() completed for peer {}",
         req.peer_public_key
     );
 

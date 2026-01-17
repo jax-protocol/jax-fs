@@ -300,8 +300,6 @@ impl<L: BucketLogProvider> Peer<L> {
     ///
     /// # Arguments
     ///
-    /// * `bucket_id` - The UUID of the bucket
-    /// * `name` - The name of the bucket (for log metadata)
     /// * `mount` - The mount to save
     ///
     /// # Returns
@@ -328,7 +326,7 @@ impl<L: BucketLogProvider> Peer<L> {
         let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
-        let (link, previous_link, height) = mount.save(self.blobs()).await?;
+        let (link, previous_link, height) = mount.save(self.blobs(), false).await?;
         let inner = mount.inner().await;
         let shares = inner.manifest().shares();
         tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());
