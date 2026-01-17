@@ -92,6 +92,13 @@ impl Share {
     pub fn role(&self) -> &PrincipalRole {
         &self.principal.role
     }
+
+    /* Setters */
+
+    /// Set the encrypted secret share.
+    pub fn set_share(&mut self, share: SecretShare) {
+        self.share = Some(share);
+    }
 }
 
 /// Map of hex-encoded public keys to their shares.

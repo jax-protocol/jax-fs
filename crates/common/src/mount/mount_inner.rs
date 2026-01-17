@@ -157,15 +157,11 @@ impl Mount {
 
         // Re-encrypt owner shares with the new secret (mirrors stay unchanged)
         let mut manifest = manifest_template;
-        let owner_keys: Vec<_> = manifest
-            .get_shares_by_role(PrincipalRole::Owner)
-            .iter()
-            .map(|s| s.principal().identity)
-            .collect();
-
-        for public_key in owner_keys {
-            let secret_share = SecretShare::new(&secret, &public_key)?;
-            manifest.add_share(Share::new_owner(secret_share, public_key));
+        for share in manifest.shares_mut().values_mut() {
+            if *share.role() == PrincipalRole::Owner {
+                let secret_share = SecretShare::new(&secret, &share.principal().identity)?;
+                share.set_share(secret_share);
+            }
         }
 
         // If the bucket was published, update the published_secret with the new secret
