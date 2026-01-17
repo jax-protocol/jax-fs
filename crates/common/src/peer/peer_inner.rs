@@ -301,7 +301,6 @@ impl<L: BucketLogProvider> Peer<L> {
     /// # Arguments
     ///
     /// * `mount` - The mount to save
-    /// * `publish` - If true, publish the bucket (grant mirror access)
     ///
     /// # Returns
     ///
@@ -312,7 +311,7 @@ impl<L: BucketLogProvider> Peer<L> {
     /// Returns error if:
     /// - Failed to save mount to blobs
     /// - Failed to append to log
-    pub async fn save_mount(&self, mount: &Mount, publish: bool) -> Result<Link, MountError>
+    pub async fn save_mount(&self, mount: &Mount) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
@@ -327,7 +326,7 @@ impl<L: BucketLogProvider> Peer<L> {
         let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
-        let (link, previous_link, height) = mount.save(self.blobs(), publish).await?;
+        let (link, previous_link, height) = mount.save(self.blobs(), false).await?;
         let inner = mount.inner().await;
         let shares = inner.manifest().shares();
         tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());
@@ -387,11 +386,80 @@ impl<L: BucketLogProvider> Peer<L> {
 
     /// Save and publish a mount, granting decryption access to mirrors.
     ///
-    /// This is a convenience method equivalent to `save_mount(mount, true)`.
+    /// This publishes the mount (making it accessible to mirrors) and then
+    /// saves it to the log.
     pub async fn publish_mount(&self, mount: &Mount) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
-        self.save_mount(mount, true).await
+        // Get our own public key to exclude from notifications
+        let our_public_key = self.secret_key.public();
+        tracing::info!(
+            "PUBLISH_MOUNT: Our public key: {}",
+            our_public_key.to_hex()
+        );
+
+        let inner_mount = mount.inner().await;
+        let manifest = inner_mount.manifest();
+
+        let bucket_id = *manifest.id();
+        let name = manifest.name().to_string();
+
+        // Publish and save (publish=true grants mirror access)
+        let (link, previous_link, height) = mount.save(self.blobs(), true).await?;
+        let inner = mount.inner().await;
+        let shares = inner.manifest().shares();
+        tracing::info!("PUBLISH_MOUNT: Found {} shares in manifest", shares.len());
+
+        // Append to log
+        self.log_provider
+            .append(bucket_id, name, link.clone(), Some(previous_link), height)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to append to log: {}", e)))?;
+
+        // Dispatch ping jobs for each peer (except ourselves)
+        let mut notified_count = 0;
+        for (peer_key_hex, _share) in shares.iter() {
+            tracing::info!("PUBLISH_MOUNT: Checking share for peer: {}", peer_key_hex);
+
+            // Parse the peer's public key
+            if let Ok(peer_public_key) = PublicKey::from_hex(peer_key_hex) {
+                // Skip ourselves
+                if peer_public_key == our_public_key {
+                    tracing::info!("PUBLISH_MOUNT: Skipping ourselves: {}", peer_key_hex);
+                    continue;
+                }
+
+                tracing::info!(
+                    "PUBLISH_MOUNT: Dispatching PingPeer job for bucket {} to peer {}",
+                    bucket_id,
+                    peer_key_hex
+                );
+                // Dispatch a ping job for this peer
+                if let Err(e) = self
+                    .dispatch(SyncJob::PingPeer(PingPeerJob {
+                        bucket_id,
+                        peer_id: peer_public_key,
+                    }))
+                    .await
+                {
+                    tracing::warn!("Failed to dispatch ping: {}", e);
+                }
+                notified_count += 1;
+            } else {
+                tracing::warn!(
+                    "PUBLISH_MOUNT: Failed to parse peer public key: {}",
+                    peer_key_hex
+                );
+            }
+        }
+
+        tracing::info!(
+            "dispatched {} PingPeer jobs for bucket {}",
+            notified_count,
+            bucket_id
+        );
+
+        Ok(link)
     }
 }
