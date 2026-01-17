@@ -17,7 +17,6 @@ This directory contains documentation designed for AI agents (and human develope
 | [CONCEPTS.md](./CONCEPTS.md) | High-level architecture and key concepts | Understanding the system |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute (agents & humans) | First time contributing |
 | [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md) | Crate structure and packages | Understanding the codebase |
-| [STORAGE.md](./STORAGE.md) | Content-addressed blob storage | Working with data persistence |
 | [RUST_PATTERNS.md](./RUST_PATTERNS.md) | Rust architecture patterns | Writing Rust code |
 | [SUCCESS_CRITERIA.md](./SUCCESS_CRITERIA.md) | CI requirements and checks | Before creating a PR |
 | [RELEASE.md](./RELEASE.md) | Release process and automation | Publishing crates |
@@ -41,16 +40,7 @@ How to contribute to the project:
 - Commit conventions (tied to release automation)
 
 ### [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md)
-Describes the workspace crate structure:
-- **app crate**: CLI and daemon (`jax-bucket` binary)
-- **common crate**: Crypto, mount, peer protocol, blob storage
-- **Key concepts**: Content-addressed storage, encrypted manifests, P2P sync
-
-### [STORAGE.md](./STORAGE.md)
-Data persistence and content-addressed blob storage:
-- Iroh blobs for content storage
-- Encrypted manifests with secret sharing
-- No traditional database - all data is in blobs
+Exhaustive tree of project files with crate descriptions.
 
 ### [RUST_PATTERNS.md](./RUST_PATTERNS.md)
 Architecture patterns for Rust code:

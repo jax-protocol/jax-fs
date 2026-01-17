@@ -184,7 +184,6 @@ All bucket content is encrypted with ChaCha20-Poly1305 (256-bit keys):
 
 - Random nonce per encryption
 - BLAKE3 hash prepended before encryption for integrity
-- Hash can be extracted without full decryption (enables sync verification)
 
 ### Key Sharing (ECDH + AES-KW)
 

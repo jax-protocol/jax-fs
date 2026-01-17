@@ -27,7 +27,6 @@ Before starting work, read the relevant docs in `agents/`:
 - `CONCEPTS.md` - High-level architecture and key concepts
 - `PROJECT_LAYOUT.md` - Crate structure and modules
 - `RUST_PATTERNS.md` - Error handling, async patterns, serialization
-- `STORAGE.md` - Content-addressed storage and encryption
 - `SUCCESS_CRITERIA.md` - CI requirements (must pass before PR)
 
 ## Constraints
