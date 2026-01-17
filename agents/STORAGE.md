@@ -6,7 +6,7 @@ This guide covers data persistence in jax-bucket. There is no traditional databa
 
 - **Storage**: Content-addressed blobs via iroh-blobs
 - **Format**: IPLD DAG-CBOR for structured data
-- **Encryption**: AES-GCM for all bucket content
+- **Encryption**: ChaCha20-Poly1305 for all bucket content
 - **Location**: `~/.jax/blobs/` (configurable)
 
 ---

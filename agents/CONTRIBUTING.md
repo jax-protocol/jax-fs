@@ -13,7 +13,7 @@ This guide covers how to contribute to jax-bucket, whether you're an AI agent or
 
 ### Key Constraints
 
-- **Work only in your workspace** - Don't access files outside your Conductor workspace
+- **Use worktrees for parallel work** - Use `git worktree` when working on multiple features
 - **All tests must pass** - Run `cargo test` before submitting
 - **Clippy must be clean** - Run `cargo clippy` and fix all warnings
 - **Follow Rust idioms** - Use `?` for error propagation, prefer iterators over loops
@@ -21,7 +21,6 @@ This guide covers how to contribute to jax-bucket, whether you're an AI agent or
 ### Code Quality Expectations
 
 - Follow [RUST_PATTERNS.md](./RUST_PATTERNS.md) for Rust code
-- Use `thiserror` for error types, not `anyhow` in library code
 - Write tests for new functionality
 - Keep functions focused - single responsibility
 - Document public APIs with rustdoc comments
@@ -89,60 +88,53 @@ pub struct MirrorError;
    cargo test
    ```
 
-### Working with Conductor
+### Parallel Development with Worktrees
 
-If you're using [Conductor](https://www.conductor.build/) for parallel agent development:
+For working on multiple lifts (features/fixes) in parallel, use git worktrees:
 
-1. Workspaces are created in `.conductor/<workspace-name>/`
-2. Each workspace is an isolated git worktree
-3. See [PR_WORKFLOW.md](./PR_WORKFLOW.md) for details
+```bash
+git worktree add ../my-feature feature/my-feature
+```
 
-### Code Review Guidelines
-
-When reviewing PRs:
-
-**Do check:**
-- Does the code solve the stated problem?
-- Are there appropriate tests?
-- Does it follow existing patterns?
-- Is the error handling appropriate?
-- Are there security concerns (especially around crypto)?
-
-**Don't worry about:**
-- Formatting - `cargo fmt` enforces this
-- Simple linting - `cargo clippy` catches this
-
-### Architecture Decisions
-
-Before making significant changes:
-
-1. **Discuss first** - Open an issue or discuss in PR
-2. **Document the decision** - Update relevant docs or create an issue
-3. **Follow established patterns** - Or document why you're deviating
-
-Key architectural principles:
-- Content-addressed storage - all data is blobs
-- Encrypted by default - all bucket content is encrypted
-- P2P first - sync between peers without central server
-- Principal-based access control - Owners and Mirrors
+Each worktree is an isolated working directory with its own branch.
 
 ---
 
 ## Commit Conventions
 
-Use conventional commit prefixes:
+We use [conventional commits](https://www.conventionalcommits.org/) to automate semantic versioning and changelog generation.
 
-| Prefix | Use For |
-|--------|---------|
-| `feat:` | New features |
-| `fix:` | Bug fixes |
-| `refactor:` | Code refactoring (no behavior change) |
-| `chore:` | Maintenance tasks, dependency updates |
-| `docs:` | Documentation changes |
-| `test:` | Test additions or modifications |
-| `perf:` | Performance improvements |
+### Prefixes and Semver Impact
 
-Example:
+| Prefix | Use For | Version Bump |
+|--------|---------|--------------|
+| `feat:` | New features | Minor (0.1.0 → 0.2.0) |
+| `fix:` | Bug fixes | Patch (0.1.0 → 0.1.1) |
+| `feat!:` | Breaking feature | Major (0.1.0 → 1.0.0) |
+| `fix!:` | Breaking fix | Major (0.1.0 → 1.0.0) |
+| `refactor:` | Code refactoring | None |
+| `chore:` | Maintenance | None |
+| `docs:` | Documentation | None |
+| `test:` | Tests | None |
+| `perf:` | Performance | None |
+
+Breaking changes can also be indicated in the commit body:
+```
+feat: redesign sync protocol
+
+BREAKING CHANGE: sync protocol v2 is incompatible with v1
+```
+
+### How Commits Drive Releases
+
+`cargo-smart-release` scans commit messages since the last tag to determine:
+1. **What version to bump** - Based on `feat:`, `fix:`, and breaking changes
+2. **What goes in the changelog** - All conventional commits are categorized
+
+This means your commit messages directly control the release process. See [RELEASE.md](./RELEASE.md) for full details.
+
+### Example
+
 ```
 feat: add mirror principal role and bucket publishing workflow
 
@@ -165,8 +157,6 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 5. **Wait for CI** - All checks must pass
 6. **Address feedback** - Respond to review comments
 7. **Merge** - Squash merge to main
-
-See [PR_WORKFLOW.md](./PR_WORKFLOW.md) for detailed instructions.
 
 ---
 

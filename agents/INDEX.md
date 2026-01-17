@@ -4,10 +4,9 @@ This directory contains documentation designed for AI agents (and human develope
 
 ## Quick Start
 
-1. Read [TASK_TEMPLATE.md](./TASK_TEMPLATE.md) to understand how to start a task
-2. Run `cargo build` to ensure dependencies compile
-3. Follow the patterns in [RUST_PATTERNS.md](./RUST_PATTERNS.md)
-4. Ensure [SUCCESS_CRITERIA.md](./SUCCESS_CRITERIA.md) are met before creating a PR
+1. Run `cargo build` to ensure dependencies compile
+2. Follow the patterns in [RUST_PATTERNS.md](./RUST_PATTERNS.md)
+3. Ensure [SUCCESS_CRITERIA.md](./SUCCESS_CRITERIA.md) are met before creating a PR
 
 ---
 
@@ -15,27 +14,31 @@ This directory contains documentation designed for AI agents (and human develope
 
 | Document | Purpose | When to Read |
 |----------|---------|--------------|
+| [CONCEPTS.md](./CONCEPTS.md) | High-level architecture and key concepts | Understanding the system |
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute (agents & humans) | First time contributing |
-| [TASK_TEMPLATE.md](./TASK_TEMPLATE.md) | Task template for starting work | Beginning of every task |
 | [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md) | Crate structure and packages | Understanding the codebase |
 | [STORAGE.md](./STORAGE.md) | Content-addressed blob storage | Working with data persistence |
 | [RUST_PATTERNS.md](./RUST_PATTERNS.md) | Rust architecture patterns | Writing Rust code |
 | [SUCCESS_CRITERIA.md](./SUCCESS_CRITERIA.md) | CI requirements and checks | Before creating a PR |
-| [PR_WORKFLOW.md](./PR_WORKFLOW.md) | Git, branching, and PR conventions | Creating PRs |
+| [RELEASE.md](./RELEASE.md) | Release process and automation | Publishing crates |
 | [ISSUES.md](./ISSUES.md) | Issue and ticket conventions | Planning work |
 
 ---
 
 ## Document Summaries
 
+### [CONCEPTS.md](./CONCEPTS.md)
+High-level architecture concepts:
+- Principals and roles (Owner vs Mirror)
+- Shares and secret management
+- Manifest structure and publishing
+- Storage and encryption
+
 ### [CONTRIBUTING.md](./CONTRIBUTING.md)
 How to contribute to the project:
 - **For AI agents**: Constraints, code quality expectations, submission checklist
-- **For humans**: Dev setup, code review guidelines, architecture decisions
-- Commit conventions and PR process
-
-### [TASK_TEMPLATE.md](./TASK_TEMPLATE.md)
-Template for starting a new task. Copy this into your Claude Code conversation and fill in the mission section.
+- **For humans**: Dev setup, worktrees for parallel development
+- Commit conventions (tied to release automation)
 
 ### [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md)
 Describes the workspace crate structure:
@@ -62,11 +65,12 @@ What "done" means:
 - `cargo clippy` must be clean
 - No compiler warnings
 
-### [PR_WORKFLOW.md](./PR_WORKFLOW.md)
-Git and PR conventions:
-- Branch naming
-- Commit conventions
-- PR templates and CI pipeline
+### [RELEASE.md](./RELEASE.md)
+Release process and crate publishing:
+- Conventional commits drive semver bumps
+- Automated release PRs via `release-pr.yml`
+- Publishing to crates.io via `publish-crate.yml`
+- Manual release with `cargo-smart-release`
 
 ### [ISSUES.md](./ISSUES.md)
 How issues are tracked:

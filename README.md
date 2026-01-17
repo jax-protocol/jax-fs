@@ -55,7 +55,7 @@ For detailed installation instructions and requirements, see [INSTALL.md](INSTAL
 - **[PROTOCOL.md](PROTOCOL.md)** - Technical protocol specification and data model
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and environment
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[RELEASE.md](RELEASE.md)** - Release process
+- **[agents/RELEASE.md](agents/RELEASE.md)** - Release process
 
 ## Use Cases
 
