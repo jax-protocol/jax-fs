@@ -18,13 +18,6 @@
 //! allowing them to decrypt bucket content. The share is stored separately in
 //! [`Share`](super::Share), not in the [`Principal`] struct itself.
 
-// TODO (amiller68): it would be cool if I could guarantee
-//  that principal shares are
-//  - valid (point to the up-to-date entrypoint)
-//  - point to the same entry link
-// For now I assume no one is sharing bogus data / only
-//  add principals that you trust.
-
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::PublicKey;

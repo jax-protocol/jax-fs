@@ -10,7 +10,7 @@ use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
-use super::manifest::Manifest;
+use super::manifest::{Manifest, Share};
 use super::node::{Node, NodeError, NodeLink};
 use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
@@ -165,14 +165,14 @@ impl Mount {
         for old_share in old_shares {
             let public_key = old_share.principal().identity;
 
-            match old_share.role() {
+            let share = match old_share.role() {
                 PrincipalRole::Owner => {
-                    manifest.add_share(public_key, secret.clone())?;
+                    let secret_share = SecretShare::new(&secret, &public_key)?;
+                    Share::new_owner(secret_share, public_key)
                 }
-                PrincipalRole::Mirror => {
-                    manifest.add_mirror(public_key);
-                }
-            }
+                PrincipalRole::Mirror => Share::new_mirror(public_key),
+            };
+            manifest.add_share(share);
         }
 
         // If the bucket was published, update the published_secret with the new secret
@@ -313,7 +313,10 @@ impl Mount {
 
     pub async fn share(&mut self, peer: PublicKey) -> Result<(), MountError> {
         let mut inner = self.0.lock().await;
-        inner.manifest.add_share(peer, Secret::default())?;
+        let secret_share = SecretShare::new(&Secret::default(), &peer)?;
+        inner
+            .manifest
+            .add_share(Share::new_owner(secret_share, peer));
         Ok(())
     }
 
@@ -322,17 +325,17 @@ impl Mount {
     pub async fn add_principal(
         &mut self,
         peer: PublicKey,
-        role: super::principal::PrincipalRole,
+        role: PrincipalRole,
     ) -> Result<(), MountError> {
         let mut inner = self.0.lock().await;
-        // For owners, we need to provide a secret (placeholder for now, will be updated on save)
-        // For mirrors, no secret needed - they start without access
-        let secret = if role == super::principal::PrincipalRole::Owner {
-            Some(Secret::default())
-        } else {
-            None
+        let share = match role {
+            PrincipalRole::Owner => {
+                let secret_share = SecretShare::new(&Secret::default(), &peer)?;
+                Share::new_owner(secret_share, peer)
+            }
+            PrincipalRole::Mirror => Share::new_mirror(peer),
         };
-        inner.manifest.add_principal(peer, role, secret.as_ref())?;
+        inner.manifest.add_share(share);
         Ok(())
     }
 
@@ -340,7 +343,7 @@ impl Mount {
     /// but cannot decrypt content until the bucket is published.
     pub async fn add_mirror(&mut self, peer: PublicKey) {
         let mut inner = self.0.lock().await;
-        inner.manifest.add_mirror(peer);
+        inner.manifest.add_share(Share::new_mirror(peer));
     }
 
     /// Remove a principal from this bucket.

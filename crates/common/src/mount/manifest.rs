@@ -27,7 +27,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::crypto::{PublicKey, Secret, SecretShare, SecretShareError};
+use crate::crypto::{PublicKey, Secret, SecretShare};
 use crate::linked_data::{BlockEncoded, DagCborCodec, Link};
 use crate::version::Version;
 
@@ -205,16 +205,12 @@ impl Manifest {
         self.shares.get(&public_key.to_hex())
     }
 
-    /// Add an owner share with a new encrypted secret.
-    pub fn add_share(
-        &mut self,
-        public_key: PublicKey,
-        secret: Secret,
-    ) -> Result<(), SecretShareError> {
-        let share = SecretShare::new(&secret, &public_key)?;
-        let bucket_share = Share::new_owner(share, public_key);
-        self.shares.insert(public_key.to_hex(), bucket_share);
-        Ok(())
+    /// Add a share to the manifest.
+    ///
+    /// Use [`Share::new_owner`] or [`Share::new_mirror`] to construct the share.
+    pub fn add_share(&mut self, share: Share) {
+        let key = share.principal().identity.to_hex();
+        self.shares.insert(key, share);
     }
 
     /// Remove all shares from the manifest.
@@ -303,37 +299,6 @@ impl Manifest {
     /// Get mutable access to shares.
     pub fn shares_mut(&mut self) -> &mut BTreeMap<String, Share> {
         &mut self.shares
-    }
-
-    /// Add a principal with a specific role.
-    ///
-    /// - **Owners** require a secret to create their encrypted share
-    /// - **Mirrors** don't need a secret; they use `published_secret` when available
-    pub fn add_principal(
-        &mut self,
-        public_key: PublicKey,
-        role: PrincipalRole,
-        secret: Option<&Secret>,
-    ) -> Result<(), SecretShareError> {
-        let share = match role {
-            PrincipalRole::Owner => {
-                let secret = secret.ok_or_else(|| {
-                    SecretShareError::Default(anyhow::anyhow!("Owner requires a secret"))
-                })?;
-                Share::new_owner(SecretShare::new(secret, &public_key)?, public_key)
-            }
-            PrincipalRole::Mirror => Share::new_mirror(public_key),
-        };
-        self.shares.insert(public_key.to_hex(), share);
-        Ok(())
-    }
-
-    /// Add a mirror to the bucket.
-    ///
-    /// Mirrors can sync bucket data immediately but cannot decrypt until published.
-    pub fn add_mirror(&mut self, public_key: PublicKey) {
-        self.shares
-            .insert(public_key.to_hex(), Share::new_mirror(public_key));
     }
 
     /// Remove a principal from the bucket.
