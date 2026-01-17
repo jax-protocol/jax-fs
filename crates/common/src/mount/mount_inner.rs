@@ -155,24 +155,17 @@ impl Mount {
 
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
-        // Update shares with the new secret
-        // - Owners get re-encrypted shares with the new secret
-        // - Mirrors just stay as mirrors (they use published_secret for access)
+        // Re-encrypt owner shares with the new secret (mirrors stay unchanged)
         let mut manifest = manifest_template;
-        let old_shares: Vec<_> = manifest.shares().values().cloned().collect();
-        manifest.shares_mut().clear();
+        let owner_keys: Vec<_> = manifest
+            .get_shares_by_role(PrincipalRole::Owner)
+            .iter()
+            .map(|s| s.principal().identity)
+            .collect();
 
-        for old_share in old_shares {
-            let public_key = old_share.principal().identity;
-
-            let share = match old_share.role() {
-                PrincipalRole::Owner => {
-                    let secret_share = SecretShare::new(&secret, &public_key)?;
-                    Share::new_owner(secret_share, public_key)
-                }
-                PrincipalRole::Mirror => Share::new_mirror(public_key),
-            };
-            manifest.add_share(share);
+        for public_key in owner_keys {
+            let secret_share = SecretShare::new(&secret, &public_key)?;
+            manifest.add_share(Share::new_owner(secret_share, public_key));
         }
 
         // If the bucket was published, update the published_secret with the new secret
