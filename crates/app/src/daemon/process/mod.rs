@@ -72,8 +72,12 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         .clone()
         .unwrap_or_else(|| format!("http://localhost:{}", api_listen_addr.port()));
     tracing::info!("HTML server will use API URL: {}", api_url);
-    let html_config =
-        http_server::Config::new(html_listen_addr, Some(api_url), service_config.ui_read_only);
+    let html_config = http_server::Config::new(
+        html_listen_addr,
+        Some(api_url),
+        service_config.ui_read_only,
+        service_config.gateway_url.clone(),
+    );
     let html_rx = shutdown_rx.clone();
     let html_handle = tokio::spawn(async move {
         tracing::info!("Starting HTML server on {}", html_listen_addr);
@@ -85,7 +89,7 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
 
     // Start API server
     let api_state = state.as_ref().clone();
-    let api_config = http_server::Config::new(api_listen_addr, None, false);
+    let api_config = http_server::Config::new(api_listen_addr, None, false, None);
     let api_rx = shutdown_rx.clone();
     let api_handle = tokio::spawn(async move {
         tracing::info!("Starting API server on {}", api_listen_addr);
@@ -94,6 +98,24 @@ pub async fn spawn_service(service_config: &ServiceConfig) {
         }
     });
     handles.push(api_handle);
+
+    // Start Gateway server if port is configured
+    if let Some(gateway_port) = service_config.gateway_port {
+        let gateway_listen_addr = SocketAddr::from_str(&format!("0.0.0.0:{}", gateway_port))
+            .expect("Failed to parse gateway listen address");
+        let gateway_state = state.as_ref().clone();
+        let gateway_config = http_server::Config::new(gateway_listen_addr, None, false, None);
+        let gateway_rx = shutdown_rx.clone();
+        let gateway_handle = tokio::spawn(async move {
+            tracing::info!("Starting Gateway server on {}", gateway_listen_addr);
+            if let Err(e) =
+                http_server::run_gateway(gateway_config, gateway_state, gateway_rx).await
+            {
+                tracing::error!("Gateway server error: {}", e);
+            }
+        });
+        handles.push(gateway_handle);
+    }
 
     let _ = graceful_waiter.await;
 

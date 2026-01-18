@@ -31,7 +31,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         )
         .route("/buckets/:bucket_id/logs", get(buckets::history::handler))
         .route("/buckets/:bucket_id/peers", get(buckets::peers::handler))
-        .route("/gw/:bucket_id/*file_path", get(gateway::handler))
         .with_state(state)
         .layer(cors_layer)
 }

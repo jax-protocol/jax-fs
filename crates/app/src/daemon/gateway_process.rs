@@ -65,7 +65,7 @@ pub async fn spawn_gateway_service(service_config: &ServiceConfig) {
 
     // Start gateway-only HTTP server (no UI, no API)
     let gw_state = state.as_ref().clone();
-    let gw_config = http_server::Config::new(gateway_listen_addr, None, true);
+    let gw_config = http_server::Config::new(gateway_listen_addr, None, true, None);
     let gw_rx = shutdown_rx.clone();
     let gw_handle = tokio::spawn(async move {
         tracing::info!("Starting gateway server on {}", gateway_listen_addr);

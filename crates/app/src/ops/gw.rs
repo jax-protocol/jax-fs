@@ -57,6 +57,9 @@ impl crate::op::Op for Gw {
             // UI settings not used in gateway mode
             ui_read_only: true,
             api_hostname: None,
+            // Gateway settings not used in standalone gateway mode
+            gateway_port: None,
+            gateway_url: None,
         };
 
         spawn_gateway_service(&config).await;

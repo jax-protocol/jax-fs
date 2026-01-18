@@ -13,6 +13,14 @@ pub struct Daemon {
     /// API hostname to use for HTML UI (default: http://localhost:<api_port>)
     #[arg(long)]
     pub api_hostname: Option<String>,
+
+    /// Enable gateway server on a separate port (serves /gw/:bucket_id/*path)
+    #[arg(long)]
+    pub gateway_port: Option<u16>,
+
+    /// Gateway URL for share/download links (e.g., https://gateway.example.com)
+    #[arg(long)]
+    pub gateway_url: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -54,6 +62,8 @@ impl crate::op::Op for Daemon {
             log_level: tracing::Level::DEBUG,
             ui_read_only: self.ui_read_only,
             api_hostname: self.api_hostname.clone(),
+            gateway_port: self.gateway_port,
+            gateway_url: self.gateway_url.clone(),
         };
 
         spawn_service(&config).await;

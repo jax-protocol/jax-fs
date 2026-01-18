@@ -525,6 +525,7 @@
     window.JAX_API_URL = '{{ api_url }}';
     window.JAX_BUCKET_ID = '{{ bucket_id }}';
     window.JAX_FILE_PATH = '{{ file_path }}';
+    window.JAX_GATEWAY_URL = '{{ gateway_url }}';
     window.JAX_IS_MARKDOWN = {% if file_metadata.as_ref().unwrap().mime_type == "text/markdown" %}true{% else %}false{% endif %};
     window.JAX_IS_EDITABLE = {{ is_editable }};
     {% if at_hash.is_none() %}
@@ -555,7 +556,8 @@
 
     // Helper function to build gateway URL with optional at parameter
     function buildGatewayUrl() {
-        let url = `/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
+        const base = window.JAX_GATEWAY_URL || window.location.origin;
+        let url = `${base}/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
         if (window.JAX_AT_HASH) {
             url += `?at=${window.JAX_AT_HASH}`;
         }
@@ -574,12 +576,8 @@
                 const viewerUrl = window.location.href;
                 viewerInput.value = viewerUrl;
 
-                // Generate gateway link
-                const bucketId = window.JAX_BUCKET_ID;
-                const filePath = window.JAX_FILE_PATH;
-                const host = window.location.origin;
-                const gatewayUrl = `${host}/gw/${bucketId}${filePath}`;
-                gatewayInput.value = gatewayUrl;
+                // Generate gateway link using configured URL
+                gatewayInput.value = buildGatewayUrl();
 
                 // Toggle visibility
                 section.classList.toggle('hidden');
@@ -590,17 +588,8 @@
         const downloadBtn = document.getElementById('downloadBtn');
         if (downloadBtn) {
             downloadBtn.addEventListener('click', function() {
-                // Use gateway URL (same as share button)
-                const host = window.location.origin;
-                let url = `${host}/gw/${window.JAX_BUCKET_ID}${window.JAX_FILE_PATH}`;
-
-                // Add at_hash if viewing history
-                if (window.JAX_AT_HASH) {
-                    url += `?at=${window.JAX_AT_HASH}`;
-                }
-
-                // Trigger download by navigating to URL
-                window.location.href = url;
+                // Use gateway URL for downloads
+                window.location.href = buildGatewayUrl();
             });
         }
 

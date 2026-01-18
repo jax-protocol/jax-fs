@@ -17,16 +17,24 @@ pub struct Config {
     pub log_level: tracing::Level,
     // Run HTML UI in read-only mode
     pub read_only: bool,
+    // External gateway URL for generating share/download links
+    pub gateway_url: Option<String>,
 }
 
 impl Config {
-    pub fn new(listen_addr: SocketAddr, api_url: Option<String>, read_only: bool) -> Self {
+    pub fn new(
+        listen_addr: SocketAddr,
+        api_url: Option<String>,
+        read_only: bool,
+        gateway_url: Option<String>,
+    ) -> Self {
         let hostname = Url::parse(&format!("http://localhost:{}", listen_addr.port())).unwrap();
         tracing::info!(
-            "Creating HTTP server Config: listen_addr={}, api_url={:?}, read_only={}",
+            "Creating HTTP server Config: listen_addr={}, api_url={:?}, read_only={}, gateway_url={:?}",
             listen_addr,
             api_url,
-            read_only
+            read_only,
+            gateway_url
         );
         Self {
             listen_addr,
@@ -34,6 +42,7 @@ impl Config {
             api_url,
             log_level: tracing::Level::INFO,
             read_only,
+            gateway_url,
         }
     }
 }

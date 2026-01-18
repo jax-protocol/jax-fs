@@ -39,6 +39,12 @@ pub struct Config {
     pub ui_read_only: bool,
     /// API hostname to use for HTML UI
     pub api_hostname: Option<String>,
+
+    // gateway configuration
+    /// Port to run the gateway server on (if set, spawns gateway on separate port)
+    pub gateway_port: Option<u16>,
+    /// External gateway URL (e.g., "https://gateway.example.com")
+    pub gateway_url: Option<String>,
 }
 
 impl Default for Config {
@@ -53,6 +59,8 @@ impl Default for Config {
             log_level: tracing::Level::INFO,
             ui_read_only: false,
             api_hostname: None,
+            gateway_port: None,
+            gateway_url: None,
         }
     }
 }
