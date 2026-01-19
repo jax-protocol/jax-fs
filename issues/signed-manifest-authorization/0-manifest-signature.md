@@ -1,6 +1,6 @@
 # Manifest Signature
 
-**Status:** Planned
+**Status:** Done
 
 ## Objective
 
@@ -123,14 +123,14 @@ Currently, manifests have no authorship information. When a peer receives an upd
 
 ## Acceptance Criteria
 
-- [ ] `Manifest` has `author: Option<PublicKey>` field
-- [ ] `Manifest` has `signature: Option<Signature>` field
-- [ ] `Manifest::sign(secret_key)` signs the manifest
-- [ ] `Manifest::verify_signature()` validates the signature
-- [ ] `Mount::save()` signs manifests with the owner's key
-- [ ] Unsigned manifests still deserialize (backwards compatibility)
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` has no warnings
+- [x] `Manifest` has `author: Option<PublicKey>` field
+- [x] `Manifest` has `signature: Option<Signature>` field
+- [x] `Manifest::sign(secret_key)` signs the manifest
+- [x] `Manifest::verify_signature()` validates the signature
+- [x] `Mount::save()` signs manifests with the owner's key
+- [x] Unsigned manifests still deserialize (backwards compatibility)
+- [x] `cargo test` passes
+- [x] `cargo clippy` has no warnings
 
 ## Verification
 
@@ -157,5 +157,24 @@ fn test_manifest_signing() {
 ## Notes
 
 - Signature covers all fields except `signature` itself
-- Use BLAKE3 hash of DAG-CBOR serialized manifest for signing
+- Ed25519 signs DAG-CBOR bytes directly (Ed25519 internally hashes with SHA-512, no need for BLAKE3)
 - Backwards compatible: old unsigned manifests have `author=None, signature=None`
+
+## Implementation Notes
+
+**Differences from original spec:**
+
+| Spec | Implementation | Rationale |
+|------|----------------|-----------|
+| `save()` takes `signer: &SecretKey` param | `MountInner` stores `secret_key` field | No API breaking change to `save()` |
+| `manifest.to_cbor()` | `manifest.encode()` | Uses existing `BlockEncoded` trait |
+| BLAKE3 hash before Ed25519 | Ed25519 directly on CBOR bytes | Ed25519 internally hashes with SHA-512 |
+| Modify `peer_inner.rs` | Not needed | Secret key stored in `MountInner` during `init()`/`load()` |
+
+**Files modified:**
+- `crates/common/src/crypto/mod.rs` - Re-export `Signature`
+- `crates/common/src/crypto/keys.rs` - Add `sign()` to `SecretKey`, `verify()` to `PublicKey`
+- `crates/common/src/mount/manifest.rs` - Add `ManifestError`, `author`, `signature` fields, signing methods
+- `crates/common/src/mount/mount_inner.rs` - Store `secret_key`, sign in `init()` and `save()`
+- `crates/common/src/mount/mod.rs` - Export `ManifestError`
+- `crates/common/Cargo.toml` - Enable `serde` feature for `ed25519-dalek`
