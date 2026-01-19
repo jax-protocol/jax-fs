@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Workspace crates
-common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+common = { package = "jax-common", version = "^0.1.6", path = "../common" }
 
 # iroh for peer networking
 iroh = { workspace = true }
