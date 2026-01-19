@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/app", "crates/common"]
+members = ["crates/app", "crates/common", "crates/blobs-store"]
 
 [workspace.package]
 edition = "2021"
@@ -61,7 +61,7 @@ tracing-subscriber = { version = "0.3", default-features = false, features = [
 ] }
 
 # CLI
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 
 # IPFS/P2P
 # iroh = { version = "^0.35", features = ["discovery-pkarr-dht"] }

@@ -18,6 +18,7 @@ path = "src/main.rs"
 [dependencies]
 # Workspace crates
 common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+blobs-store = { package = "jax-blobs-store", version = "^0.1.0", path = "../blobs-store" }
 
 # iroh for peer networking
 iroh = { workspace = true }

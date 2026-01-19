@@ -40,6 +40,36 @@ impl Default for AppConfig {
     }
 }
 
+/// Configuration for the blob storage backend.
+/// This determines where blob data is stored (legacy iroh, local filesystem, or S3).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum BlobStoreConfig {
+    /// Legacy iroh FsStore (default, for backwards compatibility)
+    #[default]
+    Legacy,
+
+    /// New SQLite + local filesystem backend
+    Filesystem {
+        /// Path for blob storage (defaults to jax_dir/blobs-store/)
+        path: Option<PathBuf>,
+    },
+
+    /// S3-compatible object storage
+    S3 {
+        /// S3 endpoint URL (e.g., "http://localhost:9000" for MinIO)
+        endpoint: String,
+        /// Access key ID
+        access_key: String,
+        /// Secret access key
+        secret_key: String,
+        /// Bucket name
+        bucket: String,
+        /// Optional region (defaults to "us-east-1")
+        region: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct AppState {
     /// Path to the jax directory (~/.jax)

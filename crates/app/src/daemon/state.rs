@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use url::Url;
 
 use super::config::Config;
 use crate::daemon::database::{Database, DatabaseSetupError};
+use crate::state::BlobStoreConfig;
 
 use common::crypto::SecretKey;
 use common::peer::{BlobsStore, Peer, PeerBuilder};
@@ -13,6 +16,109 @@ use super::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
 pub struct State {
     database: Database,
     peer: Peer<Database>,
+}
+
+/// Setup the blob store based on configuration.
+/// Returns both the legacy BlobsStore (for the Peer) and the path used.
+async fn setup_blobs_store(config: &Config) -> Result<(BlobsStore, PathBuf), StateSetupError> {
+    match &config.blob_store {
+        BlobStoreConfig::Legacy => {
+            // Legacy mode: use the jax_dir/blobs path or a temp directory
+            let blobs_path = config
+                .jax_dir
+                .as_ref()
+                .map(|d| d.join("blobs"))
+                .unwrap_or_else(|| {
+                    let temp_dir =
+                        tempfile::tempdir().expect("failed to create temporary directory");
+                    temp_dir.keep()
+                });
+
+            tracing::info!(path = %blobs_path.display(), "Using legacy iroh blob store");
+            let blobs = BlobsStore::fs(&blobs_path)
+                .await
+                .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+
+            Ok((blobs, blobs_path))
+        }
+
+        BlobStoreConfig::Filesystem { path } => {
+            // Filesystem mode: use SQLite + local object storage
+            let store_path = path
+                .clone()
+                .or_else(|| config.jax_dir.as_ref().map(|d| d.join("blobs-store")))
+                .unwrap_or_else(|| {
+                    let temp_dir =
+                        tempfile::tempdir().expect("failed to create temporary directory");
+                    temp_dir.keep()
+                });
+
+            tracing::info!(path = %store_path.display(), "Using filesystem blob store (SQLite + local objects)");
+
+            // Create the new blob store for actual storage
+            let _new_store = blobs_store::BlobStore::new_local(&store_path)
+                .await
+                .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+
+            // For now, we still need a legacy BlobsStore for the Peer
+            // Use the objects subdirectory which the new store also uses
+            let legacy_path = store_path.join("legacy-blobs");
+            let blobs = BlobsStore::fs(&legacy_path)
+                .await
+                .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+
+            Ok((blobs, store_path))
+        }
+
+        BlobStoreConfig::S3 {
+            endpoint,
+            access_key,
+            secret_key,
+            bucket,
+            region,
+        } => {
+            tracing::info!(endpoint = %endpoint, bucket = %bucket, "Using S3 blob store");
+
+            // Determine SQLite path for metadata
+            let db_path = config
+                .jax_dir
+                .as_ref()
+                .map(|d| d.join("blobs-store.db"))
+                .unwrap_or_else(|| PathBuf::from("/tmp/jax-blobs-store.db"));
+
+            // Create the S3 object store config
+            let s3_config = blobs_store::ObjectStoreConfig::S3 {
+                endpoint: endpoint.clone(),
+                access_key: access_key.clone(),
+                secret_key: secret_key.clone(),
+                bucket: bucket.clone(),
+                region: region.clone(),
+            };
+
+            // Create the new blob store
+            let _new_store = blobs_store::BlobStore::new(&db_path, s3_config)
+                .await
+                .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+
+            // For now, we still need a legacy BlobsStore for the Peer
+            // Use a temp directory since S3 mode doesn't have local storage
+            let legacy_path = config
+                .jax_dir
+                .as_ref()
+                .map(|d| d.join("legacy-blobs"))
+                .unwrap_or_else(|| {
+                    let temp_dir =
+                        tempfile::tempdir().expect("failed to create temporary directory");
+                    temp_dir.keep()
+                });
+
+            let blobs = BlobsStore::fs(&legacy_path)
+                .await
+                .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
+
+            Ok((blobs, legacy_path))
+        }
+    }
 }
 
 impl State {
@@ -41,15 +147,9 @@ impl State {
             .unwrap_or_else(SecretKey::generate);
 
         // 3. Setup blobs store
-        let blobs_store_path = config.node_blobs_store_path.clone().unwrap_or_else(|| {
-            let temp_dir = tempfile::tempdir().expect("failed to create temporary directory");
-            temp_dir.path().to_path_buf()
-        });
         tracing::debug!("ServiceState::from_config - loading blobs store");
-        let blobs = BlobsStore::fs(&blobs_store_path)
-            .await
-            .map_err(|e| StateSetupError::BlobsStoreError(e.to_string()))?;
-        tracing::debug!("ServiceState::from_config - blobs store loaded successfully");
+        let (blobs, blobs_path) = setup_blobs_store(config).await?;
+        tracing::debug!(path = %blobs_path.display(), "ServiceState::from_config - blobs store loaded successfully");
 
         // 4. Build peer from the database as the log provider
         // TODO: Make queue size configurable via config
