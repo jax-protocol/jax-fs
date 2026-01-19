@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::crypto::PublicKey;
 use crate::linked_data::{BlockEncoded, DagCborCodec, Link};
 
+use super::conflict::{
+    operations_conflict, Conflict, ConflictResolver, MergeResult, Resolution, ResolvedConflict,
+};
+
 /// Type of path operation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpType {
@@ -156,6 +160,126 @@ impl PathOpLog {
             }
         }
         added
+    }
+
+    /// Merge operations from another log with conflict resolution
+    ///
+    /// Unlike the basic `merge()`, this method:
+    /// 1. Detects conflicts between local and incoming operations
+    /// 2. Uses the provided resolver to decide how to handle each conflict
+    /// 3. Returns detailed information about what conflicts were found and resolved
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The incoming log to merge
+    /// * `resolver` - The conflict resolution strategy to use
+    /// * `local_peer` - The local peer's identity (for tie-breaking)
+    ///
+    /// # Returns
+    ///
+    /// A `MergeResult` containing:
+    /// - Number of operations added
+    /// - List of resolved conflicts
+    /// - List of unresolved conflicts (when using ForkOnConflict)
+    pub fn merge_with_resolver(
+        &mut self,
+        other: &PathOpLog,
+        resolver: &dyn ConflictResolver,
+        local_peer: &PublicKey,
+    ) -> MergeResult {
+        let mut result = MergeResult::new();
+
+        // First, identify all incoming operations that would conflict
+        let mut conflicts_by_path: BTreeMap<PathBuf, Vec<(&OpId, &PathOperation)>> =
+            BTreeMap::new();
+
+        for (id, op) in &other.operations {
+            // Skip if we already have this exact operation
+            if self.operations.contains_key(id) {
+                continue;
+            }
+
+            // Check for conflicts with existing operations on the same path
+            let has_conflict = self
+                .operations
+                .values()
+                .any(|existing| operations_conflict(existing, op));
+
+            if has_conflict {
+                conflicts_by_path
+                    .entry(op.path.clone())
+                    .or_default()
+                    .push((id, op));
+            }
+        }
+
+        // Process each incoming operation
+        for (id, op) in &other.operations {
+            // Skip if we already have this exact operation
+            if self.operations.contains_key(id) {
+                continue;
+            }
+
+            // Update local clock to stay ahead of all seen operations
+            if id.timestamp >= self.local_clock {
+                self.local_clock = id.timestamp + 1;
+            }
+
+            // Find conflicting base operation (if any)
+            let conflicting_base = self
+                .operations
+                .values()
+                .find(|existing| operations_conflict(existing, op));
+
+            match conflicting_base {
+                Some(base) => {
+                    // We have a conflict
+                    let conflict = Conflict::new(op.path.clone(), base.clone(), op.clone());
+                    let resolution = resolver.resolve(&conflict, local_peer);
+
+                    match resolution {
+                        Resolution::UseBase => {
+                            // Don't add the incoming operation
+                            result.conflicts_resolved.push(ResolvedConflict {
+                                conflict,
+                                resolution,
+                            });
+                        }
+                        Resolution::UseIncoming => {
+                            // Add the incoming operation (it will win in resolve_path)
+                            self.operations.insert(id.clone(), op.clone());
+                            result.operations_added += 1;
+                            result.conflicts_resolved.push(ResolvedConflict {
+                                conflict,
+                                resolution,
+                            });
+                        }
+                        Resolution::KeepBoth => {
+                            // Add the incoming operation and track as unresolved
+                            self.operations.insert(id.clone(), op.clone());
+                            result.operations_added += 1;
+                            result.unresolved_conflicts.push(conflict);
+                        }
+                        Resolution::SkipBoth => {
+                            // Don't add incoming, and remove base
+                            // Note: We don't actually remove from operations to preserve history
+                            // Instead, this could be used by higher-level logic
+                            result.conflicts_resolved.push(ResolvedConflict {
+                                conflict,
+                                resolution,
+                            });
+                        }
+                    }
+                }
+                None => {
+                    // No conflict, just add the operation
+                    self.operations.insert(id.clone(), op.clone());
+                    result.operations_added += 1;
+                }
+            }
+        }
+
+        result
     }
 
     /// Get all operations
@@ -454,5 +578,194 @@ mod tests {
 
         // Operations should match (local_clock is not serialized)
         assert_eq!(log.operations, decoded.operations);
+    }
+
+    #[test]
+    fn test_merge_with_resolver_no_conflicts() {
+        use super::super::conflict::LastWriteWins;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file1.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Add, "file2.txt", None, false);
+
+        let resolver = LastWriteWins::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        assert_eq!(result.operations_added, 1);
+        assert_eq!(result.conflicts_resolved.len(), 0);
+        assert!(!result.has_unresolved());
+        assert_eq!(log1.len(), 2);
+    }
+
+    #[test]
+    fn test_merge_with_resolver_last_write_wins() {
+        use super::super::conflict::{LastWriteWins, Resolution};
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        // Simulate peer2 being "ahead" by using a higher timestamp
+        log2.record(peer2, OpType::Add, "dummy", None, false); // ts=1
+        log2.record(peer2, OpType::Remove, "file.txt", None, false); // ts=2
+
+        let resolver = LastWriteWins::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // Should have 2 ops added (dummy and remove)
+        // The remove conflicts with add, incoming (ts=2) > base (ts=1)
+        assert_eq!(result.operations_added, 2);
+        assert_eq!(result.conflicts_resolved.len(), 1);
+
+        let resolved = &result.conflicts_resolved[0];
+        assert_eq!(resolved.resolution, Resolution::UseIncoming);
+    }
+
+    #[test]
+    fn test_merge_with_resolver_base_wins() {
+        use super::super::conflict::{BaseWins, Resolution};
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Remove, "file.txt", None, false);
+
+        let resolver = BaseWins::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // With BaseWins, the incoming Remove should not be added
+        assert_eq!(result.operations_added, 0);
+        assert_eq!(result.conflicts_resolved.len(), 1);
+
+        let resolved = &result.conflicts_resolved[0];
+        assert_eq!(resolved.resolution, Resolution::UseBase);
+
+        // Original operation should still be the only one for this path
+        let resolved_path = log1.resolve_path("file.txt");
+        assert!(matches!(resolved_path.unwrap().op_type, OpType::Add));
+    }
+
+    #[test]
+    fn test_merge_with_resolver_fork_on_conflict() {
+        use super::super::conflict::ForkOnConflict;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Add, "file.txt", None, false);
+
+        let resolver = ForkOnConflict::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // With ForkOnConflict, the incoming operation should be added
+        // but tracked as unresolved
+        assert_eq!(result.operations_added, 1);
+        assert_eq!(result.conflicts_resolved.len(), 0);
+        assert!(result.has_unresolved());
+        assert_eq!(result.unresolved_conflicts.len(), 1);
+
+        // Both operations should be in the log
+        assert_eq!(log1.len(), 2);
+
+        // resolve_path should return the winner by OpId
+        let resolved = log1.resolve_path("file.txt").unwrap();
+        // The winner is the one with higher OpId
+        if peer2 > peer1 {
+            assert_eq!(resolved.id.peer_id, peer2);
+        } else {
+            assert_eq!(resolved.id.peer_id, peer1);
+        }
+    }
+
+    #[test]
+    fn test_merge_with_resolver_concurrent_ops() {
+        use super::super::conflict::LastWriteWins;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        // Both peers start with the same clock (concurrent operations)
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Add, "file.txt", None, false);
+
+        // Both have timestamp=1, so this is a true concurrent edit
+        let resolver = LastWriteWins::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // There's a conflict
+        assert_eq!(result.total_conflicts(), 1);
+
+        // The result depends on peer_id ordering
+        // LastWriteWins uses OpId comparison (timestamp then peer_id)
+        if peer2 > peer1 {
+            // peer2 wins, incoming operation added
+            assert_eq!(result.operations_added, 1);
+        } else {
+            // peer1 wins, incoming operation not added
+            assert_eq!(result.operations_added, 0);
+        }
+    }
+
+    #[test]
+    fn test_merge_with_resolver_idempotent() {
+        use super::super::conflict::LastWriteWins;
+
+        let peer1 = make_peer_id(1);
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file.txt", None, false);
+
+        let log1_clone = log1.clone();
+        let resolver = LastWriteWins::new();
+        let result = log1.merge_with_resolver(&log1_clone, &resolver, &peer1);
+
+        // Merging with self should add nothing and have no conflicts
+        assert_eq!(result.operations_added, 0);
+        assert_eq!(result.total_conflicts(), 0);
+        assert_eq!(log1.len(), 1);
+    }
+
+    #[test]
+    fn test_merge_with_resolver_mixed_conflicts() {
+        use super::super::conflict::LastWriteWins;
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "file1.txt", None, false);
+        log1.record(peer1, OpType::Add, "file2.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        log2.record(peer2, OpType::Remove, "file1.txt", None, false); // conflicts
+        log2.record(peer2, OpType::Add, "file3.txt", None, false); // no conflict
+
+        let resolver = LastWriteWins::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // file3.txt should be added (no conflict)
+        // file1.txt has a conflict
+        assert_eq!(result.total_conflicts(), 1);
+
+        // file3.txt is always added
+        assert!(log1.resolve_path("file3.txt").is_some());
     }
 }

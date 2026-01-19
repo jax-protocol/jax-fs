@@ -33,7 +33,7 @@ jax daemon --gateway (gateway-only mode)
 |---|--------|--------|-------|
 | 0 | [Gateway subcommand](./0-gateway-subcommand.md) | Done | Gateway |
 | 1 | [SQLite blob store](./1-sqlite-blobstore.md) | In Progress | Gateway |
-| 2 | [Conflict resolution](./2-conflict-resolution.md) | Planned | Common |
+| 2 | [Conflict resolution](./2-conflict-resolution.md) | Done | Common |
 | 3 | [FUSE integration](./3-fuse-integration.md) | Planned | Local |
 | 4 | [Desktop integration](./4-desktop-integration.md) | Planned | Local |
 | 5 | [Tauri migration](./5-tauri-migration.md) | Future | Local |

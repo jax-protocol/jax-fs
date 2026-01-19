@@ -44,6 +44,7 @@ Shared library (`jax-common`) with crypto, storage, and peer protocol.
   - `manifest.rs` - Bucket metadata, shares, principals
   - `mount_inner.rs` - File operations (add, rm, mkdir, mv)
   - `node.rs` - File/directory tree nodes
+  - `conflict.rs` - Conflict resolution for PathOpLog merges
 - `src/peer/` - P2P networking
   - `peer_inner.rs` - Peer state and mount operations
   - `blobs_store.rs` - Content-addressed blob storage (iroh-blobs)
