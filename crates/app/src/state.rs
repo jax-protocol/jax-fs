@@ -11,16 +11,19 @@ pub const BLOBS_DIR_NAME: &str = "blobs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
-    /// Listen address for the HTML server
-    pub html_listen_addr: String,
-    /// Listen address for the API server
-    pub api_listen_addr: String,
+    /// Port for the App server (UI + API combined)
+    #[serde(default = "default_app_port")]
+    pub app_port: u16,
     /// Listen port for the peer (P2P) node (optional, defaults to ephemeral)
     #[serde(default)]
     pub peer_port: Option<u16>,
-    /// Listen port for the gateway server (optional)
+    /// Listen port for the gateway server
     #[serde(default = "default_gateway_port")]
     pub gateway_port: u16,
+}
+
+fn default_app_port() -> u16 {
+    8080
 }
 
 fn default_gateway_port() -> u16 {
@@ -30,8 +33,7 @@ fn default_gateway_port() -> u16 {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            html_listen_addr: "0.0.0.0:8080".to_string(),
-            api_listen_addr: "0.0.0.0:3000".to_string(),
+            app_port: default_app_port(),
             peer_port: None,
             gateway_port: default_gateway_port(),
         }

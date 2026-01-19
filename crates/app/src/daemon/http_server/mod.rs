@@ -62,8 +62,8 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
     }
 }
 
-/// Run the HTML server on port 8080
-pub async fn run_html(
+/// Run the combined App server (UI + API on same port)
+pub async fn run_app(
     config: Config,
     state: ServiceState,
     mut shutdown_rx: watch::Receiver<()>,
@@ -81,55 +81,22 @@ pub async fn run_html(
 
     tracing::info!("Static files embedded in binary");
 
-    let html_router = Router::new()
+    // Combined router with both HTML UI and API endpoints
+    let app_router = Router::new()
         .nest(STATUS_PREFIX, health::router(state.clone()))
+        .nest(API_PREFIX, api::router(state.clone()))
         .route("/static/*path", axum::routing::get(static_handler))
         .merge(html::router(state.clone()))
         .fallback(handlers::not_found_handler)
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE_BYTES))
         .layer(Extension(config.clone()))
         .with_state(state)
         .layer(trace_layer);
 
-    tracing::info!(addr = ?listen_addr, "HTML server listening");
+    tracing::info!(addr = ?listen_addr, "App server listening (UI + API)");
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
 
-    axum::serve(listener, html_router)
-        .with_graceful_shutdown(async move {
-            let _ = shutdown_rx.changed().await;
-        })
-        .await?;
-
-    Ok(())
-}
-
-pub async fn run_api(
-    config: Config,
-    state: ServiceState,
-    mut shutdown_rx: watch::Receiver<()>,
-) -> Result<(), HttpServerError> {
-    let listen_addr = config.listen_addr;
-    let log_level = config.log_level;
-    let trace_layer = TraceLayer::new_for_http()
-        .on_response(
-            DefaultOnResponse::new()
-                .include_headers(false)
-                .level(log_level)
-                .latency_unit(LatencyUnit::Micros),
-        )
-        .on_failure(DefaultOnFailure::new().latency_unit(LatencyUnit::Micros));
-
-    let api_router = Router::new()
-        .nest(STATUS_PREFIX, health::router(state.clone()))
-        .nest(API_PREFIX, api::router(state.clone()))
-        .fallback(handlers::not_found_handler)
-        .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE_BYTES))
-        .with_state(state)
-        .layer(trace_layer);
-
-    tracing::info!(addr = ?listen_addr, "API server listening");
-    let listener = tokio::net::TcpListener::bind(listen_addr).await?;
-
-    axum::serve(listener, api_router)
+    axum::serve(listener, app_router)
         .with_graceful_shutdown(async move {
             let _ = shutdown_rx.changed().await;
         })

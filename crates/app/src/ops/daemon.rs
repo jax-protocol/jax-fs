@@ -1,29 +1,29 @@
 use clap::Args;
 
-use crate::daemon::{spawn_gateway_service, spawn_service, ServiceConfig};
+use crate::daemon::{spawn_service, ServiceConfig};
 use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
-    /// Run only the gateway server (no HTML UI, no API server)
-    #[arg(long)]
-    pub gateway_only: bool,
-
-    /// API hostname to use for HTML UI (default: http://localhost:<api_port>)
-    #[arg(long)]
-    pub api_hostname: Option<String>,
-
-    /// Enable gateway server (uses port from config, default 9090)
+    /// Run only the gateway server (no App UI/API)
     #[arg(long)]
     pub gateway: bool,
 
-    /// Override gateway port (implies --gateway)
+    /// API hostname to use for HTML UI (default: same origin)
+    #[arg(long)]
+    pub api_hostname: Option<String>,
+
+    /// Override gateway port (implies gateway is enabled)
     #[arg(long)]
     pub gateway_port: Option<u16>,
 
     /// Gateway URL for share/download links (e.g., https://gateway.example.com)
     #[arg(long)]
     pub gateway_url: Option<String>,
+
+    /// Also run gateway alongside app server
+    #[arg(long)]
+    pub with_gateway: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -54,51 +54,29 @@ impl crate::op::Op for Daemon {
                 .expect("Failed to parse peer listen address")
         });
 
-        // Gateway-only mode: run just the gateway server
-        if self.gateway_only {
+        // Determine app_port and gateway_port based on flags
+        let (app_port, gateway_port) = if self.gateway {
+            // Gateway-only mode: no app server, just gateway
             let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
-
-            let config = ServiceConfig {
-                node_listen_addr,
-                node_secret: Some(secret_key),
-                node_blobs_store_path: Some(state.blobs_path),
-                html_listen_addr: Some(
-                    format!("0.0.0.0:{}", gateway_port)
-                        .parse()
-                        .expect("Failed to parse gateway listen address"),
-                ),
-                api_listen_addr: None,
-                sqlite_path: Some(state.db_path),
-                log_level: tracing::Level::DEBUG,
-                api_hostname: None,
-                gateway_port: None,
-                gateway_url: None,
-            };
-
-            spawn_gateway_service(&config).await;
-            return Ok("gateway ended".to_string());
-        }
-
-        // Determine gateway port: --gateway-port overrides, --gateway uses config
-        let gateway_port = if let Some(port) = self.gateway_port {
-            Some(port)
-        } else if self.gateway {
-            Some(state.config.gateway_port)
+            (None, Some(gateway_port))
+        } else if self.with_gateway || self.gateway_port.is_some() {
+            // App + Gateway mode: run both
+            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
+            (Some(state.config.app_port), Some(gateway_port))
         } else {
-            None
+            // Default: App only, no gateway
+            (Some(state.config.app_port), None)
         };
 
-        // Build daemon config with persistent paths
         let config = ServiceConfig {
             node_listen_addr,
             node_secret: Some(secret_key),
             node_blobs_store_path: Some(state.blobs_path),
-            html_listen_addr: state.config.html_listen_addr.parse().ok(),
-            api_listen_addr: state.config.api_listen_addr.parse().ok(),
+            app_port,
+            gateway_port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
             api_hostname: self.api_hostname.clone(),
-            gateway_port,
             gateway_url: self.gateway_url.clone(),
         };
 

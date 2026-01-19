@@ -6,5 +6,5 @@ mod state;
 mod sync_provider;
 
 pub use config::Config as ServiceConfig;
-pub use process::{spawn_gateway_service, spawn_service};
+pub use process::spawn_service;
 pub use state::State as ServiceState;

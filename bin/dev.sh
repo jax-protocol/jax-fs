@@ -2,8 +2,8 @@
 
 # Development script for running JAX nodes in tmux with watch mode
 # This sets up a tmux session with three panes demonstrating different configurations:
-#   - Daemon only (full UI + API, no gateway)
-#   - Daemon + Gateway (full UI + API + gateway on separate port)
+#   - App only (full UI + API, no gateway)
+#   - App + Gateway (full UI + API + gateway on separate port)
 #   - Gateway only (minimal content serving, no UI/API)
 
 set -e
@@ -27,31 +27,29 @@ echo -e "${BLUE}Setting up JAX development environment...${NC}"
 init_node() {
     local node_dir=$1
     local node_name=$2
-    local api_port=$3
-    local html_port=$4
-    local peer_port=$5
-    local gateway_port=$6
+    local app_port=$3
+    local peer_port=$4
+    local gateway_port=$5
 
     if [ ! -d "$node_dir" ]; then
         echo -e "${YELLOW}Initializing $node_name (first run)...${NC}"
         cargo run --bin jax -- --config-path "$node_dir" init \
-            --api-addr "0.0.0.0:$api_port" \
-            --html-addr "0.0.0.0:$html_port" \
+            --app-port "$app_port" \
             --peer-port "$peer_port" \
             --gateway-port "$gateway_port"
-        echo -e "${GREEN}$node_name initialized with API:$api_port HTML:$html_port PEER:$peer_port GW:$gateway_port${NC}"
+        echo -e "${GREEN}$node_name initialized with APP:$app_port PEER:$peer_port GW:$gateway_port${NC}"
     else
         echo -e "${GREEN}$node_name already initialized${NC}"
     fi
 }
 
 # Initialize all three nodes with distinct ports
-# Node1: Daemon only (gateway port configured but not used)
-init_node "./data/node1" "Node1 (daemon)" 3000 8080 9000 9090
-# Node2: Daemon + Gateway
-init_node "./data/node2" "Node2 (daemon+gw)" 3001 8081 9001 9091
+# Node1: App only (gateway port configured but not used)
+init_node "./data/node1" "Node1 (app)" 8080 9000 9090
+# Node2: App + Gateway
+init_node "./data/node2" "Node2 (app+gw)" 8081 9001 9091
 # Node3: Gateway only
-init_node "./data/node3" "Node3 (gw-only)" 3002 8082 9002 9092
+init_node "./data/node3" "Node3 (gw-only)" 8082 9002 9092
 
 # Check if tmux session already exists
 if tmux has-session -t jax-dev 2>/dev/null; then
@@ -74,14 +72,14 @@ tmux new-session -d -s jax-dev -n "nodes"
 tmux split-window -h -t jax-dev:0
 tmux split-window -v -t jax-dev:0.0
 
-# Pane 0.0 (top-left): Daemon only
-tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: Daemon Only ===' && echo 'UI: http://localhost:8080 | API: http://localhost:3000' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
+# Pane 0.0 (top-left): App only
+tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: App Only ===' && echo 'App: http://localhost:8080 (UI + API)' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
 
-# Pane 0.1 (top-right): Daemon + Gateway (uses gateway_port from config: 9091)
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: Daemon + Gateway ===' && echo 'UI: http://localhost:8081 | API: http://localhost:3001 | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --gateway --gateway-url http://localhost:9091'" C-m
+# Pane 0.1 (top-right): App + Gateway (uses --with-gateway to enable both)
+tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: App + Gateway ===' && echo 'App: http://localhost:8081 (UI + API) | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --with-gateway --gateway-url http://localhost:9091'" C-m
 
-# Pane 0.2 (bottom): Gateway only (uses gateway_port from config: 9092)
-tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 daemon --gateway-only'" C-m
+# Pane 0.2 (bottom): Gateway only
+tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 daemon --gateway'" C-m
 
 # Create a new window for database inspection
 tmux new-window -t jax-dev:1 -n "db"
@@ -95,15 +93,13 @@ JAX Development Environment
 
 Node Configurations:
 --------------------
-Node1 - Daemon Only:
-  UI:  http://localhost:8080
-  API: http://localhost:3000
+Node1 - App Only:
+  App:  http://localhost:8080 (UI + API on same port)
   Gateway: (not enabled)
   Use case: Standard daemon without gateway
 
-Node2 - Daemon + Gateway:
-  UI:  http://localhost:8081
-  API: http://localhost:3001
+Node2 - App + Gateway:
+  App:  http://localhost:8081 (UI + API on same port)
   Gateway: http://localhost:9091
   Use case: Full daemon with integrated gateway on separate port
   Share links in UI will point to http://localhost:9091
@@ -127,6 +123,9 @@ Testing:
 5. Check identity endpoints:
    - curl http://localhost:9091/_status/identity
    - curl http://localhost:9092/_status/identity
+6. Verify API works on same port as UI:
+   - curl http://localhost:8080/api/v0/bucket/list
+   - curl http://localhost:8080/buckets  # HTML
 EOF" C-m
 
 # Go back to first window
@@ -144,8 +143,8 @@ echo "  1: db    - Database inspection"
 echo "  2: info  - Configuration info and testing guide"
 echo ""
 echo "Node Configurations:"
-echo "  Node1 (daemon):      UI=8080, API=3000"
-echo "  Node2 (daemon+gw):   UI=8081, API=3001, GW=9091"
+echo "  Node1 (app):         App=8080 (UI+API)"
+echo "  Node2 (app+gw):      App=8081 (UI+API) + GW=9091"
 echo "  Node3 (gw-only):     GW=9092"
 echo ""
 echo -e "${BLUE}Attaching to session...${NC}"

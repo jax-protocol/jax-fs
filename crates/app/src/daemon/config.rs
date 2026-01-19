@@ -1,7 +1,4 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use common::prelude::SecretKey;
 
@@ -10,7 +7,7 @@ pub struct Config {
     // peer configuration
     /// address for our jax peer to listen on,
     ///  if not set then an ephemeral port will be used
-    pub node_listen_addr: Option<SocketAddr>,
+    pub node_listen_addr: Option<std::net::SocketAddr>,
     /// on system file path to our secret,
     ///  if not set then a new secret will be generated
     pub node_secret: Option<SecretKey>,
@@ -18,13 +15,13 @@ pub struct Config {
     ///  a temporary directory will be used
     pub node_blobs_store_path: Option<PathBuf>,
 
-    // http server configuration
-    /// address for the HTML server to listen on.
-    ///  if not set then 0.0.0.0:8080 will be used
-    pub html_listen_addr: Option<SocketAddr>,
-    /// address for the API server to listen on.
-    ///  if not set then 0.0.0.0:3000 will be used
-    pub api_listen_addr: Option<SocketAddr>,
+    // http server configuration - just two optional ports
+    /// Port for the App server (UI + API combined).
+    /// If not set, no app server will be started.
+    pub app_port: Option<u16>,
+    /// Port for the Gateway server (read-only content serving).
+    /// If not set, no gateway server will be started.
+    pub gateway_port: Option<u16>,
 
     // data store configuration
     /// a path to a sqlite database, if not set then an
@@ -35,13 +32,13 @@ pub struct Config {
     pub log_level: tracing::Level,
 
     // ui configuration
-    /// API hostname to use for HTML UI
+    /// API hostname to use for HTML UI (for JS to call API endpoints)
+    /// If not set, defaults to same origin as the UI
     pub api_hostname: Option<String>,
 
     // gateway configuration
-    /// Port to run the gateway server on (if set, spawns gateway on separate port)
-    pub gateway_port: Option<u16>,
     /// External gateway URL (e.g., "https://gateway.example.com")
+    /// Used for generating share/download links
     pub gateway_url: Option<String>,
 }
 
@@ -51,12 +48,11 @@ impl Default for Config {
             node_listen_addr: None,
             node_secret: None,
             node_blobs_store_path: None,
-            html_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080)),
-            api_listen_addr: Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 3000)),
+            app_port: Some(8080), // Default app server on 8080
+            gateway_port: None,   // No gateway by default
             sqlite_path: None,
             log_level: tracing::Level::INFO,
             api_hostname: None,
-            gateway_port: None,
             gateway_url: None,
         }
     }
