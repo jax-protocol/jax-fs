@@ -5,6 +5,10 @@
 #   - App only (full UI + API, no gateway)
 #   - App + Gateway (full UI + API + gateway on separate port)
 #   - Gateway only (minimal content serving, no UI/API)
+#
+# New blob store commands:
+#   ./bin/dev.sh blob-stores    - Run gateways with different blob store backends
+#   ./bin/dev.sh minio          - Start MinIO container for S3 testing
 
 set -e
 
@@ -20,8 +24,6 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
-
-echo -e "${BLUE}Setting up JAX development environment...${NC}"
 
 # Initialize nodes if they haven't been initialized yet
 init_node() {
@@ -42,6 +44,10 @@ init_node() {
         echo -e "${GREEN}$node_name already initialized${NC}"
     fi
 }
+
+# Default development setup with three node configurations
+run_default() {
+echo -e "${BLUE}Setting up JAX development environment...${NC}"
 
 # Initialize all three nodes with distinct ports
 # Node1: App only (gateway port configured but not used)
@@ -151,3 +157,150 @@ echo -e "${BLUE}Attaching to session...${NC}"
 
 # Attach to the session
 tmux attach -t jax-dev
+}
+
+# Function to start MinIO container
+start_minio() {
+    echo -e "${BLUE}Starting MinIO container...${NC}"
+
+    # Check if docker is available
+    if ! command -v docker &>/dev/null; then
+        echo -e "${YELLOW}Docker not found. Please install Docker to use MinIO.${NC}"
+        exit 1
+    fi
+
+    # Stop existing MinIO container if running
+    if docker ps -q -f name=jax-minio | grep -q .; then
+        echo -e "${YELLOW}Stopping existing MinIO container...${NC}"
+        docker stop jax-minio >/dev/null
+    fi
+
+    # Remove container if it exists
+    if docker ps -aq -f name=jax-minio | grep -q .; then
+        docker rm jax-minio >/dev/null
+    fi
+
+    # Create data directory
+    mkdir -p ./data/minio
+
+    # Start MinIO
+    echo -e "${GREEN}Starting MinIO on http://localhost:9000${NC}"
+    echo -e "${GREEN}Console: http://localhost:9001${NC}"
+    echo -e "${GREEN}Credentials: minioadmin / minioadmin${NC}"
+    docker run -d \
+        --name jax-minio \
+        -p 9000:9000 \
+        -p 9001:9001 \
+        -v "$(pwd)/data/minio:/data" \
+        -e "MINIO_ROOT_USER=minioadmin" \
+        -e "MINIO_ROOT_PASSWORD=minioadmin" \
+        minio/minio server /data --console-address ":9001"
+
+    # Wait for MinIO to start
+    echo -e "${YELLOW}Waiting for MinIO to start...${NC}"
+    sleep 3
+
+    # Create the jax-blobs bucket if mc is available
+    if command -v mc &>/dev/null; then
+        mc alias set jax-minio http://localhost:9000 minioadmin minioadmin 2>/dev/null || true
+        mc mb --ignore-existing jax-minio/jax-blobs 2>/dev/null || true
+        echo -e "${GREEN}Created bucket: jax-blobs${NC}"
+    else
+        echo -e "${YELLOW}Install 'mc' (MinIO client) to auto-create buckets:${NC}"
+        echo "  brew install minio/stable/mc"
+        echo ""
+        echo "Or create bucket manually via console: http://localhost:9001"
+    fi
+
+    echo -e "${GREEN}MinIO is running!${NC}"
+}
+
+# Function to run blob store demo
+run_blob_stores_demo() {
+    echo -e "${BLUE}Setting up blob store demo environment...${NC}"
+
+    # Initialize nodes for blob store testing
+    init_node "./data/blob-legacy" "Legacy" 8080 9010 9080
+    init_node "./data/blob-filesystem" "Filesystem" 8081 9011 9081
+    init_node "./data/blob-s3" "S3" 8082 9012 9082
+
+    # Check if tmux session already exists
+    if tmux has-session -t jax-blob-stores 2>/dev/null; then
+        echo -e "${BLUE}Killing existing jax-blob-stores tmux session...${NC}"
+        tmux kill-session -t jax-blob-stores
+    fi
+
+    echo -e "${GREEN}Starting tmux session 'jax-blob-stores'...${NC}"
+
+    # Create new tmux session
+    tmux new-session -d -s jax-blob-stores -n "gateways"
+
+    # Split into 4 panes (2x2 grid)
+    tmux split-window -h -t jax-blob-stores:0
+    tmux split-window -v -t jax-blob-stores:0.0
+    tmux split-window -v -t jax-blob-stores:0.1
+
+    # Pane 0.0 (top-left): Legacy blob store
+    tmux send-keys -t jax-blob-stores:0.0 "cd $PROJECT_ROOT && echo '=== Legacy Blob Store (iroh FsStore) ===' && echo 'Gateway: http://localhost:9080' && echo '' && RUST_LOG=info cargo run --bin jax -- --config-path ./data/blob-legacy daemon --gateway --blob-store legacy" C-m
+
+    # Pane 0.1 (top-right): Filesystem blob store
+    tmux send-keys -t jax-blob-stores:0.1 "cd $PROJECT_ROOT && echo '=== Filesystem Blob Store (SQLite + local) ===' && echo 'Gateway: http://localhost:9081' && echo '' && RUST_LOG=info cargo run --bin jax -- --config-path ./data/blob-filesystem daemon --gateway --blob-store filesystem" C-m
+
+    # Pane 0.2 (bottom-left): S3 blob store
+    tmux send-keys -t jax-blob-stores:0.2 "cd $PROJECT_ROOT && echo '=== S3 Blob Store (SQLite + MinIO) ===' && echo 'Gateway: http://localhost:9082' && echo 'Requires: ./bin/dev.sh minio' && echo '' && RUST_LOG=info cargo run --bin jax -- --config-path ./data/blob-s3 daemon --gateway --blob-store s3 --s3-endpoint http://localhost:9000 --s3-bucket jax-blobs --s3-access-key minioadmin --s3-secret-key minioadmin" C-m
+
+    # Pane 0.3 (bottom-right): Info
+    tmux send-keys -t jax-blob-stores:0.3 "cd $PROJECT_ROOT && cat << 'EOF'
+Blob Store Demo
+===============
+
+Gateway Ports:
+  Legacy (iroh):     http://localhost:9080
+  Filesystem:        http://localhost:9081
+  S3 (MinIO):        http://localhost:9082
+
+For S3 mode, run MinIO first:
+  ./bin/dev.sh minio
+
+MinIO Console:
+  http://localhost:9001
+  Credentials: minioadmin / minioadmin
+
+Testing:
+  # Upload via each gateway
+  curl -X POST http://localhost:9080/gw/upload -F 'file=@README.md'
+  curl -X POST http://localhost:9081/gw/upload -F 'file=@README.md'
+  curl -X POST http://localhost:9082/gw/upload -F 'file=@README.md'
+
+  # Check S3 bucket contents
+  mc ls jax-minio/jax-blobs
+EOF" C-m
+
+    echo -e "${GREEN}Tmux session 'jax-blob-stores' started!${NC}"
+    echo ""
+    echo "Usage:"
+    echo "  tmux attach -t jax-blob-stores         # Attach to the session"
+    echo "  tmux kill-session -t jax-blob-stores   # Kill the session"
+    echo ""
+    echo "Gateway Ports:"
+    echo "  Legacy (iroh):     http://localhost:9080"
+    echo "  Filesystem:        http://localhost:9081"
+    echo "  S3 (MinIO):        http://localhost:9082"
+    echo ""
+    echo -e "${BLUE}Attaching to session...${NC}"
+
+    tmux attach -t jax-blob-stores
+}
+
+# Main command handling
+case "${1:-}" in
+    minio)
+        start_minio
+        ;;
+    blob-stores)
+        run_blob_stores_demo
+        ;;
+    *)
+        run_default
+        ;;
+esac
