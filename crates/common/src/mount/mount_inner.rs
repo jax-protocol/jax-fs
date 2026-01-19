@@ -10,7 +10,7 @@ use crate::crypto::{PublicKey, Secret, SecretError, SecretKey, SecretShare};
 use crate::linked_data::{BlockEncoded, CodecError, Link};
 use crate::peer::{BlobsStore, BlobsStoreError};
 
-use super::manifest::{Manifest, Share};
+use super::manifest::{Manifest, ManifestError, Share};
 use super::node::{Node, NodeError, NodeLink};
 use super::path_ops::{OpType, PathOpLog};
 use super::pins::Pins;
@@ -42,6 +42,8 @@ pub struct MountInner {
     pub ops_log: PathOpLog,
     // the local peer ID (for recording operations)
     pub peer_id: PublicKey,
+    // the secret key for signing manifests
+    pub secret_key: SecretKey,
 }
 
 impl MountInner {
@@ -95,6 +97,8 @@ pub enum MountError {
     Codec(#[from] CodecError),
     #[error("share error: {0}")]
     Share(#[from] crate::crypto::SecretShareError),
+    #[error("manifest error: {0}")]
+    Manifest(#[from] ManifestError),
     #[error("peers share was not found")]
     ShareNotFound,
     #[error("mirror cannot mount: bucket is not published")]
@@ -125,7 +129,15 @@ impl Mount {
         publish: bool,
     ) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
-        let (entry_node, mut pins, previous_link, previous_height, manifest_template, ops_log) = {
+        let (
+            entry_node,
+            mut pins,
+            previous_link,
+            previous_height,
+            manifest_template,
+            ops_log,
+            secret_key,
+        ) = {
             let inner = self.0.lock().await;
             (
                 inner.entry.clone(),
@@ -134,6 +146,7 @@ impl Mount {
                 inner.height,
                 inner.manifest.clone(),
                 inner.ops_log.clone(),
+                inner.secret_key.clone(),
             )
         };
 
@@ -185,6 +198,9 @@ impl Mount {
             manifest.set_ops_log(ops_link);
         }
 
+        // Sign the manifest with the stored secret key
+        manifest.sign(&secret_key)?;
+
         // Put the updated manifest into blobs to determine the new link
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
@@ -218,7 +234,7 @@ impl Mount {
         // Put the pins in blobs to get a pins link
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
         // construct the new manifest
-        let manifest = Manifest::new(
+        let mut manifest = Manifest::new(
             id,
             name.clone(),
             owner.public(),
@@ -227,6 +243,8 @@ impl Mount {
             pins_link.clone(),
             0, // initial height is 0
         );
+        // Sign the manifest with the owner's key
+        manifest.sign(owner)?;
         let link = Self::_put_manifest_in_blobs(&manifest, blobs).await?;
 
         // return the new mount
@@ -239,6 +257,7 @@ impl Mount {
                 height: 0,
                 ops_log: PathOpLog::new(),
                 peer_id: owner.public(),
+                secret_key: owner.clone(),
             })),
             blobs.clone(),
         ))
@@ -302,6 +321,7 @@ impl Mount {
                 height,
                 ops_log,
                 peer_id: secret_key.public(),
+                secret_key: secret_key.clone(),
             })),
             blobs.clone(),
         ))

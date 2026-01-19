@@ -122,6 +122,22 @@ impl PublicKey {
         let montgomery_point = edwards_point.to_montgomery();
         Ok(X25519PublicKey::from(montgomery_point.to_bytes()))
     }
+
+    /// Verify an Ed25519 signature on a message.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The public key bytes are invalid
+    /// - The signature verification fails
+    pub fn verify(
+        &self,
+        msg: &[u8],
+        signature: &ed25519_dalek::Signature,
+    ) -> Result<(), ed25519_dalek::SignatureError> {
+        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&self.to_bytes())?;
+        verifying_key.verify_strict(msg, signature)
+    }
 }
 
 /// Secret key for peer identity and key sharing
@@ -247,6 +263,16 @@ impl SecretKey {
         let scalar_bytes = signing_key.to_scalar_bytes();
         StaticSecret::from(scalar_bytes)
     }
+
+    /// Sign a message with this secret key using Ed25519.
+    ///
+    /// Returns a detached signature that can be verified with the corresponding public key.
+    pub fn sign(&self, msg: &[u8]) -> ed25519_dalek::Signature {
+        // iroh uses a different version of ed25519_dalek, so we need to convert
+        // the signature via bytes (both versions have the same 64-byte representation)
+        let sig = self.0.sign(msg);
+        ed25519_dalek::Signature::from_bytes(&sig.to_bytes())
+    }
 }
 
 #[cfg(test)]
@@ -282,5 +308,26 @@ mod test {
             private_key.public().to_bytes(),
             recovered_private.public().to_bytes()
         );
+    }
+
+    #[test]
+    fn test_sign_and_verify() {
+        let secret_key = SecretKey::generate();
+        let public_key = secret_key.public();
+        let message = b"hello, world!";
+
+        // Sign the message
+        let signature = secret_key.sign(message);
+
+        // Verify the signature
+        assert!(public_key.verify(message, &signature).is_ok());
+
+        // Verify fails with wrong message
+        let wrong_message = b"hello, world?";
+        assert!(public_key.verify(wrong_message, &signature).is_err());
+
+        // Verify fails with wrong key
+        let other_key = SecretKey::generate().public();
+        assert!(other_key.verify(message, &signature).is_err());
     }
 }
