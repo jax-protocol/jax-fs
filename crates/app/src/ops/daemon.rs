@@ -1,18 +1,29 @@
 use clap::Args;
 
-use crate::daemon::spawn_service;
-use crate::daemon::ServiceConfig;
+use crate::daemon::{spawn_service, ServiceConfig};
 use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
-    /// Run the HTML UI in read-only mode (hides write operations)
+    /// Run only the gateway server (no App UI/API)
     #[arg(long)]
-    pub ui_read_only: bool,
+    pub gateway: bool,
 
-    /// API hostname to use for HTML UI (default: http://localhost:<api_port>)
+    /// API URL for HTML UI (default: same origin)
     #[arg(long)]
-    pub api_hostname: Option<String>,
+    pub api_url: Option<String>,
+
+    /// Override gateway port (implies gateway is enabled)
+    #[arg(long)]
+    pub gateway_port: Option<u16>,
+
+    /// Gateway URL for share/download links (e.g., https://gateway.example.com)
+    #[arg(long)]
+    pub gateway_url: Option<String>,
+
+    /// Also run gateway alongside app server
+    #[arg(long)]
+    pub with_gateway: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -43,17 +54,30 @@ impl crate::op::Op for Daemon {
                 .expect("Failed to parse peer listen address")
         });
 
-        // Build daemon config with persistent paths
+        // Determine app_port and gateway_port based on flags
+        let (app_port, gateway_port) = if self.gateway {
+            // Gateway-only mode: no app server, just gateway
+            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
+            (None, Some(gateway_port))
+        } else if self.with_gateway || self.gateway_port.is_some() {
+            // App + Gateway mode: run both
+            let gateway_port = self.gateway_port.unwrap_or(state.config.gateway_port);
+            (Some(state.config.app_port), Some(gateway_port))
+        } else {
+            // Default: App only, no gateway
+            (Some(state.config.app_port), None)
+        };
+
         let config = ServiceConfig {
             node_listen_addr,
             node_secret: Some(secret_key),
             node_blobs_store_path: Some(state.blobs_path),
-            html_listen_addr: state.config.html_listen_addr.parse().ok(),
-            api_listen_addr: state.config.api_listen_addr.parse().ok(),
+            app_port,
+            gateway_port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
-            ui_read_only: self.ui_read_only,
-            api_hostname: self.api_hostname.clone(),
+            api_url: self.api_url.clone(),
+            gateway_url: self.gateway_url.clone(),
         };
 
         spawn_service(&config).await;

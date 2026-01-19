@@ -4,7 +4,7 @@
 
 The current `jax daemon` combines full local client functionality (Askama UI, REST API, P2P sync) with gateway serving. This limits deployment flexibility for edge/CDN use cases.
 
-We want to add a `jax gw` mode that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving + SQLite/Object Storage backend.
+We added a `--gateway-only` mode to the daemon that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving + SQLite/Object Storage backend.
 
 ## Architecture
 
@@ -13,11 +13,11 @@ jax daemon (full local client)
 ├── P2P peer (owner/mirror roles)
 ├── Askama web UI
 ├── REST API
-└── Gateway handler
+└── Gateway handler (optional, via --gateway flag)
 
-jax gw (gateway mode)
+jax daemon --gateway-only (gateway mode)
 ├── P2P peer (mirror role)
-├── Gateway handler only
+├── Gateway handler with read-only HTML file explorer
 └── SQLite + Object Storage blob backend
 ```
 
@@ -25,7 +25,7 @@ jax gw (gateway mode)
 
 | # | Ticket | Status | Track |
 |---|--------|--------|-------|
-| 0 | [Gateway subcommand](./0-gateway-subcommand.md) | Planned | Gateway |
+| 0 | [Gateway subcommand](./0-gateway-subcommand.md) | Done | Gateway |
 | 1 | [SQLite blob store](./1-sqlite-blobstore.md) | Planned | Gateway |
 | 2 | [Conflict resolution](./2-conflict-resolution.md) | Planned | Common |
 | 3 | [FUSE integration](./3-fuse-integration.md) | Planned | Local |
@@ -35,7 +35,7 @@ jax gw (gateway mode)
 ## Execution Order
 
 **Stage 1 (Foundation):**
-- Ticket 0: Gateway subcommand (minimal `jax gw` that works)
+- Ticket 0: Gateway subcommand (`jax daemon --gateway-only`) - **Done**
 
 **Stage 2 (Parallel Tracks):**
 

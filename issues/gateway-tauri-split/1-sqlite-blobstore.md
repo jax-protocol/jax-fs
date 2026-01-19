@@ -31,13 +31,13 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 |------|---------|
 | `Cargo.toml` | Add workspace member |
 | `crates/app/Cargo.toml` | Add blobs-store dependency |
-| `crates/app/src/ops/gw.rs` | Add blob store config |
+| `crates/app/src/ops/daemon.rs` | Add blob store config to gateway flags |
 
 ## Acceptance Criteria
 
 - [ ] `crates/blobs-store` compiles independently
 - [ ] Trait bridge implements iroh-blobs store traits
-- [ ] `jax gw --blob-store s3 --s3-endpoint ...` works
+- [ ] `jax daemon --gateway-only --blob-store s3 --s3-endpoint ...` works
 - [ ] SQLite metadata can be rebuilt from object storage
 - [ ] `cargo test` passes
 - [ ] `cargo clippy` has no warnings
@@ -49,7 +49,7 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 ./bin/minio.sh start
 
 # Start gateway with S3 config
-cargo run -- gw --port 8080 --blob-store s3 --s3-endpoint http://localhost:9000 --s3-bucket jax-blobs
+cargo run -- daemon --gateway-only --blob-store s3 --s3-endpoint http://localhost:9000 --s3-bucket jax-blobs
 
 # Verify blobs stored in MinIO
 mc ls minio/jax-blobs

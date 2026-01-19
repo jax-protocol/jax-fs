@@ -58,8 +58,8 @@ pub struct FileViewerTemplate {
     pub at_hash: Option<String>,
     pub return_url: String,
     pub api_url: String,
-    pub read_only: bool,
     pub current_path: String,
+    pub gateway_url: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -312,7 +312,7 @@ pub async fn handler(
         .unwrap_or("/")
         .to_string();
 
-    let read_only = config.read_only || viewing_history;
+    let gateway_url = config.gateway_url.clone().unwrap_or_default();
 
     let file_size = file_content.data.len();
     let file_size_formatted = format_bytes(file_size);
@@ -344,8 +344,8 @@ pub async fn handler(
         at_hash: query.at,
         return_url,
         api_url,
-        read_only,
         current_path,
+        gateway_url,
     };
 
     template.into_response()
@@ -397,7 +397,7 @@ fn build_back_url(file_path: &str, bucket_id: &Uuid, at_hash: Option<&String>) -
     }
 }
 
-fn format_bytes(bytes: usize) -> String {
+pub fn format_bytes(bytes: usize) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
 
     if bytes == 0 {

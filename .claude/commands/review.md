@@ -2,6 +2,7 @@
 description: Review branch changes against project conventions
 allowed-tools:
   - Bash(git:*)
+  - Bash(ls:*)
   - Read
   - Glob
   - Grep
@@ -28,7 +29,7 @@ git log main..HEAD --format="%s"
 
 Verify each commit follows conventional commit format from CONTRIBUTING.md:
 - `feat:` / `fix:` / `docs:` / `refactor:` / `test:` / `chore:` / `perf:`
-- Breaking changes use `!` or `BREAKING CHANGE:` in body
+- Breaking changes use exclamation mark or BREAKING CHANGE in body
 - Messages are clear and descriptive
 
 Report any commits that need amending with suggested corrections.

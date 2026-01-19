@@ -4,17 +4,17 @@ use crate::state::{AppConfig, AppState};
 
 #[derive(Args, Debug, Clone)]
 pub struct Init {
-    /// HTML server listen address (default: 0.0.0.0:8080)
-    #[arg(long, default_value = "0.0.0.0:8080")]
-    pub html_addr: String,
-
-    /// API server listen address (default: 0.0.0.0:3000)
-    #[arg(long, default_value = "0.0.0.0:3000")]
-    pub api_addr: String,
+    /// App server port (UI + API combined, default: 8080)
+    #[arg(long, default_value = "8080")]
+    pub app_port: u16,
 
     /// Peer (P2P) node listen port (optional, defaults to ephemeral port if not specified)
     #[arg(long)]
     pub peer_port: Option<u16>,
+
+    /// Gateway server listen port (default: 9090)
+    #[arg(long, default_value = "9090")]
+    pub gateway_port: u16,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,9 +30,9 @@ impl crate::op::Op for Init {
 
     async fn execute(&self, ctx: &crate::op::OpContext) -> Result<Self::Output, Self::Error> {
         let config = AppConfig {
-            html_listen_addr: self.html_addr.clone(),
-            api_listen_addr: self.api_addr.clone(),
+            app_port: self.app_port,
             peer_port: self.peer_port,
+            gateway_port: self.gateway_port,
         };
 
         let state = AppState::init(ctx.config_path.clone(), Some(config))?;
@@ -48,17 +48,17 @@ impl crate::op::Op for Init {
              - Key: {}\n\
              - Blobs: {}\n\
              - Config: {}\n\
-             - HTML listen address: {}\n\
-             - API listen address: {}\n\
-             - Peer port: {}",
+             - App port: {}\n\
+             - Peer port: {}\n\
+             - Gateway port: {}",
             state.jax_dir.display(),
             state.db_path.display(),
             state.key_path.display(),
             state.blobs_path.display(),
             state.config_path.display(),
-            state.config.html_listen_addr,
-            state.config.api_listen_addr,
-            peer_port_str
+            state.config.app_port,
+            peer_port_str,
+            state.config.gateway_port
         );
 
         Ok(output)

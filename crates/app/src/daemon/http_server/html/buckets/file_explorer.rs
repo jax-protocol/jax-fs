@@ -45,7 +45,6 @@ pub struct BucketExplorerTemplate {
     pub path_segments: Vec<PathSegment>,
     pub parent_path_url: String,
     pub items: Vec<FileDisplayInfo>,
-    pub read_only: bool,
     pub viewing_history: bool,
     pub at_hash: Option<String>,
     pub return_url: String,
@@ -99,9 +98,8 @@ pub async fn handler(
     Path(bucket_id): Path<Uuid>,
     Query(query): Query<ExplorerQuery>,
 ) -> askama_axum::Response {
-    // If viewing a specific version, always make it read-only
+    // If viewing a specific version, mark it as viewing history
     let viewing_history = query.at.is_some();
-    let read_only = config.read_only || viewing_history;
 
     let current_path = query.path.unwrap_or_else(|| "/".to_string());
 
@@ -325,7 +323,6 @@ pub async fn handler(
         path_segments,
         parent_path_url,
         items: display_items,
-        read_only,
         viewing_history,
         at_hash: query.at,
         return_url,

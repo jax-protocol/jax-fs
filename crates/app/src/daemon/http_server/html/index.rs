@@ -12,7 +12,6 @@ use crate::ServiceState;
 #[template(path = "pages/index.html")]
 pub struct BucketsTemplate {
     pub buckets: Vec<BucketDisplayInfo>,
-    pub read_only: bool,
     pub api_url: String,
     pub peer_id: String,
     pub peer_id_short: String,
@@ -35,9 +34,6 @@ pub async fn handler(
     Extension(config): Extension<Config>,
     _headers: HeaderMap,
 ) -> askama_axum::Response {
-    // Use the read_only flag from config
-    let read_only = config.read_only;
-
     // Load buckets from database
     let buckets = match state.database().list_buckets(None, None).await {
         Ok(buckets) => buckets,
@@ -119,7 +115,6 @@ pub async fn handler(
 
     let template = BucketsTemplate {
         buckets: display_buckets,
-        read_only,
         api_url,
         peer_id,
         peer_id_short,

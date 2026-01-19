@@ -11,6 +11,7 @@ use tower_http::LatencyUnit;
 
 pub mod api;
 mod config;
+mod gateway_index;
 mod handlers;
 mod health;
 mod html;
@@ -61,8 +62,8 @@ async fn static_handler(uri: Uri) -> impl IntoResponse {
     }
 }
 
-/// Run the HTML server on port 8080
-pub async fn run_html(
+/// Run the combined App server (UI + API on same port)
+pub async fn run_app(
     config: Config,
     state: ServiceState,
     mut shutdown_rx: watch::Receiver<()>,
@@ -80,19 +81,22 @@ pub async fn run_html(
 
     tracing::info!("Static files embedded in binary");
 
-    let html_router = Router::new()
+    // Combined router with both HTML UI and API endpoints
+    let app_router = Router::new()
         .nest(STATUS_PREFIX, health::router(state.clone()))
+        .nest(API_PREFIX, api::router(state.clone()))
         .route("/static/*path", axum::routing::get(static_handler))
         .merge(html::router(state.clone()))
         .fallback(handlers::not_found_handler)
+        .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE_BYTES))
         .layer(Extension(config.clone()))
         .with_state(state)
         .layer(trace_layer);
 
-    tracing::info!(addr = ?listen_addr, "HTML server listening");
+    tracing::info!(addr = ?listen_addr, "App server listening (UI + API)");
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
 
-    axum::serve(listener, html_router)
+    axum::serve(listener, app_router)
         .with_graceful_shutdown(async move {
             let _ = shutdown_rx.changed().await;
         })
@@ -101,11 +105,19 @@ pub async fn run_html(
     Ok(())
 }
 
-pub async fn run_api(
+/// Run a minimal gateway-only HTTP server.
+/// Only serves /gw/:bucket_id/*file_path and health endpoints.
+/// No Askama UI routes, no REST API routes.
+pub async fn run_gateway(
     config: Config,
     state: ServiceState,
     mut shutdown_rx: watch::Receiver<()>,
 ) -> Result<(), HttpServerError> {
+    use axum::routing::get;
+    use http::header::{ACCEPT, ORIGIN};
+    use http::Method;
+    use tower_http::cors::{Any, CorsLayer};
+
     let listen_addr = config.listen_addr;
     let log_level = config.log_level;
     let trace_layer = TraceLayer::new_for_http()
@@ -117,18 +129,28 @@ pub async fn run_api(
         )
         .on_failure(DefaultOnFailure::new().latency_unit(LatencyUnit::Micros));
 
-    let api_router = Router::new()
+    let cors_layer = CorsLayer::new()
+        .allow_methods(vec![Method::GET])
+        .allow_headers(vec![ACCEPT, ORIGIN])
+        .allow_origin(Any)
+        .allow_credentials(false);
+
+    // Minimal router: root page, gateway route, static files, and health endpoints
+    let gateway_router = Router::new()
+        .route("/", get(gateway_index::handler))
+        .route("/gw/:bucket_id", get(html::gateway::root_handler))
+        .route("/gw/:bucket_id/*file_path", get(html::gateway::handler))
+        .route("/static/*path", get(static_handler))
         .nest(STATUS_PREFIX, health::router(state.clone()))
-        .nest(API_PREFIX, api::router(state.clone()))
         .fallback(handlers::not_found_handler)
-        .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE_BYTES))
         .with_state(state)
+        .layer(cors_layer)
         .layer(trace_layer);
 
-    tracing::info!(addr = ?listen_addr, "API server listening");
+    tracing::info!(addr = ?listen_addr, "Gateway server listening");
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
 
-    axum::serve(listener, api_router)
+    axum::serve(listener, gateway_router)
         .with_graceful_shutdown(async move {
             let _ = shutdown_rx.changed().await;
         })

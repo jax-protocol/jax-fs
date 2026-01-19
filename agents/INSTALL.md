@@ -185,6 +185,23 @@ The daemon will:
 
 Keep this running in a terminal, or run it as a background service (see below).
 
+### Alternative: Gateway-Only Mode
+
+For lightweight deployments that only need to serve published bucket content (no UI, no API):
+
+```bash
+jax daemon --gateway-only
+```
+
+The gateway mode provides:
+- P2P peer syncing (mirror role)
+- `/gw/:bucket_id/*path` endpoint for serving content with HTML file explorer
+- `/_status/*` health endpoints
+- Content negotiation (`Accept: application/json` for JSON responses)
+- `?download=true` query param for raw file downloads
+
+Use this when you need a minimal content server without the full daemon features.
+
 ### 4. Access the Web UI
 
 Open your browser and navigate to:

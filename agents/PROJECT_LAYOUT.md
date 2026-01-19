@@ -23,6 +23,8 @@ The web UI uses [Askama](https://github.com/djc/askama) for HTML templating.
 
 - `templates/layouts/` - Base layouts (`base.html`, `explorer.html`)
 - `templates/pages/` - Full page templates
+  - `pages/buckets/` - Bucket explorer, file viewer, history, peers
+  - `pages/gateway/` - Read-only gateway UI (explorer, viewer, identity page)
 - `templates/components/` - Reusable UI components (cards, modals, sidebars)
 
 Templates are compiled at build time. Handler structs derive `Template` and reference template files.

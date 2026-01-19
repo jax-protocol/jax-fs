@@ -481,9 +481,10 @@ initNoteEditor({
 ## State Management
 
 Templates receive state through handler structs:
-- `read_only: bool` - Enables/disables edit features
 - `viewing_history: bool` - Triggers historical banner
 - `at_hash: Option<String>` - Current version hash for historical views
 - `api_url: String` - API endpoint for JavaScript
 
 All state flows from Rust handlers → Template structs → Rendered HTML → JavaScript global vars.
+
+Note: For read-only access, the gateway provides separate templates in `pages/gateway/` that have no edit features built-in.

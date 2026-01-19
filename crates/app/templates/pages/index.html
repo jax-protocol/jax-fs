@@ -17,11 +17,9 @@
                 </div>
                 <input type="hidden" id="fullPeerId" value="{{ peer_id }}">
             </div>
-            {% if !read_only %}
             <button class="button button-primary create-bucket-btn" uk-toggle="target: #create-bucket-modal">
                 <i class="fas fa-plus"></i> Create Bucket
             </button>
-            {% endif %}
         </div>
 
         {% if buckets.is_empty() %}
@@ -75,7 +73,6 @@
     </div>
 
     <!-- Create Bucket Modal -->
-    {% if !read_only %}
     <div id="create-bucket-modal" uk-modal>
         <div class="uk-modal-dialog uk-modal-body">
             <button class="uk-modal-close-default" type="button" uk-close></button>
@@ -107,7 +104,6 @@
             </form>
         </div>
     </div>
-    {% endif %}
 </div>
 {% endblock %}
 

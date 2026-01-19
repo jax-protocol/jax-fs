@@ -1,0 +1,141 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ file_name }} - Gateway{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="max-w-4xl mx-auto px-4 sm:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
+        <!-- Gateway header -->
+        <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3 min-w-0">
+                <i class="fas fa-globe text-primary text-xl flex-shrink-0"></i>
+                <div class="min-w-0">
+                    <h1 class="text-xl font-semibold truncate">{{ bucket_name }}</h1>
+                    <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span class="copyable" onclick="copyToClipboard('{{ bucket_id }}', this)" title="Click to copy bucket ID">
+                            <i class="fas fa-fingerprint"></i>
+                            <code>{{ bucket_id_short }}</code>
+                        </span>
+                        <span class="copyable" onclick="copyToClipboard('{{ bucket_link }}', this)" title="Click to copy version">
+                            <i class="fas fa-code-branch"></i>
+                            <code>{{ bucket_link_short }}</code>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- File header with actions -->
+        <div class="flex items-center gap-3">
+            <a href="{{ back_url }}" class="button">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <a href="/gw/{{ bucket_id }}{{ file_path }}?download=true" class="button" title="Download">
+                <i class="fas fa-download"></i>
+            </a>
+            <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">{{ file_name }}</div>
+                <span class="text-xs text-muted-foreground">{{ size_formatted }}</span>
+            </div>
+        </div>
+
+        <!-- File content -->
+        <div class="card">
+            <!-- Images -->
+            {% if mime_type.starts_with("image/") %}
+            <div class="p-4 text-center">
+                <img
+                    src="/gw/{{ bucket_id }}{{ file_path }}?download=true"
+                    alt="{{ file_name }}"
+                    class="max-w-full h-auto mx-auto rounded"
+                />
+            </div>
+
+            <!-- Videos -->
+            {% else if mime_type.starts_with("video/") %}
+            <div class="p-4">
+                <video controls class="w-full max-w-3xl mx-auto rounded">
+                    <source src="/gw/{{ bucket_id }}{{ file_path }}?download=true" type="{{ mime_type }}">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+
+            <!-- Audio -->
+            {% else if mime_type.starts_with("audio/") %}
+            <div class="p-4">
+                <audio controls class="w-full max-w-xl mx-auto">
+                    <source src="/gw/{{ bucket_id }}{{ file_path }}?download=true" type="{{ mime_type }}">
+                    Your browser does not support the audio tag.
+                </audio>
+            </div>
+
+            <!-- PDF -->
+            {% else if mime_type == "application/pdf" %}
+            <div class="p-4">
+                <iframe
+                    src="/gw/{{ bucket_id }}{{ file_path }}?download=true"
+                    class="w-full rounded"
+                    style="height: 80vh; min-height: 500px;"
+                    title="{{ file_name }}"
+                ></iframe>
+            </div>
+
+            <!-- Text files -->
+            {% else if mime_type.starts_with("text/") || mime_type == "application/json" || mime_type == "application/xml" || mime_type == "application/javascript" %}
+            <div class="p-4">
+                <pre class="bg-muted p-4 rounded overflow-x-auto text-sm"><code>{{ content }}</code></pre>
+            </div>
+
+            <!-- Binary files -->
+            {% else %}
+            <div class="p-6 text-center">
+                <i class="fas fa-file-code text-4xl text-muted-foreground mb-4"></i>
+                <p class="text-muted-foreground mb-4">Binary file ({{ size_formatted }})</p>
+                <details class="text-left">
+                    <summary class="cursor-pointer text-primary hover:underline mb-2">Show hex dump</summary>
+                    <pre class="bg-muted p-4 rounded overflow-x-auto text-xs"><code>{{ content }}</code></pre>
+                </details>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.copyable {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
+    padding: 0.125rem 0.375rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.copyable:hover {
+    background: hsl(var(--muted));
+}
+
+.copyable.copied {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+</style>
+
+<script>
+function copyToClipboard(text, element) {
+    navigator.clipboard.writeText(text).then(() => {
+        element.classList.add('copied');
+        const icon = element.querySelector('i');
+        const originalClass = icon.className;
+        icon.className = 'fas fa-check';
+        setTimeout(() => {
+            element.classList.remove('copied');
+            icon.className = originalClass;
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

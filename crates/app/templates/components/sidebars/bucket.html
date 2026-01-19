@@ -132,12 +132,10 @@ function copySidebarLink(link) { copySidebarValue(link); }
             <i class="fas fa-users"></i>
             <span>Peers</span>
         </a>
-        {% if !read_only %}
         <button uk-toggle="target: #share-modal" class="sidebar-nav-item sidebar-nav-button">
             <i class="fas fa-share-alt"></i>
             <span>Share</span>
         </button>
-        {% endif %}
     </nav>
 </div>
 
@@ -153,11 +151,9 @@ function copySidebarLink(link) { copySidebarValue(link); }
 </div>
 
 <!-- Upload Action (Bottom) -->
-{% if !read_only %}
 <div class="sidebar-upload-section">
     <button uk-toggle="target: #upload-modal" class="sidebar-upload-btn">
         <i class="fas fa-upload"></i>
         <span>Upload Files</span>
     </button>
 </div>
-{% endif %}

@@ -57,6 +57,26 @@ Start the background service with HTTP API, P2P networking, and web UI.
 jax daemon
 ```
 
+### daemon --gateway-only
+
+Start a minimal gateway service for content serving only (no UI, no API).
+
+```bash
+jax daemon --gateway-only
+
+# Or with full daemon + gateway on separate port
+jax daemon --gateway --gateway-url http://localhost:9090
+```
+
+The gateway provides:
+- P2P peer syncing (mirror role)
+- `/gw/:bucket_id/*path` for serving published bucket content with HTML file explorer
+- `/_status/livez`, `/_status/readyz`, `/_status/identity` health endpoints
+- Content negotiation (`Accept: application/json` for JSON responses)
+- `?download=true` query param for raw file downloads
+
+Use `--gateway-only` for lightweight deployments when you only need content serving without the full daemon features.
+
 ### version
 
 Display version information.
@@ -156,13 +176,24 @@ The daemon serves a web interface with file explorer, viewer, editor, history, a
 
 ## Gateway
 
-Serves bucket content over HTTP:
+Serves published bucket content over HTTP at `/gw/:bucket_id/*path`.
 
-```
-GET /gateway/<bucket-id>/<path>
+**Via daemon + gateway:** Run `jax daemon --gateway` to enable gateway on separate port alongside UI and API.
+
+**Via gateway-only:** Run `jax daemon --gateway-only` for standalone gateway (no UI/API).
+
+```bash
+# Access content (HTML file explorer)
+curl http://localhost:9090/gw/<bucket-id>/
+
+# Access content (JSON)
+curl -H "Accept: application/json" http://localhost:9090/gw/<bucket-id>/
+
+# Download raw file
+curl "http://localhost:9090/gw/<bucket-id>/file.txt?download=true"
 ```
 
-Features URL rewriting and index file support.
+Features HTML file explorer, content negotiation, URL rewriting for relative links, and automatic index file serving.
 
 ## Configuration
 

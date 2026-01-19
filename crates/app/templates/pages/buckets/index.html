@@ -36,14 +36,12 @@
             {% endif %}
         </div>
         <div class="toolbar-right">
-            {% if !read_only %}
             <button uk-toggle="target: #new-folder-modal" class="button">
                 <i class="fas fa-folder-plus"></i>
             </button>
             <a href="/buckets/{{ bucket_id }}/edit?path={{ current_path }}&new=true" class="button">
                 <i class="fas fa-plus"></i>
             </a>
-            {% endif %}
         </div>
     </div>
 
@@ -53,9 +51,7 @@
         <div class="p-8 text-center text-muted-foreground">
             <i class="fas fa-folder-open text-4xl mb-4"></i>
             <p>This directory is empty</p>
-            {% if !read_only %}
             <p class="text-sm">Upload files or create new ones to get started</p>
-            {% endif %}
         </div>
     </div>
     {% else %}
@@ -117,13 +113,11 @@
                         </span>
                     </td>
                     <td>
-                        {% if !read_only %}
                         <div class="relative">
                             <button class="button button-sm" onclick="toggleActionMenu(event, '{{ item.path }}', '{{ item.name }}', {{ item.is_dir }})">
                                 <i class="fas fa-ellipsis-h"></i>
                             </button>
                         </div>
-                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -134,7 +128,6 @@
 </div>
 
 <!-- Modals -->
-{% if !read_only %}
 <!-- New Folder Modal -->
 <div id="new-folder-modal" uk-modal>
     <div class="uk-modal-dialog uk-modal-body">
@@ -270,7 +263,6 @@
 </div>
 
 {% include "components/modals/manifest.html" %}
-{% endif %}
 {% endblock %}
 
 {% block head %}

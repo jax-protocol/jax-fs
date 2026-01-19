@@ -19,8 +19,8 @@ Ticket 4 implements basic desktop integration using native Rust crates (tray-ico
 ## Architecture
 
 ```
-jax gw (gateway)
-├── Askama templates for content rendering
+jax daemon --gateway-only (gateway)
+├── Read-only HTML file explorer
 ├── Gateway handler serves published buckets
 └── No bucket management UI
 

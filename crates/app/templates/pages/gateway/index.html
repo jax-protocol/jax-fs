@@ -1,0 +1,152 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}JAX Gateway{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <div class="max-w-3xl mx-auto px-8 py-8">
+        <!-- Page header -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold mb-2">JAX Gateway</h1>
+            <p class="text-muted-foreground">Content-addressed storage gateway</p>
+        </div>
+
+        <!-- Identity Card -->
+        <div class="card p-6 mb-6">
+            <div class="peer-id-card-inner">
+                <div class="peer-id-label">Node Identity</div>
+                <div class="peer-id-value" onclick="copyNodeId()" title="Click to copy">
+                    <code id="nodeIdDisplay">{{ node_id }}</code>
+                    <i class="fas fa-copy peer-id-copy-icon"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Endpoints -->
+        <div class="card p-6">
+            <h3 class="text-lg font-semibold mb-4">Available Endpoints</h3>
+            <div class="space-y-3">
+                <div class="endpoint-row">
+                    <code class="endpoint-path">/gw/:bucket_id/*path</code>
+                    <span class="endpoint-desc">Serve bucket content</span>
+                </div>
+                <div class="endpoint-row">
+                    <code class="endpoint-path">/_status/identity</code>
+                    <span class="endpoint-desc">Node identity (JSON)</span>
+                </div>
+                <div class="endpoint-row">
+                    <code class="endpoint-path">/_status/livez</code>
+                    <span class="endpoint-desc">Liveness check</span>
+                </div>
+                <div class="endpoint-row">
+                    <code class="endpoint-path">/_status/readyz</code>
+                    <span class="endpoint-desc">Readiness check</span>
+                </div>
+                <div class="endpoint-row">
+                    <code class="endpoint-path">/_status/version</code>
+                    <span class="endpoint-desc">Version info</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.peer-id-card-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.peer-id-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: hsl(var(--muted-foreground));
+}
+
+.peer-id-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    padding: 0.75rem;
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 6px;
+    border: 1px solid hsl(var(--border));
+}
+
+.peer-id-value:hover {
+    border-color: hsl(var(--primary));
+}
+
+.peer-id-value code {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+    flex: 1;
+}
+
+.peer-id-copy-icon {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    flex-shrink: 0;
+}
+
+.peer-id-value:hover .peer-id-copy-icon {
+    opacity: 1;
+}
+
+.endpoint-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 6px;
+    gap: 1rem;
+}
+
+.endpoint-path {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.85rem;
+    color: hsl(var(--primary));
+}
+
+.endpoint-desc {
+    font-size: 0.85rem;
+    color: hsl(var(--muted-foreground));
+    text-align: right;
+}
+
+@media (max-width: 640px) {
+    .endpoint-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    .endpoint-desc {
+        text-align: left;
+    }
+}
+</style>
+
+<script>
+function copyNodeId() {
+    const nodeId = document.getElementById('nodeIdDisplay').textContent;
+    navigator.clipboard.writeText(nodeId).then(() => {
+        const icon = document.querySelector('.peer-id-copy-icon');
+        const originalClass = icon.className;
+        icon.className = 'fas fa-check peer-id-copy-icon';
+        setTimeout(() => {
+            icon.className = originalClass;
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}
