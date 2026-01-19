@@ -11,6 +11,7 @@ use tower_http::LatencyUnit;
 
 pub mod api;
 mod config;
+mod gateway_index;
 mod handlers;
 mod health;
 mod html;
@@ -167,8 +168,9 @@ pub async fn run_gateway(
         .allow_origin(Any)
         .allow_credentials(false);
 
-    // Minimal router: only gateway route and health endpoints
+    // Minimal router: root page, gateway route, and health endpoints
     let gateway_router = Router::new()
+        .route("/", get(gateway_index::handler))
         .route("/gw/:bucket_id/*file_path", get(html::gateway::handler))
         .nest(STATUS_PREFIX, health::router(state.clone()))
         .fallback(handlers::not_found_handler)
