@@ -71,6 +71,18 @@ For each issue file, check if this branch addresses or impacts it:
 - Should new issues be created for follow-up work?
 - Are there epic tickets that need progress updates?
 
+**IMPORTANT: Downstream Impact Analysis**
+
+When a ticket's implementation differs from its original spec:
+1. **Update the completed ticket** with actual implementation details (CLI flags, file paths, etc.)
+2. **Check downstream tickets** that depend on this work
+3. **Update downstream tickets** if they reference outdated assumptions (e.g., old CLI flag names, removed files)
+4. **Add a "Downstream Impact" section** to the completed ticket noting what changed
+
+Example: If ticket 0 planned `--gateway-only` but implemented `--gateway`, update:
+- Ticket 0's docs to show `--gateway`
+- Any downstream tickets (1, 2, etc.) that reference `--gateway-only`
+
 ## Output Format
 
 Provide a structured review report:
@@ -95,6 +107,7 @@ Provide a structured review report:
 ## Related Issues
 - Issues addressed by this branch: (list or "None")
 - Issues needing status update: (list or "None")
+- Downstream tickets impacted: (list tickets that reference changed assumptions, or "None")
 - Suggested follow-up issues: (list or "None")
 
 ## Summary

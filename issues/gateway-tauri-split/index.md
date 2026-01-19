@@ -4,21 +4,27 @@
 
 The current `jax daemon` combines full local client functionality (Askama UI, REST API, P2P sync) with gateway serving. This limits deployment flexibility for edge/CDN use cases.
 
-We added a `--gateway-only` mode to the daemon that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving + SQLite/Object Storage backend.
+We added a `--gateway` mode to the daemon that runs a minimal gateway service: P2P peer (mirror role) + gateway content serving. A future ticket will add SQLite/Object Storage backend support.
 
 ## Architecture
 
 ```
-jax daemon (full local client)
+jax daemon (full local client - default)
 ├── P2P peer (owner/mirror roles)
 ├── Askama web UI
 ├── REST API
-└── Gateway handler (optional, via --gateway flag)
+└── No gateway
 
-jax daemon --gateway-only (gateway mode)
+jax daemon --with-gateway (app + gateway)
+├── P2P peer (owner/mirror roles)
+├── Askama web UI (port 8080)
+├── REST API
+└── Gateway handler (port 9092)
+
+jax daemon --gateway (gateway-only mode)
 ├── P2P peer (mirror role)
 ├── Gateway handler with read-only HTML file explorer
-└── SQLite + Object Storage blob backend
+└── (Future: SQLite + Object Storage blob backend)
 ```
 
 ## Tickets
@@ -35,7 +41,7 @@ jax daemon --gateway-only (gateway mode)
 ## Execution Order
 
 **Stage 1 (Foundation):**
-- Ticket 0: Gateway subcommand (`jax daemon --gateway-only`) - **Done**
+- Ticket 0: Gateway subcommand (`jax daemon --gateway`) - **Done**
 
 **Stage 2 (Parallel Tracks):**
 
