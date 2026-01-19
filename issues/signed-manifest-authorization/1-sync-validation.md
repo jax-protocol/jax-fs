@@ -120,6 +120,11 @@ This ticket adds signature and author validation during sync.
    }
    ```
 
+   **Important:** Checking the author is in the *current* manifest's shares is not sufficient.
+   An attacker could craft a manifest that adds themselves to shares. The author's permissions
+   must be validated against the *previous* manifest in the chain (see Ticket 2 for role
+   enforcement). For each manifest N, verify the author was an Owner in manifest N-1.
+
 4. **Add new error types** (`crates/common/src/peer/sync/error.rs` or equivalent)
 
    ```rust
