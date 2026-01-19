@@ -397,7 +397,7 @@ fn build_back_url(file_path: &str, bucket_id: &Uuid, at_hash: Option<&String>) -
     }
 }
 
-fn format_bytes(bytes: usize) -> String {
+pub fn format_bytes(bytes: usize) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
 
     if bytes == 0 {
