@@ -15,6 +15,17 @@ pub struct GatewayQuery {
     pub at: Option<String>,
 }
 
+/// Handler for bucket root requests (no file path)
+pub async fn root_handler(
+    state: State<ServiceState>,
+    Path(bucket_id): Path<Uuid>,
+    query: Query<GatewayQuery>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    // Delegate to main handler with "/" as the path
+    handler(state, Path((bucket_id, "/".to_string())), query, headers).await
+}
+
 #[derive(Debug, Serialize)]
 pub struct DirectoryListing {
     pub path: String,
