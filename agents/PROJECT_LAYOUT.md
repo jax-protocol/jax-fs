@@ -71,7 +71,15 @@ SQLite + object storage backend for blob data (`jax-blobs-store`).
 ## Other Directories
 
 - `agents/` - Documentation for AI agents (you're reading one)
+  - `API.md` - HTTP API reference
+  - `DEBUG.md` - Debugging workflow guide
 - `bin/` - Shell scripts for build, check, dev, test
+  - `dev` - Development environment entry point (`./bin/dev`)
+  - `dev_/` - Dev environment modules and config
+    - `nodes.toml` - Node definitions (ports, blob stores, nicknames)
+    - `fixtures.toml` - Initial data fixtures
+    - `*.sh` - Modules (api, logs, fixtures, nodes, config)
+  - `db` - SQLite database helper
   - `minio` - MinIO local server for S3-compatible blob storage testing
   - `utils/` - Utility scripts for demos and development
 - `.github/workflows/` - CI and release automation
