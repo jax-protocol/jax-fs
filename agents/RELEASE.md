@@ -76,7 +76,7 @@ If you prefer to release manually from the command line:
    This will:
    - Update version numbers in all Cargo.toml files
    - Update CHANGELOGs based on commits since last release
-   - Create git tags (e.g., `jax-common-v0.1.1`, `jax-service-v0.1.1`, `jax-bucket-v0.1.1`)
+   - Create git tags (e.g., `jax-common-v0.1.1`, `jax-blobs-store-v0.1.1`, `jax-bucket-v0.1.1`)
    - Commit the changes with message like "release"
    - Push tags and commits to GitHub
    - **Note**: It does NOT publish to crates.io (that's handled by GitHub Actions)
@@ -102,8 +102,8 @@ If you only want to bump a specific crate (not the whole workspace):
 # Release only jax-common
 cargo smart-release jax-common --execute --no-publish
 
-# Release only jax-service (will also bump jax-common if it depends on unreleased changes)
-cargo smart-release jax-service --execute --no-publish
+# Release only jax-blobs-store (will also bump jax-common if it depends on unreleased changes)
+cargo smart-release jax-blobs-store --execute --no-publish
 ```
 
 The tool will automatically determine which dependencies need to be updated.
