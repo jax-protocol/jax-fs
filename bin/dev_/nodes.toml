@@ -1,0 +1,39 @@
+# Node definitions for the dev environment
+#
+# Each node has:
+#   name        - Display name
+#   nick        - Short nickname for CLI commands (e.g., "full", "app", "gw")
+#   type        - "full" | "app" | "gateway"
+#   blob_store  - "legacy" | "filesystem" | "s3"
+#   app_port    - Port for app server (optional for gateway-only)
+#   gateway_port - Port for gateway server
+#   peer_port   - Port for P2P peer
+#   s3_url      - S3 URL (required if blob_store = "s3")
+
+[node0]
+name = "Full Node (legacy)"
+nick = "full"
+type = "full"
+blob_store = "legacy"
+app_port = 8081
+gateway_port = 9091
+peer_port = 9100
+
+[node1]
+name = "App Only (filesystem)"
+nick = "app"
+type = "app"
+blob_store = "filesystem"
+app_port = 8082
+gateway_port = 9092
+peer_port = 9101
+
+[node2]
+name = "Gateway Only (s3)"
+nick = "gw"
+type = "gateway"
+blob_store = "s3"
+app_port = 8083
+gateway_port = 9093
+peer_port = 9102
+s3_url = "s3://minioadmin:minioadmin@localhost:9000/jax-blobs"

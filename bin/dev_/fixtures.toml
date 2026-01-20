@@ -1,0 +1,92 @@
+# Fixtures - initial data set up automatically on dev environment startup
+#
+# Applied automatically by: ./bin/dev
+# Run manually with: ./bin/dev fixtures
+#
+# Fixtures are applied in order. Each fixture type:
+#   bucket  - Create a bucket
+#   file    - Upload a file to a bucket
+#   dir     - Create a directory in a bucket
+#   share   - Share a bucket with a peer (role: owner/mirror)
+#   publish - Publish a bucket (grant decryption to mirrors)
+#   mv      - Move/rename a file or directory
+
+# =============================================================================
+# FULL NODE: Create and set up test bucket
+# =============================================================================
+
+# Create a test bucket on full node
+[[fixture]]
+type = "bucket"
+name = "test"
+node = "full"
+
+# Upload a file at root level
+[[fixture]]
+type = "file"
+bucket = "test"
+path = "/hello.txt"
+content = "Hello from jax-bucket!\n"
+node = "full"
+
+# Create a nested directory
+[[fixture]]
+type = "dir"
+bucket = "test"
+path = "/docs"
+node = "full"
+
+# Upload a nested file
+[[fixture]]
+type = "file"
+bucket = "test"
+path = "/docs/readme.md"
+content = """# Test Bucket
+
+This is a test bucket for demonstrating jax-bucket features.
+
+## Files
+- `/hello.txt` - A simple greeting
+- `/docs/readme.md` - This file
+
+## Sharing
+This bucket is shared with:
+- `app` node as **owner** (can read/write)
+- `gw` node as **mirror** (can sync, decrypt after publish)
+"""
+node = "full"
+
+# Share with app node as owner
+[[fixture]]
+type = "share"
+bucket = "test"
+peer = "app"
+role = "owner"
+node = "full"
+
+# Share with gateway as mirror
+[[fixture]]
+type = "share"
+bucket = "test"
+peer = "gw"
+role = "mirror"
+node = "full"
+
+# Publish the bucket (grant decryption to mirrors)
+[[fixture]]
+type = "publish"
+bucket = "test"
+node = "full"
+
+# =============================================================================
+# APP NODE: Modify the bucket (as owner)
+# =============================================================================
+
+# Move the original file to a nested directory
+# Note: Running on full node since sync from full->app may not be complete yet
+[[fixture]]
+type = "mv"
+bucket = "test"
+from = "/hello.txt"
+to = "/docs/hello.txt"
+node = "full"

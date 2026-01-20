@@ -34,8 +34,10 @@ pub struct Config {
     ///  in-memory database will be used
     pub sqlite_path: Option<PathBuf>,
 
-    // misc
+    // logging
     pub log_level: tracing::Level,
+    /// Directory for log files (optional, logs to stdout only if not set)
+    pub log_dir: Option<PathBuf>,
 
     // url configuration
     /// API URL for HTML UI (for JS to call API endpoints)

@@ -16,23 +16,63 @@ use crate::daemon::http_server;
 use crate::daemon::{ServiceConfig, ServiceState};
 
 /// Initialize logging, panic handler, and build info reporting.
-fn init_logging(service_config: &ServiceConfig) -> tracing_appender::non_blocking::WorkerGuard {
-    let (non_blocking_writer, guard) = tracing_appender::non_blocking(std::io::stdout());
-    let env_filter = EnvFilter::builder()
+/// Returns guards that must be kept alive for the duration of the program.
+fn init_logging(
+    service_config: &ServiceConfig,
+) -> Vec<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing_subscriber::fmt::format::FmtSpan;
+
+    let mut guards = Vec::new();
+
+    // Stdout layer
+    let (stdout_writer, stdout_guard) = tracing_appender::non_blocking(std::io::stdout());
+    guards.push(stdout_guard);
+
+    let stdout_env_filter = EnvFilter::builder()
         .with_default_directive(service_config.log_level.into())
         .from_env_lossy();
 
-    let stderr_layer = tracing_subscriber::fmt::layer()
+    let stdout_layer = tracing_subscriber::fmt::layer()
         .compact()
-        .with_writer(non_blocking_writer)
-        .with_filter(env_filter);
+        .with_writer(stdout_writer)
+        .with_filter(stdout_env_filter);
 
-    tracing_subscriber::registry().with(stderr_layer).init();
+    // File layer (if log_dir is set)
+    if let Some(log_dir) = &service_config.log_dir {
+        // Create the log directory if it doesn't exist
+        if let Err(e) = std::fs::create_dir_all(log_dir) {
+            eprintln!(
+                "Warning: Failed to create log directory {:?}: {}",
+                log_dir, e
+            );
+        }
+
+        let file_appender = tracing_appender::rolling::daily(log_dir, "jax.log");
+        let (file_writer, file_guard) = tracing_appender::non_blocking(file_appender);
+        guards.push(file_guard);
+
+        let file_env_filter = EnvFilter::builder()
+            .with_default_directive(service_config.log_level.into())
+            .from_env_lossy();
+
+        let file_layer = tracing_subscriber::fmt::layer()
+            .with_writer(file_writer)
+            .with_ansi(false)
+            .with_span_events(FmtSpan::CLOSE)
+            .with_filter(file_env_filter);
+
+        tracing_subscriber::registry()
+            .with(stdout_layer)
+            .with(file_layer)
+            .init();
+    } else {
+        tracing_subscriber::registry().with(stdout_layer).init();
+    }
 
     utils::register_panic_logger();
     utils::report_build_info();
 
-    guard
+    guards
 }
 
 /// Create service state from config, exiting on error.
@@ -77,7 +117,7 @@ async fn shutdown_and_join(
 /// - Gateway only - app_port None, gateway_port set
 /// - App + Gateway - both ports set
 pub async fn spawn_service(service_config: &ServiceConfig) {
-    let _guard = init_logging(service_config);
+    let _guards = init_logging(service_config);
     let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
     let state = create_state(service_config).await;
 

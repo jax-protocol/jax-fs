@@ -24,6 +24,10 @@ pub struct Daemon {
     /// Also run gateway alongside app server
     #[arg(long)]
     pub with_gateway: bool,
+
+    /// Directory for log files (logs to stdout only if not set)
+    #[arg(long)]
+    pub log_dir: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -78,6 +82,7 @@ impl crate::op::Op for Daemon {
             gateway_port,
             sqlite_path: Some(state.db_path),
             log_level: tracing::Level::DEBUG,
+            log_dir: self.log_dir.clone(),
             api_url: self.api_url.clone(),
             gateway_url: self.gateway_url.clone(),
         };
