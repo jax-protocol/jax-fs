@@ -20,6 +20,9 @@ pub struct AppConfig {
     /// Listen port for the gateway server
     #[serde(default = "default_gateway_port")]
     pub gateway_port: u16,
+    /// Blob storage backend configuration (set at init time)
+    #[serde(default)]
+    pub blob_store: BlobStoreConfig,
 }
 
 fn default_app_port() -> u16 {
@@ -36,6 +39,7 @@ impl Default for AppConfig {
             app_port: default_app_port(),
             peer_port: None,
             gateway_port: default_gateway_port(),
+            blob_store: BlobStoreConfig::default(),
         }
     }
 }
@@ -51,23 +55,69 @@ pub enum BlobStoreConfig {
 
     /// New SQLite + local filesystem backend
     Filesystem {
-        /// Path for blob storage (defaults to jax_dir/blobs-store/)
-        path: Option<PathBuf>,
+        /// Absolute path for blob storage
+        path: PathBuf,
     },
 
     /// S3-compatible object storage
     S3 {
-        /// S3 endpoint URL (e.g., "http://localhost:9000" for MinIO)
-        endpoint: String,
-        /// Access key ID
-        access_key: String,
-        /// Secret access key
-        secret_key: String,
-        /// Bucket name
-        bucket: String,
-        /// Optional region (defaults to "us-east-1")
-        region: Option<String>,
+        /// S3 URL in format: s3://access_key:secret_key@endpoint/bucket
+        /// Example: s3://minioadmin:minioadmin@localhost:9000/jax-blobs
+        url: String,
     },
+}
+
+/// Parsed S3 configuration from URL
+#[derive(Debug, Clone)]
+pub struct S3Config {
+    pub endpoint: String,
+    pub access_key: String,
+    pub secret_key: String,
+    pub bucket: String,
+}
+
+impl BlobStoreConfig {
+    /// Parse S3 URL into components.
+    /// Format: s3://access_key:secret_key@host:port/bucket
+    pub fn parse_s3_url(url: &str) -> Result<S3Config, StateError> {
+        // Remove the s3:// prefix
+        let url = url
+            .strip_prefix("s3://")
+            .ok_or_else(|| StateError::InvalidS3Url("URL must start with s3://".to_string()))?;
+
+        // Split into credentials@host/bucket
+        let (creds, rest) = url
+            .split_once('@')
+            .ok_or_else(|| StateError::InvalidS3Url("Missing @ separator".to_string()))?;
+
+        // Parse credentials (access_key:secret_key)
+        let (access_key, secret_key) = creds
+            .split_once(':')
+            .ok_or_else(|| StateError::InvalidS3Url("Missing : in credentials".to_string()))?;
+
+        // Parse host:port/bucket
+        let (endpoint, bucket) = rest
+            .split_once('/')
+            .ok_or_else(|| StateError::InvalidS3Url("Missing / before bucket".to_string()))?;
+
+        if bucket.is_empty() {
+            return Err(StateError::InvalidS3Url("Bucket name is empty".to_string()));
+        }
+
+        // Determine protocol (default to http for localhost, https otherwise)
+        let protocol = if endpoint.contains("localhost") || endpoint.contains("127.0.0.1") {
+            "http"
+        } else {
+            "https"
+        };
+
+        Ok(S3Config {
+            endpoint: format!("{}://{}", protocol, endpoint),
+            access_key: access_key.to_string(),
+            secret_key: secret_key.to_string(),
+            bucket: bucket.to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -214,6 +264,9 @@ pub enum StateError {
 
     #[error("invalid key: {0}")]
     InvalidKey(String),
+
+    #[error("invalid S3 URL: {0}")]
+    InvalidS3Url(String),
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

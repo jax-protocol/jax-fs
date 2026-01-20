@@ -1,3 +1,4 @@
+mod blobs;
 mod config;
 mod database;
 pub mod http_server;

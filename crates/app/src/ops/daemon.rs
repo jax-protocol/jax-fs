@@ -1,19 +1,7 @@
-use clap::{Args, ValueEnum};
+use clap::Args;
 
 use crate::daemon::{spawn_service, ServiceConfig};
-use crate::state::{AppState, BlobStoreConfig};
-
-/// Blob store backend type for CLI selection
-#[derive(Debug, Clone, Copy, Default, ValueEnum)]
-pub enum BlobStoreType {
-    /// Legacy iroh FsStore (default)
-    #[default]
-    Legacy,
-    /// SQLite + local filesystem
-    Filesystem,
-    /// S3-compatible object storage
-    S3,
-}
+use crate::state::AppState;
 
 #[derive(Args, Debug, Clone)]
 pub struct Daemon {
@@ -36,31 +24,6 @@ pub struct Daemon {
     /// Also run gateway alongside app server
     #[arg(long)]
     pub with_gateway: bool,
-
-    // Blob store configuration
-    /// Blob store backend type
-    #[arg(long, value_enum, default_value_t = BlobStoreType::Legacy)]
-    pub blob_store: BlobStoreType,
-
-    /// S3 endpoint URL (required for --blob-store s3)
-    #[arg(long)]
-    pub s3_endpoint: Option<String>,
-
-    /// S3 bucket name (required for --blob-store s3)
-    #[arg(long)]
-    pub s3_bucket: Option<String>,
-
-    /// S3 access key (can also use JAX_S3_ACCESS_KEY env var)
-    #[arg(long, env = "JAX_S3_ACCESS_KEY")]
-    pub s3_access_key: Option<String>,
-
-    /// S3 secret key (can also use JAX_S3_SECRET_KEY env var)
-    #[arg(long, env = "JAX_S3_SECRET_KEY")]
-    pub s3_secret_key: Option<String>,
-
-    /// S3 region (optional, defaults to us-east-1)
-    #[arg(long)]
-    pub s3_region: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,45 +33,6 @@ pub enum DaemonError {
 
     #[error("daemon failed: {0}")]
     Failed(String),
-
-    #[error("missing required S3 configuration: {0}")]
-    MissingS3Config(String),
-}
-
-impl Daemon {
-    /// Build blob store configuration from CLI flags
-    fn build_blob_store_config(&self) -> Result<BlobStoreConfig, DaemonError> {
-        match self.blob_store {
-            BlobStoreType::Legacy => Ok(BlobStoreConfig::Legacy),
-
-            BlobStoreType::Filesystem => Ok(BlobStoreConfig::Filesystem { path: None }),
-
-            BlobStoreType::S3 => {
-                let endpoint = self
-                    .s3_endpoint
-                    .clone()
-                    .ok_or_else(|| DaemonError::MissingS3Config("--s3-endpoint".to_string()))?;
-                let bucket = self
-                    .s3_bucket
-                    .clone()
-                    .ok_or_else(|| DaemonError::MissingS3Config("--s3-bucket".to_string()))?;
-                let access_key = self.s3_access_key.clone().ok_or_else(|| {
-                    DaemonError::MissingS3Config("--s3-access-key or JAX_S3_ACCESS_KEY".to_string())
-                })?;
-                let secret_key = self.s3_secret_key.clone().ok_or_else(|| {
-                    DaemonError::MissingS3Config("--s3-secret-key or JAX_S3_SECRET_KEY".to_string())
-                })?;
-
-                Ok(BlobStoreConfig::S3 {
-                    endpoint,
-                    access_key,
-                    secret_key,
-                    bucket,
-                    region: self.s3_region.clone(),
-                })
-            }
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -144,14 +68,12 @@ impl crate::op::Op for Daemon {
             (Some(state.config.app_port), None)
         };
 
-        // Build blob store configuration from CLI flags
-        let blob_store = self.build_blob_store_config()?;
-
+        // Blob store configuration is read from config.toml (set at init time)
         let config = ServiceConfig {
             node_listen_addr,
             node_secret: Some(secret_key),
-            blob_store,
-            jax_dir: Some(state.jax_dir),
+            blob_store: state.config.blob_store.clone(),
+            jax_dir: state.jax_dir.clone(),
             app_port,
             gateway_port,
             sqlite_path: Some(state.db_path),
