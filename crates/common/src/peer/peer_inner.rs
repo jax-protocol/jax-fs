@@ -301,6 +301,7 @@ impl<L: BucketLogProvider> Peer<L> {
     /// # Arguments
     ///
     /// * `mount` - The mount to save
+    /// * `publish` - If true, publish the bucket (expose the secret so mirrors can decrypt)
     ///
     /// # Returns
     ///
@@ -311,7 +312,7 @@ impl<L: BucketLogProvider> Peer<L> {
     /// Returns error if:
     /// - Failed to save mount to blobs
     /// - Failed to append to log
-    pub async fn save_mount(&self, mount: &Mount) -> Result<Link, MountError>
+    pub async fn save_mount(&self, mount: &Mount, publish: bool) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
@@ -326,7 +327,7 @@ impl<L: BucketLogProvider> Peer<L> {
         let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
-        let (link, previous_link, height) = mount.save(self.blobs(), false).await?;
+        let (link, previous_link, height) = mount.save(self.blobs(), publish).await?;
         let inner = mount.inner().await;
         let shares = inner.manifest().shares();
         tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());

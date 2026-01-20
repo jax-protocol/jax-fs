@@ -34,7 +34,7 @@ pub async fn handler(
     mount.mkdir(&path).await?;
 
     // Save mount
-    let new_link = state.peer().save_mount(&mount).await?;
+    let new_link = state.peer().save_mount(&mount, false).await?;
 
     Ok((
         http::StatusCode::OK,

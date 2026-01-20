@@ -162,6 +162,9 @@ impl Mount {
 
         let pins_link = Self::_put_pins_in_blobs(&pins, blobs).await?;
 
+        // Check if already published before we move the template
+        let was_published = manifest_template.is_published();
+
         // Re-encrypt owner shares with the new secret (mirrors stay unchanged)
         let mut manifest = manifest_template;
         for share in manifest.shares_mut().values_mut() {
@@ -171,8 +174,9 @@ impl Mount {
             }
         }
 
-        // Only publish if explicitly requested
-        if publish {
+        // Publish if explicitly requested OR if already published
+        // (once published, subsequent saves must remain published)
+        if publish || was_published {
             manifest.publish(&secret);
         }
         manifest.set_pins(pins_link.clone());
@@ -193,6 +197,7 @@ impl Mount {
             let mut inner = self.0.lock().await;
             inner.manifest = manifest;
             inner.height = height;
+            inner.link = link.clone();
         }
 
         Ok((link, previous_link, height))
