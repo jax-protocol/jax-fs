@@ -5,14 +5,31 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use thiserror::Error;
 
 use crate::bucket_log::BucketLogProvider;
+use crate::linked_data::Link;
+
+/// Errors that can occur during bucket synchronization.
+#[derive(Debug, Error)]
+pub enum SyncError {
+    #[error("not authorized: our key not in bucket shares")]
+    NotAuthorized,
+    #[error("invalid signature on manifest")]
+    InvalidSignature,
+    #[error("author not in manifest shares")]
+    AuthorNotInShares,
+    #[error("invalid manifest in chain at {link}: {reason}")]
+    InvalidManifestInChain { link: Link, reason: String },
+    #[error("{0}")]
+    Other(#[from] anyhow::Error),
+}
 
 pub mod download_pins;
 pub mod ping_peer;
 pub mod sync_bucket;
 
-// Re-export job types and helpers
+// Re-export job types, helpers, and errors
 pub use download_pins::DownloadPinsJob;
 pub use ping_peer::PingPeerJob;
 pub use sync_bucket::{SyncBucketJob, SyncTarget};

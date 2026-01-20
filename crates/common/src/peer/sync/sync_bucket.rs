@@ -11,7 +11,22 @@ use crate::linked_data::Link;
 use crate::mount::Manifest;
 use crate::peer::Peer;
 
-use super::{DownloadPinsJob, SyncJob};
+use super::{DownloadPinsJob, SyncError, SyncJob};
+
+/// Result of provenance verification for a manifest.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProvenanceResult {
+    /// Manifest is valid - properly signed by an author in shares
+    Valid,
+    /// Our key is not in the manifest's shares
+    NotAuthorized,
+    /// Manifest is unsigned (allowed during migration)
+    UnsignedLegacy,
+    /// Signature verification failed
+    InvalidSignature,
+    /// Author public key not found in manifest shares
+    AuthorNotInShares,
+}
 
 /// Target peer and state for bucket synchronization
 #[derive(Debug, Clone)]
@@ -92,9 +107,23 @@ where
     // now we know there is a valid list of manifests we should
     //  fetch and apply to our log
 
+    // Load the common ancestor manifest as our trusted base (if we have one)
+    // This manifest is already in our blobs from find_common_ancestor
+    let trusted_base: Option<Manifest> = if let Some(link) = stop_link {
+        Some(peer.blobs().get_cbor(&link.hash()).await?)
+    } else {
+        None
+    };
+
     // Download manifest chain from peer (from target back to common ancestor)
-    let manifests =
-        download_manifest_chain(peer, &job.target.link, stop_link, &job.target.peer_ids).await?;
+    let manifests = download_manifest_chain(
+        peer,
+        &job.target.link,
+        stop_link,
+        &job.target.peer_ids,
+        trusted_base.as_ref(),
+    )
+    .await?;
 
     // TODO (amiller68): maybe theres an optimization here in that we should know
     //  we can exit earlier by virtue of finding a common ancestor which is just
@@ -104,12 +133,32 @@ where
         return Ok(());
     };
 
-    // Just check we are still included in the shares at the end of this,
-    //  if not we wouldn't have gotten the ping, but we might as well just
-    //  check
-    if !verify_provenance(peer, &manifests.last().unwrap().0)? {
-        tracing::warn!("Provenance verification failed: our key not in bucket shares");
-        return Ok(());
+    // Verify provenance of the latest manifest
+    // Use our local manifest as the trusted base (previous)
+    let latest_manifest = &manifests.last().unwrap().0;
+    let trusted_base_ref = trusted_base.as_ref();
+    match verify_provenance(peer, latest_manifest, trusted_base_ref)? {
+        ProvenanceResult::Valid => {
+            tracing::debug!("Provenance verification passed");
+        }
+        ProvenanceResult::UnsignedLegacy => {
+            tracing::warn!(
+                "Accepting unsigned manifest for bucket {} (migration mode)",
+                latest_manifest.id()
+            );
+        }
+        ProvenanceResult::NotAuthorized => {
+            tracing::warn!("Provenance verification failed: our key not in bucket shares");
+            return Ok(());
+        }
+        ProvenanceResult::InvalidSignature => {
+            tracing::warn!("Provenance verification failed: invalid signature");
+            return Err(SyncError::InvalidSignature.into());
+        }
+        ProvenanceResult::AuthorNotInShares => {
+            tracing::warn!("Provenance verification failed: author not in shares");
+            return Err(SyncError::AuthorNotInShares.into());
+        }
     }
 
     // apply the updates to the bucket
@@ -118,18 +167,23 @@ where
     Ok(())
 }
 
-/// Download a chain of manifests from peers
+/// Download a chain of manifests from peers and validate provenance
 ///
 /// Walks backwards through the manifest chain via `previous` links.
 /// Stops when it reaches `stop_at` link (common ancestor) or genesis (no previous).
 /// Tries multiple peers in order for each download, succeeding on first available.
 ///
-/// Returns manifests in order from oldest to newest with their links and heights.
+/// After downloading, validates each manifest's provenance:
+/// - The first manifest (oldest) is validated against `trusted_base` (if any)
+/// - Each subsequent manifest is validated against its predecessor
+///
+/// Returns manifests in order from oldest to newest with their links.
 async fn download_manifest_chain<L>(
     peer: &Peer<L>,
     start_link: &Link,
     stop_link: Option<&Link>,
     peer_ids: &[PublicKey],
+    trusted_base: Option<&Manifest>,
 ) -> Result<Vec<(Manifest, Link)>>
 where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
@@ -189,6 +243,28 @@ where
     manifests.reverse();
 
     tracing::debug!("Downloaded {} manifests", manifests.len());
+
+    // Validate the chain (walking from oldest to newest)
+    // The first manifest is validated against the trusted_base (common ancestor)
+    let mut previous: Option<&Manifest> = trusted_base;
+
+    for (manifest, link) in manifests.iter() {
+        let result = verify_provenance(peer, manifest, previous)?;
+        match result {
+            ProvenanceResult::Valid | ProvenanceResult::UnsignedLegacy => {
+                // Valid, continue to next manifest
+            }
+            _ => {
+                return Err(SyncError::InvalidManifestInChain {
+                    link: link.clone(),
+                    reason: format!("{:?}", result),
+                }
+                .into());
+            }
+        }
+        previous = Some(manifest);
+    }
+
     Ok(manifests)
 }
 
@@ -351,26 +427,78 @@ where
     Ok(())
 }
 
-/// Verify that our PublicKey is in the manifest's shares
-fn verify_provenance<L>(peer: &Peer<L>, manifest: &Manifest) -> Result<bool>
+/// Verify a manifest's provenance.
+///
+/// Checks that:
+/// 1. Our key is in the manifest's shares (we're authorized to receive it)
+/// 2. The manifest is properly signed (or unsigned during migration)
+/// 3. The author was in the previous manifest's shares (authorized to make changes)
+///
+/// # Arguments
+///
+/// * `peer` - The peer instance (for our public key)
+/// * `manifest` - The manifest to verify
+/// * `previous` - The previous manifest in the chain (if any). The author must
+///   have been in this manifest's shares to be authorized. Pass `None` for
+///   genesis manifests or when using a locally-synced manifest as trusted base.
+fn verify_provenance<L>(
+    peer: &Peer<L>,
+    manifest: &Manifest,
+    previous: Option<&Manifest>,
+) -> Result<ProvenanceResult, SyncError>
 where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
     let our_pub_key = PublicKey::from(*peer.secret().public());
-    let our_pub_key_hex = our_pub_key.to_hex();
+    let our_key_hex = our_pub_key.to_hex();
 
-    // Check if our key is in the shares
-    let is_authorized = manifest
+    // 1. Check we're authorized to receive this bucket
+    let we_are_authorized = manifest
         .shares()
         .iter()
-        .any(|(key_hex, _share)| key_hex == &our_pub_key_hex);
+        .any(|(key_hex, _)| key_hex == &our_key_hex);
+
+    if !we_are_authorized {
+        return Ok(ProvenanceResult::NotAuthorized);
+    }
+
+    // 2. Check manifest is signed
+    if !manifest.is_signed() {
+        // Allow unsigned for backwards compatibility during migration
+        tracing::warn!("Received unsigned manifest for bucket {}", manifest.id());
+        return Ok(ProvenanceResult::UnsignedLegacy);
+    }
+
+    // 3. Verify signature
+    match manifest.verify_signature() {
+        Ok(true) => {}
+        Ok(false) => return Ok(ProvenanceResult::InvalidSignature),
+        Err(e) => {
+            tracing::warn!("Signature verification error: {}", e);
+            return Ok(ProvenanceResult::InvalidSignature);
+        }
+    }
+
+    // 4. Check author was authorized in PREVIOUS manifest (not current!)
+    //    An attacker could add themselves to the current manifest's shares.
+    //    The author must have been in the previous manifest to make this update.
+    let author = manifest.author().expect("is_signed() was true");
+    let author_hex = author.to_hex();
+
+    let check_shares = previous
+        .map(|p| p.shares())
+        .unwrap_or_else(|| manifest.shares());
+    if check_shares.get(&author_hex).is_none() {
+        return Ok(ProvenanceResult::AuthorNotInShares);
+    }
 
     tracing::debug!(
-        "Provenance check: our_key={}, authorized={}",
-        our_pub_key_hex,
-        is_authorized
+        "Provenance valid: bucket={}, author={}, our_key={}",
+        manifest.id(),
+        author_hex,
+        our_key_hex
     );
 
-    Ok(is_authorized)
+    Ok(ProvenanceResult::Valid)
 }

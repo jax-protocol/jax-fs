@@ -1,6 +1,6 @@
 # Sync Validation
 
-**Status:** Planned
+**Status:** Done
 **Depends on:** Ticket 0 (Manifest signature)
 
 ## Objective
