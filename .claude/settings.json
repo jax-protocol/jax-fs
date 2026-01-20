@@ -49,7 +49,6 @@
       "Bash(mv:*)",
       "Bash(rm -f:*)",
       "Bash(chmod:*)",
-      "Bash(./bin/dev/main:*)",
       "Bash(./bin/minio:*)",
       "Bash(./bin/db:*)",
       "Bash(tmux:*)",
