@@ -26,7 +26,7 @@ The `./bin/dev` script reads node configuration from `./bin/dev_/nodes.toml`:
 |------|------|------|-------|------------|
 | node0 | full | Full (App + Gateway) | 8080, 9090 | legacy |
 | node1 | app | App only | 8081 | filesystem |
-| node2 | gw | Gateway only | 9082 | s3 (MinIO) |
+| node2 | gw | Gateway only | 9092 | s3 (MinIO) |
 
 ### Commands
 

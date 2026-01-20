@@ -16,7 +16,7 @@ When using the dev environment (`./bin/dev`):
 |------|------------|---------|
 | node0 | http://localhost:8080 | http://localhost:9090 |
 | node1 | http://localhost:8081 | - |
-| node2 | - | http://localhost:9082 |
+| node2 | - | http://localhost:9092 |
 
 ## Health Endpoints
 
