@@ -55,18 +55,24 @@ jobs:
           # Read versions from Cargo.toml files
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
           BUCKET_VERSION=$(grep "^version" crates/app/Cargo.toml | cut -d'"' -f2)
+          BLOBS_STORE_VERSION=$(grep "^version" crates/blobs-store/Cargo.toml | cut -d'"' -f2)
 
-          echo "Creating tags for jax-common v$COMMON_VERSION and jax-bucket v$BUCKET_VERSION"
+          echo "Creating tags for:"
+          echo "  jax-common v$COMMON_VERSION"
+          echo "  jax-bucket v$BUCKET_VERSION"
+          echo "  jax-blobs-store v$BLOBS_STORE_VERSION"
 
           # Create annotated tags
           git tag -a "jax-common-v$COMMON_VERSION" -m "Release jax-common v$COMMON_VERSION"
           git tag -a "jax-bucket-v$BUCKET_VERSION" -m "Release jax-bucket v$BUCKET_VERSION"
+          git tag -a "jax-blobs-store-v$BLOBS_STORE_VERSION" -m "Release jax-blobs-store v$BLOBS_STORE_VERSION"
 
           # Push tags to remote
           git push origin "jax-common-v$COMMON_VERSION"
           git push origin "jax-bucket-v$BUCKET_VERSION"
+          git push origin "jax-blobs-store-v$BLOBS_STORE_VERSION"
 
-          echo "✅ Tags pushed successfully"
+          echo "Tags pushed successfully"
 
       - name: Publish jax-common
         run: |
@@ -82,11 +88,25 @@ jobs:
           echo "Waiting 90 seconds for crates.io to index jax-common..."
           sleep 90
 
+      - name: Publish jax-blobs-store
+        run: |
+          cd crates/blobs-store
+          echo "Publishing jax-blobs-store..."
+          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-blobs-store publish failed or already published"
+          cd ../..
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io indexing (blobs-store)
+        run: |
+          echo "Waiting 90 seconds for crates.io to index jax-blobs-store..."
+          sleep 90
+
       - name: Publish jax-bucket
         run: |
           cd crates/app
           echo "Publishing jax-bucket..."
-          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "⚠️  jax-bucket publish failed or already published"
+          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-bucket publish failed or already published"
           cd ../..
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -95,10 +115,13 @@ jobs:
         run: |
           COMMON_VERSION=$(grep "^version" crates/common/Cargo.toml | cut -d'"' -f2)
           BUCKET_VERSION=$(grep "^version" crates/app/Cargo.toml | cut -d'"' -f2)
-          echo "🎉 Release complete!"
+          BLOBS_STORE_VERSION=$(grep "^version" crates/blobs-store/Cargo.toml | cut -d'"' -f2)
+          echo "Release complete!"
           echo "   - jax-common v$COMMON_VERSION"
+          echo "   - jax-blobs-store v$BLOBS_STORE_VERSION"
           echo "   - jax-bucket v$BUCKET_VERSION"
           echo ""
           echo "Check crates.io:"
           echo "   - https://crates.io/crates/jax-common"
+          echo "   - https://crates.io/crates/jax-blobs-store"
           echo "   - https://crates.io/crates/jax-bucket"
