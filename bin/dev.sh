@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Development script for running JAX nodes in tmux with watch mode
-# This sets up a tmux session with three panes demonstrating different configurations:
-#   - App only (full UI + API, no gateway)
-#   - App + Gateway (full UI + API + gateway on separate port)
-#   - Gateway only (minimal content serving, no UI/API)
+#
+# Usage:
+#   ./bin/dev.sh          # Default: 3 nodes with legacy blob store
+#   ./bin/dev.sh s3       # 3 nodes with S3 blob store (starts MinIO)
+#   ./bin/dev.sh clean    # Remove all dev data and start fresh
 
 set -e
 
@@ -19,141 +20,185 @@ cd "$PROJECT_ROOT"
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[0;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Initialize nodes if they haven't been initialized yet
+# S3/MinIO configuration
+S3_URL='s3://minioadmin:minioadmin@localhost:9000/jax-blobs'
+
+# Initialize a node with specified blob store
 init_node() {
     local node_dir=$1
     local node_name=$2
     local app_port=$3
     local peer_port=$4
     local gateway_port=$5
+    local blob_store=${6:-legacy}
+    local extra_args=${7:-}
 
     if [ ! -d "$node_dir" ]; then
-        echo -e "${YELLOW}Initializing $node_name (first run)...${NC}"
+        echo -e "${YELLOW}Initializing $node_name ($blob_store)...${NC}"
         cargo run --bin jax -- --config-path "$node_dir" init \
             --app-port "$app_port" \
             --peer-port "$peer_port" \
-            --gateway-port "$gateway_port"
-        echo -e "${GREEN}$node_name initialized with APP:$app_port PEER:$peer_port GW:$gateway_port${NC}"
+            --gateway-port "$gateway_port" \
+            --blob-store "$blob_store" \
+            $extra_args
+        echo -e "${GREEN}$node_name initialized${NC}"
     else
         echo -e "${GREEN}$node_name already initialized${NC}"
     fi
 }
 
-# Default development setup with three node configurations
-run_default() {
-echo -e "${BLUE}Setting up JAX development environment...${NC}"
+# Ensure MinIO is running
+ensure_minio() {
+    echo -e "${BLUE}Checking MinIO...${NC}"
 
-# Initialize all three nodes with distinct ports
-# Node1: App only (gateway port configured but not used)
-init_node "./data/node1" "Node1 (app)" 8080 9000 9090
-# Node2: App + Gateway
-init_node "./data/node2" "Node2 (app+gw)" 8081 9001 9091
-# Node3: Gateway only
-init_node "./data/node3" "Node3 (gw-only)" 8082 9002 9092
+    if ! "$SCRIPT_DIR/minio.sh" status &>/dev/null; then
+        echo -e "${YELLOW}Starting MinIO...${NC}"
+        "$SCRIPT_DIR/minio.sh" up
+    else
+        echo -e "${GREEN}MinIO already running${NC}"
+    fi
+}
 
-# Check if tmux session already exists
-if tmux has-session -t jax-dev 2>/dev/null; then
-    echo -e "${BLUE}Killing existing jax-dev tmux session...${NC}"
-    tmux kill-session -t jax-dev
-fi
+# Clean all dev data
+clean() {
+    echo -e "${YELLOW}Cleaning dev data...${NC}"
+    rm -rf ./data/node1 ./data/node2 ./data/node3
+    echo -e "${GREEN}Dev data cleaned${NC}"
+}
 
-# Check if cargo-watch is installed
-if ! command -v cargo-watch &>/dev/null; then
-    echo -e "${BLUE}cargo-watch not found, installing...${NC}"
-    cargo install cargo-watch
-fi
+# Setup and run tmux session
+run_tmux() {
+    local blob_store=$1
 
-echo -e "${GREEN}Starting tmux session 'jax-dev'...${NC}"
+    # Check if tmux session already exists
+    if tmux has-session -t jax-dev 2>/dev/null; then
+        echo -e "${BLUE}Killing existing jax-dev tmux session...${NC}"
+        tmux kill-session -t jax-dev
+    fi
 
-# Create new tmux session with nodes window
-tmux new-session -d -s jax-dev -n "nodes"
+    # Check if cargo-watch is installed
+    if ! command -v cargo-watch &>/dev/null; then
+        echo -e "${BLUE}cargo-watch not found, installing...${NC}"
+        cargo install cargo-watch
+    fi
 
-# Split into 3 panes (top-left, top-right, bottom)
-tmux split-window -h -t jax-dev:0
-tmux split-window -v -t jax-dev:0.0
+    echo -e "${GREEN}Starting tmux session 'jax-dev' (blob store: $blob_store)...${NC}"
 
-# Pane 0.0 (top-left): App only
-tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: App Only ===' && echo 'App: http://localhost:8080 (UI + API)' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
+    # Create new tmux session with nodes window
+    tmux new-session -d -s jax-dev -n "nodes"
 
-# Pane 0.1 (top-right): App + Gateway (uses --with-gateway to enable both)
-tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: App + Gateway ===' && echo 'App: http://localhost:8081 (UI + API) | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --with-gateway --gateway-url http://localhost:9091'" C-m
+    # Split into 3 panes (top-left, top-right, bottom)
+    tmux split-window -h -t jax-dev:0
+    tmux split-window -v -t jax-dev:0.0
 
-# Pane 0.2 (bottom): Gateway only
-tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 daemon --gateway'" C-m
+    # Pane 0.0 (top-left): App only
+    tmux send-keys -t jax-dev:0.0 "cd $PROJECT_ROOT && echo '=== Node1: App Only ($blob_store) ===' && echo 'App: http://localhost:8080 (UI + API)' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node1 daemon'" C-m
 
-# Create a new window for database inspection
-tmux new-window -t jax-dev:1 -n "db"
-tmux send-keys -t jax-dev:1 "cd $PROJECT_ROOT && echo 'Node1 DB: ./data/node1/db.sqlite' && echo 'Node2 DB: ./data/node2/db.sqlite' && echo 'Node3 DB: ./data/node3/db.sqlite' && echo '' && echo 'Use: ./bin/db.sh node1 or ./bin/db.sh node2 or ./bin/db.sh node3'" C-m
+    # Pane 0.1 (top-right): App + Gateway
+    tmux send-keys -t jax-dev:0.1 "cd $PROJECT_ROOT && echo '=== Node2: App + Gateway ($blob_store) ===' && echo 'App: http://localhost:8081 (UI + API) | GW: http://localhost:9091' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node2 daemon --with-gateway --gateway-url http://localhost:9091'" C-m
 
-# Create a new window for API testing
-tmux new-window -t jax-dev:2 -n "info"
-tmux send-keys -t jax-dev:2 "cd $PROJECT_ROOT && cat << 'EOF'
-JAX Development Environment
-============================
+    # Pane 0.2 (bottom): Gateway only
+    tmux send-keys -t jax-dev:0.2 "cd $PROJECT_ROOT && echo '=== Node3: Gateway Only ($blob_store) ===' && echo 'GW: http://localhost:9092' && echo '' && RUST_LOG=info cargo watch --why --ignore 'data/*' --ignore '*.sqlite*' --ignore '*.db*' -x 'run --bin jax -- --config-path ./data/node3 daemon --gateway'" C-m
+
+    # Create info window
+    tmux new-window -t jax-dev:1 -n "info"
+    tmux send-keys -t jax-dev:1 "cd $PROJECT_ROOT && cat << 'EOF'
+JAX Development Environment (blob store: $blob_store)
+======================================================
 
 Node Configurations:
 --------------------
-Node1 - App Only:
-  App:  http://localhost:8080 (UI + API on same port)
-  Gateway: (not enabled)
-  Use case: Standard daemon without gateway
+Node1 - App Only:      http://localhost:8080
+Node2 - App + Gateway: http://localhost:8081 + http://localhost:9091
+Node3 - Gateway Only:  http://localhost:9092
 
-Node2 - App + Gateway:
-  App:  http://localhost:8081 (UI + API on same port)
-  Gateway: http://localhost:9091
-  Use case: Full daemon with integrated gateway on separate port
-  Share links in UI will point to http://localhost:9091
+Quick Test:
+-----------
+1. Open http://localhost:8080 in browser
+2. Create a bucket, add files
+3. Check blob store is working
 
-Node3 - Gateway Only:
-  Gateway: http://localhost:9092
-  Use case: Minimal read-only content serving (no UI, no API)
-  Can mirror buckets from other nodes
-
-Testing:
---------
-1. Create a bucket on Node1 or Node2 via UI
-2. Add files via the UI
-3. Test share links:
-   - Node1: No gateway (share links won't work for direct download)
-   - Node2: Share links use http://localhost:9091/gw/...
-4. Test gateway-only access on Node3:
-   - Visit http://localhost:9092 to see identity page
-   - Mirror a bucket from Node1/Node2
-   - Access via http://localhost:9092/gw/{bucket_id}/path
-5. Check identity endpoints:
-   - curl http://localhost:9091/_status/identity
-   - curl http://localhost:9092/_status/identity
-6. Verify API works on same port as UI:
-   - curl http://localhost:8080/api/v0/bucket/list
-   - curl http://localhost:8080/buckets  # HTML
+Commands:
+---------
+tmux kill-session -t jax-dev   # Stop everything
+./bin/dev.sh clean             # Remove all data
+./bin/dev.sh s3                # Restart with S3 backend
 EOF" C-m
 
-# Go back to first window
-tmux select-window -t jax-dev:0
+    # Go back to first window
+    tmux select-window -t jax-dev:0
 
-echo -e "${GREEN}Tmux session 'jax-dev' started!${NC}"
-echo ""
-echo "Usage:"
-echo "  tmux attach -t jax-dev         # Attach to the session"
-echo "  tmux kill-session -t jax-dev   # Kill the session"
-echo ""
-echo "Windows:"
-echo "  0: nodes - Three node configurations"
-echo "  1: db    - Database inspection"
-echo "  2: info  - Configuration info and testing guide"
-echo ""
-echo "Node Configurations:"
-echo "  Node1 (app):         App=8080 (UI+API)"
-echo "  Node2 (app+gw):      App=8081 (UI+API) + GW=9091"
-echo "  Node3 (gw-only):     GW=9092"
-echo ""
-echo -e "${BLUE}Attaching to session...${NC}"
+    echo ""
+    echo -e "${GREEN}Started!${NC} Nodes using $blob_store blob store"
+    echo ""
+    echo "  Node1: http://localhost:8080 (app)"
+    echo "  Node2: http://localhost:8081 (app) + http://localhost:9091 (gateway)"
+    echo "  Node3: http://localhost:9092 (gateway only)"
+    echo ""
+    echo -e "${BLUE}Attaching to tmux session...${NC}"
 
-# Attach to the session
-tmux attach -t jax-dev
+    tmux attach -t jax-dev
 }
 
-# Main command handling - just run default setup
-run_default
+# Run with legacy blob store (default)
+run_legacy() {
+    echo -e "${BLUE}Setting up JAX dev environment (legacy blob store)...${NC}"
+
+    init_node "./data/node1" "Node1" 8080 9000 9090 legacy
+    init_node "./data/node2" "Node2" 8081 9001 9091 legacy
+    init_node "./data/node3" "Node3" 8082 9002 9092 legacy
+
+    run_tmux "legacy"
+}
+
+# Run with S3 blob store
+run_s3() {
+    echo -e "${BLUE}Setting up JAX dev environment (S3 blob store)...${NC}"
+
+    # Start MinIO
+    ensure_minio
+
+    # Initialize nodes with S3 backend
+    init_node "./data/node1" "Node1" 8080 9000 9090 s3 "--s3-url '$S3_URL'"
+    init_node "./data/node2" "Node2" 8081 9001 9091 s3 "--s3-url '$S3_URL'"
+    init_node "./data/node3" "Node3" 8082 9002 9092 s3 "--s3-url '$S3_URL'"
+
+    run_tmux "s3"
+}
+
+# Help
+help() {
+    echo "JAX Development Environment"
+    echo ""
+    echo "Usage: $0 [command]"
+    echo ""
+    echo "Commands:"
+    echo "  (default)  Start 3 nodes with legacy blob store"
+    echo "  s3         Start 3 nodes with S3 blob store (MinIO)"
+    echo "  clean      Remove all dev data (./data/node*)"
+    echo "  help       Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  $0         # Quick start with legacy blobs"
+    echo "  $0 s3      # Test S3 integration with MinIO"
+    echo "  $0 clean && $0 s3  # Fresh S3 setup"
+}
+
+# Main
+case "${1:-}" in
+    s3)
+        run_s3
+        ;;
+    clean)
+        clean
+        ;;
+    help|--help|-h)
+        help
+        ;;
+    *)
+        run_legacy
+        ;;
+esac
