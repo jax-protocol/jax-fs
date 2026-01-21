@@ -352,15 +352,15 @@ Prefer fewer, well-designed CLI flags over many granular ones:
 
 **Principles:**
 - Infrastructure config (storage backend) → set at `init`, not runtime
-- Runtime config (ports, URLs) → can be CLI flags on daemon
+- Runtime config (public hostname, external URLs) → can be CLI flags on daemon
 - Credentials → prefer URL encoding or config file over env vars
 - Combine related params into URLs or structured config
 
 ### Config Locality
 
 Configuration should be set where it makes sense:
-- `init` time: Storage backends, directories, infrastructure
-- `daemon` time: Ports, URLs, runtime behavior
+- `init` time: Storage backends, directories, ports, infrastructure
+- `daemon` time: Public hostname, external URLs, runtime behavior
 - Config file: Persisted settings that rarely change
 
 Don't put init-time config as daemon flags.
