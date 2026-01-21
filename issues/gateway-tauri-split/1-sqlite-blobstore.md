@@ -42,7 +42,7 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 
 - [x] `crates/blobs-store` compiles independently
 - [ ] Trait bridge implements iroh-blobs store traits
-- [x] `jax daemon --gateway --blob-store s3 --s3-endpoint ...` parses correctly
+- [x] `jax init --blob-store s3 --s3-url ...` parses correctly
 - [x] SQLite metadata can be rebuilt from object storage (`recover_from_storage()`)
 - [x] `cargo test` passes
 - [x] `cargo clippy` has no warnings
@@ -59,16 +59,7 @@ Integrate SQLite + Object Storage blob backend into gateway for cloud-native dep
 # Start MinIO
 ./bin/dev minio
 
-# Start gateway with S3 config
-cargo run -- daemon --gateway --blob-store s3 \
-  --s3-endpoint http://localhost:9000 \
-  --s3-bucket jax-blobs \
-  --s3-access-key minioadmin \
-  --s3-secret-key minioadmin
-
-# Or use env vars for credentials
-JAX_S3_ACCESS_KEY=minioadmin JAX_S3_SECRET_KEY=minioadmin \
-  cargo run -- daemon --gateway --blob-store s3 \
-  --s3-endpoint http://localhost:9000 \
-  --s3-bucket jax-blobs
+# Init with S3 config, then run gateway
+jax init --blob-store s3 --s3-url s3://minioadmin:minioadmin@localhost:9000/jax-blobs
+jax daemon --gateway
 ```

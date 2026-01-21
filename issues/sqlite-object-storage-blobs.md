@@ -170,27 +170,39 @@ Handle interrupted uploads/downloads:
 | `crates/app/src/ops/daemon.rs` | Added CLI flags and `build_blob_store_config()` |
 | `bin/dev` | Added `minio` and `blob-stores` commands |
 
-## Example Configuration
+## CLI Usage
+
+Blob store is configured at **init time**, not daemon time:
+
+```bash
+# Legacy (default)
+jax init
+
+# Local filesystem
+jax init --blob-store filesystem --blobs-path /data/blobs
+
+# S3/MinIO (credentials in URL)
+jax init --blob-store s3 --s3-url s3://minioadmin:minioadmin@localhost:9000/jax-blobs
+```
+
+## Config File Format
+
+After init, config.toml contains:
 
 ```toml
-# Legacy (default - no config needed)
+# Legacy (default)
 [blob_store]
 type = "legacy"
 
-# Local filesystem (no S3 required)
+# Filesystem
 [blob_store]
 type = "filesystem"
-path = "/data/blobs"  # optional, defaults to {jax_dir}/blobs
+path = "/data/blobs"
 
-# S3/MinIO
+# S3
 [blob_store]
 type = "s3"
-endpoint = "http://localhost:9000"
-access_key = "minioadmin"
-secret_key = "minioadmin"
-bucket = "jax-blobs"
-region = "us-east-1"        # optional
-db_path = "/data/blobs.db"  # optional
+url = "s3://minioadmin:minioadmin@localhost:9000/jax-blobs"
 ```
 
 ## Recovery from Object Storage
@@ -226,13 +238,7 @@ Scans object storage, verifies blob integrity, and repopulates SQLite. Tags woul
 # Run tests
 cargo test -p jax-blobs-store
 
-# Test with S3 config
-cargo run -- daemon --gateway --blob-store s3 \
-  --s3-endpoint http://localhost:9000 \
-  --s3-bucket jax-blobs \
-  --s3-access-key minioadmin \
-  --s3-secret-key minioadmin
-
-# Or run multiple gateways with different backends
-./bin/dev blob-stores
+# Init with S3 config, then run daemon
+jax init --blob-store s3 --s3-url s3://minioadmin:minioadmin@localhost:9000/jax-blobs
+jax daemon --gateway
 ```
