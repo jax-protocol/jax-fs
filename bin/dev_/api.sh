@@ -180,6 +180,39 @@ api_delete() {
         -d "{\"bucket_id\": \"$bucket_id\", \"path\": \"$path\"}" | jq .
 }
 
+# Get gateway base URL for a node
+gateway_url() {
+    local node_arg="${1:-$API_NODE}"
+    local node=$(resolve_node "$node_arg")
+    local port=$(get_gateway_port "$node")
+    echo "http://localhost:$port"
+}
+
+api_fetch() {
+    local bucket_id="$1"
+    local path="${2:-}"
+
+    if [[ -z "$bucket_id" ]]; then
+        echo "Usage: ./bin/dev api <node> fetch <bucket_id> [path]"
+        return 1
+    fi
+
+    local base=$(gateway_url)
+    local url="$base/gw/$bucket_id$path"
+    echo -e "${BLUE}GET $url${NC}"
+
+    # Use Accept: application/json for directory listings
+    local response
+    response=$(curl -s -H "Accept: application/json" "$url")
+
+    # Try to parse as JSON, otherwise show raw
+    if echo "$response" | jq . 2>/dev/null; then
+        :  # jq succeeded
+    else
+        echo "$response"
+    fi
+}
+
 api_help() {
     echo "API helper - curl commands for interacting with jax-bucket"
     echo ""
@@ -187,13 +220,16 @@ api_help() {
     echo ""
     echo "Nodes:"
     echo "  full, app    - App nodes (support all commands)"
-    echo "  gw           - Gateway only (health commands only)"
+    echo "  gw           - Gateway only (health + fetch commands)"
     echo ""
     echo "Health commands (all nodes):"
     echo "  health                        Check node health"
     echo "  ready                         Check node readiness"
     echo "  identity                      Get node identity"
     echo "  version                       Get node version"
+    echo ""
+    echo "Gateway commands (all nodes with gateway port):"
+    echo "  fetch <bucket_id> [path]      Fetch content from gateway"
     echo ""
     echo "Bucket commands (app nodes only - full, app):"
     echo "  list                          List all buckets"
@@ -207,6 +243,7 @@ api_help() {
     echo "Examples:"
     echo "  ./bin/dev api full health     # Health check on full node"
     echo "  ./bin/dev api gw health       # Health check on gateway"
+    echo "  ./bin/dev api gw fetch abc-123 /  # Fetch from gateway"
     echo "  ./bin/dev api app list        # List buckets on app node"
     echo "  ./bin/dev api full create test # Create bucket"
     echo "  ./bin/dev api full ls abc-123 / # List files"
@@ -261,6 +298,7 @@ cmd_api() {
         ready)    shift; api_ready "$@" ;;
         identity) shift; api_identity "$@" ;;
         version)  shift; api_version "$@" ;;
+        fetch)    shift; api_fetch "$@" ;;
         list)     shift; api_list "$@" ;;
         create)   shift; api_create "$@" ;;
         ls)       shift; api_ls "$@" ;;

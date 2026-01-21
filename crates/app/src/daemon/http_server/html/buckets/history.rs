@@ -58,6 +58,7 @@ pub struct BucketLogsTemplate {
     pub current_path: String,
     pub file_metadata: Option<super::file_explorer::FileMetadata>,
     pub path_segments: Vec<super::file_explorer::PathSegment>,
+    pub is_published: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,6 +138,7 @@ pub async fn handler(
         manifest_pins_link,
         manifest_previous_link,
         manifest_shares,
+        is_published,
     ) = match blobs.get(&bucket.link.hash()).await {
         Ok(data) => match Manifest::decode(&data) {
             Ok(bucket_data) => {
@@ -161,9 +163,10 @@ pub async fn handler(
                         role: format!("{:?}", share.principal().role),
                     })
                     .collect();
+                let published = bucket_data.is_published();
 
                 (
-                    formatted, height, version, entry_link, pins_link, previous, shares,
+                    formatted, height, version, entry_link, pins_link, previous, shares, published,
                 )
             }
             Err(e) => {
@@ -176,6 +179,7 @@ pub async fn handler(
                     String::new(),
                     None,
                     Vec::new(),
+                    false,
                 )
             }
         },
@@ -189,6 +193,7 @@ pub async fn handler(
                 String::new(),
                 None,
                 Vec::new(),
+                false,
             )
         }
     };
@@ -222,6 +227,7 @@ pub async fn handler(
             current_path: "/".to_string(),
             file_metadata: None,
             path_segments: vec![],
+            is_published,
         };
         return template.into_response();
     }
@@ -307,6 +313,7 @@ pub async fn handler(
         current_path: "/".to_string(),
         file_metadata: None,
         path_segments: vec![],
+        is_published,
     };
 
     template.into_response()

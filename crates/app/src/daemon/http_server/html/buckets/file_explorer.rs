@@ -41,6 +41,7 @@ pub struct BucketExplorerTemplate {
     pub manifest_pins_link: String,
     pub manifest_previous_link: Option<String>,
     pub manifest_shares: Vec<ManifestShare>,
+    pub is_published: bool,
     pub current_path: String,
     pub path_segments: Vec<PathSegment>,
     pub parent_path_url: String,
@@ -115,7 +116,8 @@ pub async fn handler(
         Err(e) => return error_response(&format!("{}", e)),
     };
 
-    // Load mount - either from specific link or current state
+    // Load mount - either from specific link or latest published version
+    // Gateways always show the last published version, never HEAD
     let (mount, viewing_link) = if let Some(hash_str) = &query.at {
         // Parse the hash string and create a Link with blake3 codec
         match hash_str.parse::<common::linked_data::Hash>() {
@@ -138,12 +140,29 @@ pub async fn handler(
             }
         }
     } else {
-        // Load current version
-        match state.peer().mount(bucket_id).await {
-            Ok(mount) => (mount, bucket.link.clone()),
-            // TODO (amiller68): this is far too broad, but fine for
-            //  now
-            Err(_e) => {
+        // Always use latest published version
+        use common::bucket_log::BucketLogProvider;
+        match state.peer().logs().latest_published(bucket_id).await {
+            Ok(Some((published_link, _height))) => {
+                match common::mount::Mount::load(
+                    &published_link,
+                    state.peer().secret(),
+                    state.peer().blobs(),
+                )
+                .await
+                {
+                    Ok(mount) => (mount, published_link),
+                    Err(_e) => {
+                        let template = SyncingTemplate {
+                            bucket_id: bucket_id.to_string(),
+                            bucket_name: bucket.name.clone(),
+                        };
+                        return template.into_response();
+                    }
+                }
+            }
+            _ => {
+                // No published version available
                 let template = SyncingTemplate {
                     bucket_id: bucket_id.to_string(),
                     bucket_name: bucket.name.clone(),
@@ -248,6 +267,7 @@ pub async fn handler(
         manifest_pins_link,
         manifest_previous_link,
         manifest_shares,
+        is_published,
     ) = match blobs.get(&viewing_link.hash()).await {
         Ok(data) => match Manifest::decode(&data) {
             Ok(bucket_data) => {
@@ -272,9 +292,10 @@ pub async fn handler(
                         role: format!("{:?}", share.principal().role),
                     })
                     .collect();
+                let published = bucket_data.is_published();
 
                 (
-                    formatted, height, version, entry_link, pins_link, previous, shares,
+                    formatted, height, version, entry_link, pins_link, previous, shares, published,
                 )
             }
             Err(e) => {
@@ -287,6 +308,7 @@ pub async fn handler(
                     String::new(),
                     None,
                     Vec::new(),
+                    false,
                 )
             }
         },
@@ -300,6 +322,7 @@ pub async fn handler(
                 String::new(),
                 None,
                 Vec::new(),
+                false,
             )
         }
     };
@@ -319,6 +342,7 @@ pub async fn handler(
         manifest_pins_link,
         manifest_previous_link,
         manifest_shares,
+        is_published,
         current_path,
         path_segments,
         parent_path_url,

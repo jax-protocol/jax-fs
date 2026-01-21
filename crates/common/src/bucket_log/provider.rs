@@ -58,6 +58,7 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     /// * `current` - The current link of the record
     /// * `previous` - The previous link of the record
     /// * `height` - The reported depth of the bucket version within the chain
+    /// * `published` - Whether this version is published (mirrors can decrypt)
     ///
     /// Should fail with the following errors to be considered
     ///  correct:
@@ -72,6 +73,7 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
         //  be null for the genesis of a bucket
         previous: Option<Link>,
         height: u64,
+        published: bool,
     ) -> Result<(), BucketLogError<Self::Error>>;
 
     /// Return the greatest height of the bucket version within the chain
@@ -120,4 +122,18 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     /// * `Ok(Vec<Uuid>)` - The list of bucket IDs
     /// * `Err(BucketLogError)` - An error occurred while fetching bucket IDs
     async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>>;
+
+    /// Get the latest published version of a bucket
+    ///
+    /// # Arguments
+    /// * `id` - The UUID of the bucket
+    ///
+    /// # Returns
+    /// * `Ok(Some((link, height)))` - The latest published version's link and height
+    /// * `Ok(None)` - No published version exists
+    /// * `Err(BucketLogError)` - An error occurred while fetching
+    async fn latest_published(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(Link, u64)>, BucketLogError<Self::Error>>;
 }

@@ -34,6 +34,7 @@ source "$DEV_DIR/nodes.sh"
 source "$DEV_DIR/api.sh"
 source "$DEV_DIR/logs.sh"
 source "$DEV_DIR/fixtures.sh"
+source "$DEV_DIR/db.sh"
 
 cmd_help() {
     echo "JAX Development Environment"
@@ -48,6 +49,7 @@ cmd_help() {
     echo "  api <cmd>           API helper (run 'api help' for details)"
     echo "  logs <cmd>          Log viewer (run 'logs help' for details)"
     echo "  fixtures <cmd>      Apply/list fixtures (run 'fixtures help' for details)"
+    echo "  db <node> [query]   Database inspection (run 'db help' for details)"
     echo "  help                Show this help"
     echo ""
     echo "Examples:"
@@ -73,6 +75,7 @@ case "${1:-run}" in
     api)      shift; cmd_api "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     fixtures) shift; cmd_fixtures "$@" ;;
+    db)       shift; cmd_db "$@" ;;
     help|-h|--help) cmd_help ;;
     *)        echo -e "${RED}Unknown command: $1${NC}"; cmd_help; exit 1 ;;
 esac

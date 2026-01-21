@@ -61,6 +61,7 @@ impl BucketLogProvider for Database {
         current: Link,
         previous: Option<Link>,
         height: u64,
+        published: bool,
     ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
         let current_dcid: DCid = current.clone().into();
         let previous_dcid: Option<DCid> = previous.clone().map(Into::into);
@@ -112,14 +113,15 @@ impl BucketLogProvider for Database {
         let id_str = id.to_string();
         sqlx::query!(
             r#"
-            INSERT INTO bucket_log (bucket_id, name, current_link, previous_link, height, created_at)
-            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+            INSERT INTO bucket_log (bucket_id, name, current_link, previous_link, height, published, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
             "#,
             id_str,
             name,
             current_dcid,
             previous_dcid,
-            height_i64
+            height_i64,
+            published
         )
         .execute(&**self)
         .await
@@ -202,5 +204,28 @@ impl BucketLogProvider for Database {
             .into_iter()
             .map(|r| Uuid::parse_str(&r.bucket_id).expect("invalid bucket_id UUID in database"))
             .collect())
+    }
+
+    async fn latest_published(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(Link, u64)>, common::bucket_log::BucketLogError<Self::Error>> {
+        let id_str = id.to_string();
+
+        let result = sqlx::query!(
+            r#"
+            SELECT current_link as "current_link!: DCid", height
+            FROM bucket_log
+            WHERE bucket_id = $1 AND published = TRUE
+            ORDER BY height DESC
+            LIMIT 1
+            "#,
+            id_str
+        )
+        .fetch_optional(&**self)
+        .await
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
+
+        Ok(result.map(|r| (r.current_link.into(), r.height as u64)))
     }
 }

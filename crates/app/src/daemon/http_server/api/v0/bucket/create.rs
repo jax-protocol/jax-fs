@@ -67,7 +67,7 @@ pub async fn handler(
         genesis_link
     );
 
-    // Append genesis entry to log (height 0, no previous link)
+    // Append genesis entry to log (height 0, no previous link, unpublished)
     tracing::info!(
         "CREATE BUCKET: Appending genesis entry to log for bucket {}",
         id
@@ -75,7 +75,7 @@ pub async fn handler(
     state
         .peer()
         .logs()
-        .append(id, req.name.clone(), genesis_link.clone(), None, 0)
+        .append(id, req.name.clone(), genesis_link.clone(), None, 0, false)
         .await
         .map_err(|e| {
             tracing::error!(

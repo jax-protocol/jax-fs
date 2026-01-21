@@ -311,12 +311,14 @@ where
     if let Some((_i, (manifest, link))) = manifests.iter().enumerate().next() {
         let previous = manifest.previous().clone();
         let height = manifest.height();
+        let is_published = manifest.is_published();
 
         tracing::info!(
-            "Appending manifest to log: height={}, link={:?}, previous={:?}",
+            "Appending manifest to log: height={}, link={:?}, previous={:?}, published={}",
             height,
             link,
-            previous
+            previous,
+            is_published
         );
 
         peer.logs()
@@ -326,6 +328,7 @@ where
                 link.clone(),
                 previous,
                 height,
+                is_published,
             )
             .await
             .map_err(|e| anyhow!("Failed to append manifest at height {}: {}", height, e))?;

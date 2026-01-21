@@ -110,7 +110,9 @@ init_node() {
 
     local init_args="--config-path $data_path init"
     init_args="$init_args --app-port $app_port"
-    init_args="$init_args --peer-port $peer_port"
+    if [[ -n "$peer_port" ]]; then
+        init_args="$init_args --peer-port $peer_port"
+    fi
     init_args="$init_args --gateway-port $gw_port"
     init_args="$init_args --blob-store $blob_store"
 

@@ -334,6 +334,14 @@ impl Manifest {
     pub fn publish(&mut self, secret: &Secret) {
         self.public = Some(secret.clone());
     }
+
+    /// Unpublish the bucket by clearing the public secret.
+    ///
+    /// This removes public read access. Mirrors will no longer be able
+    /// to decrypt bucket contents until republished.
+    pub fn unpublish(&mut self) {
+        self.public = None;
+    }
 }
 
 #[cfg(test)]

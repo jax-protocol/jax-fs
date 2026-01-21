@@ -24,7 +24,10 @@
                 <a href="/gw/{{ bucket.id }}" class="bucket-row">
                     <div class="bucket-info">
                         <span class="bucket-name">{{ bucket.name }}</span>
-                        <code class="bucket-id">{{ bucket.id_short }}</code>
+                        <div class="bucket-ids">
+                            <code class="bucket-id" title="Bucket ID">{{ bucket.id_short }}</code>
+                            <code class="bucket-version" title="Version">v:{{ bucket.version_short }}</code>
+                        </div>
                     </div>
                     <div class="bucket-status">
                         {% if bucket.is_published %}
@@ -108,10 +111,22 @@
     font-size: 1rem;
 }
 
+.bucket-ids {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
 .bucket-id {
     font-family: 'Monaco', 'Courier New', monospace;
     font-size: 0.75rem;
     color: hsl(var(--muted-foreground));
+}
+
+.bucket-version {
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.75rem;
+    color: hsl(var(--primary) / 0.7);
 }
 
 .bucket-status {

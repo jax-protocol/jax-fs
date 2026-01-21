@@ -333,9 +333,17 @@ Serves files from a bucket. The bucket_id can be either:
 - A share token for shared buckets
 
 ```bash
-# Access root
-curl http://localhost:9090/gw/550e8400-.../
+# Using dev API helper (recommended)
+./bin/dev api gw fetch 550e8400-... /           # List root directory (JSON)
+./bin/dev api gw fetch 550e8400-... /docs/      # List subdirectory
+./bin/dev api full fetch 550e8400-... /file.txt # Fetch file content
 
-# Access specific file
+# Direct curl (if needed)
+curl http://localhost:9090/gw/550e8400-.../
 curl http://localhost:9090/gw/550e8400-.../path/to/file.txt
 ```
+
+Query parameters:
+- `download=true` - Force download with Content-Disposition: attachment
+- `view=true` - Show file in viewer UI instead of rendering HTML/Markdown
+- `deep=true` - Recursively list all files (for directories)

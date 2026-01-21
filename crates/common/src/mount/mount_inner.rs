@@ -171,9 +171,13 @@ impl Mount {
             }
         }
 
-        // Only publish if explicitly requested
+        // Update publish state: publish with new secret, or clear stale public secret
         if publish {
             manifest.publish(&secret);
+        } else {
+            // Clear any existing public secret since it would be stale
+            // (encrypted with old secret, not the new one)
+            manifest.unpublish();
         }
         manifest.set_pins(pins_link.clone());
         manifest.set_previous(previous_link.clone());

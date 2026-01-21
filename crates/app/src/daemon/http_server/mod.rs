@@ -139,6 +139,7 @@ pub async fn run_gateway(
     let gateway_router = Router::new()
         .route("/", get(gateway_index::handler))
         .route("/gw/:bucket_id", get(html::gateway::root_handler))
+        .route("/gw/:bucket_id/", get(html::gateway::root_handler))
         .route("/gw/:bucket_id/*file_path", get(html::gateway::handler))
         .route("/static/*path", get(static_handler))
         .nest(STATUS_PREFIX, health::router(state.clone()))

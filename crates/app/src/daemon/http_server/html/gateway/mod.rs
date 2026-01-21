@@ -137,7 +137,8 @@ pub async fn handler(
         format!("/{}", file_path)
     };
 
-    // Load mount - either from specific link or current state
+    // Load mount - either from specific link or latest published version
+    // Gateways always show the last published version, never HEAD
     let mount = if let Some(hash_str) = &query.at {
         // Parse the hash string and create a Link
         match hash_str.parse::<common::linked_data::Hash>() {
@@ -159,14 +160,26 @@ pub async fn handler(
             }
         }
     } else {
-        match state.peer().mount(bucket_id).await {
-            Ok(mount) => mount,
-            Err(common::prelude::MountError::LinkNotFound(_)) => {
-                return syncing_response();
+        // Always use latest published version
+        use common::bucket_log::BucketLogProvider;
+        match state.peer().logs().latest_published(bucket_id).await {
+            Ok(Some((published_link, _height))) => {
+                match common::mount::Mount::load(
+                    &published_link,
+                    state.peer().secret(),
+                    state.peer().blobs(),
+                )
+                .await
+                {
+                    Ok(mount) => mount,
+                    Err(_e) => {
+                        return syncing_response();
+                    }
+                }
             }
-            Err(e) => {
-                tracing::error!("Failed to load mount: {}", e);
-                return error_response("Failed to load bucket");
+            _ => {
+                // No published version available
+                return syncing_response();
             }
         }
     };

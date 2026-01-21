@@ -27,6 +27,20 @@
             </button>
         </div>
     </div>
+    <div class="sidebar-bucket-status">
+        <div class="sidebar-id-label">Status</div>
+        <div class="sidebar-status-value">
+            {% if is_published %}
+            <span class="status-badge status-published">
+                <i class="fas fa-globe"></i> Published
+            </span>
+            {% else %}
+            <span class="status-badge status-private">
+                <i class="fas fa-lock"></i> Private
+            </span>
+            {% endif %}
+        </div>
+    </div>
     <div class="sidebar-bucket-meta">
         <button uk-toggle="target: #bucket-data-modal" class="sidebar-details-btn">
             <i class="fas fa-file-code"></i> Manifest

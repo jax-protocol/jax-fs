@@ -329,12 +329,21 @@ impl<L: BucketLogProvider> Peer<L> {
         // Get shares from the mount manifest
         let (link, previous_link, height) = mount.save(self.blobs(), publish).await?;
         let inner = mount.inner().await;
-        let shares = inner.manifest().shares();
+        let manifest = inner.manifest();
+        let shares = manifest.shares();
+        let is_published = manifest.is_published();
         tracing::info!("SAVE_MOUNT: Found {} shares in manifest", shares.len());
 
         // Append to log
         self.log_provider
-            .append(bucket_id, name, link.clone(), Some(previous_link), height)
+            .append(
+                bucket_id,
+                name,
+                link.clone(),
+                Some(previous_link),
+                height,
+                is_published,
+            )
             .await
             .map_err(|e| MountError::Default(anyhow!("Failed to append to log: {}", e)))?;
 

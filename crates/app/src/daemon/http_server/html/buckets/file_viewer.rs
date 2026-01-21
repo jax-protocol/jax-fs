@@ -60,6 +60,7 @@ pub struct FileViewerTemplate {
     pub api_url: String,
     pub current_path: String,
     pub gateway_url: String,
+    pub is_published: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -249,6 +250,7 @@ pub async fn handler(
         manifest_pins_link,
         manifest_previous_link,
         manifest_shares,
+        is_published,
     ) = match blobs.get(&viewing_link.hash()).await {
         Ok(data) => match common::mount::Manifest::decode(&data) {
             Ok(bucket_data) => {
@@ -273,9 +275,10 @@ pub async fn handler(
                         role: format!("{:?}", share.principal().role),
                     })
                     .collect();
+                let published = bucket_data.is_published();
 
                 (
-                    formatted, height, version, entry_link, pins_link, previous, shares,
+                    formatted, height, version, entry_link, pins_link, previous, shares, published,
                 )
             }
             Err(e) => {
@@ -288,6 +291,7 @@ pub async fn handler(
                     String::new(),
                     None,
                     Vec::new(),
+                    false,
                 )
             }
         },
@@ -301,6 +305,7 @@ pub async fn handler(
                 String::new(),
                 None,
                 Vec::new(),
+                false,
             )
         }
     };
@@ -346,6 +351,7 @@ pub async fn handler(
         api_url,
         current_path,
         gateway_url,
+        is_published,
     };
 
     template.into_response()

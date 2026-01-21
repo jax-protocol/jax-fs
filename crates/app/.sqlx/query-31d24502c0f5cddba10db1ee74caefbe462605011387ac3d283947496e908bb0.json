@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO bucket_log (bucket_id, name, current_link, previous_link, height, published, created_at)\n            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "31d24502c0f5cddba10db1ee74caefbe462605011387ac3d283947496e908bb0"
+}

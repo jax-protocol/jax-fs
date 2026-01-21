@@ -23,6 +23,8 @@ struct MemoryBucketLogProviderInner {
     link_index: HashMap<Uuid, HashMap<Link, Vec<u64>>>,
     /// Store bucket names (optional, for caching)
     names: HashMap<Uuid, String>,
+    /// Track published status: bucket_id -> link -> published
+    published: HashMap<Uuid, HashMap<Link, bool>>,
 }
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
@@ -83,6 +85,7 @@ impl BucketLogProvider for MemoryBucketLogProvider {
         current: Link,
         previous: Option<Link>,
         height: u64,
+        published: bool,
     ) -> Result<(), BucketLogError<Self::Error>> {
         let mut inner = self.inner.write().map_err(|e| {
             BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
@@ -157,9 +160,16 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             .link_index
             .entry(id)
             .or_insert_with(HashMap::new)
-            .entry(current)
+            .entry(current.clone())
             .or_insert_with(Vec::new)
             .push(height);
+
+        // Store published status
+        inner
+            .published
+            .entry(id)
+            .or_insert_with(HashMap::new)
+            .insert(current, published);
 
         Ok(())
     }
@@ -205,6 +215,42 @@ impl BucketLogProvider for MemoryBucketLogProvider {
 
         Ok(inner.entries.keys().copied().collect())
     }
+
+    async fn latest_published(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<(Link, u64)>, BucketLogError<Self::Error>> {
+        let inner = self.inner.read().map_err(|e| {
+            BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
+                "failed to acquire read lock: {}",
+                e
+            )))
+        })?;
+
+        // Get the published status map for this bucket
+        let Some(published_map) = inner.published.get(&id) else {
+            return Ok(None);
+        };
+
+        // Get all entries for this bucket
+        let Some(entries) = inner.entries.get(&id) else {
+            return Ok(None);
+        };
+
+        // Find the highest height with a published link
+        let mut best: Option<(Link, u64)> = None;
+        for (height, links) in entries.iter() {
+            for link in links {
+                if published_map.get(link).copied().unwrap_or(false)
+                    && (best.is_none() || *height > best.as_ref().unwrap().1)
+                {
+                    best = Some((link.clone(), *height));
+                }
+            }
+        }
+
+        Ok(best)
+    }
 }
 
 #[cfg(test)]
@@ -220,7 +266,7 @@ mod tests {
 
         // Genesis append should succeed
         let result = provider
-            .append(id, "test".to_string(), link.clone(), None, 0)
+            .append(id, "test".to_string(), link.clone(), None, 0, false)
             .await;
         assert!(result.is_ok());
 
@@ -241,12 +287,14 @@ mod tests {
 
         // First append succeeds
         provider
-            .append(id, "test".to_string(), link.clone(), None, 0)
+            .append(id, "test".to_string(), link.clone(), None, 0, false)
             .await
             .unwrap();
 
         // Same link at same height should conflict
-        let result = provider.append(id, "test".to_string(), link, None, 0).await;
+        let result = provider
+            .append(id, "test".to_string(), link, None, 0, false)
+            .await;
         assert!(matches!(result, Err(BucketLogError::Conflict)));
     }
 
@@ -259,13 +307,13 @@ mod tests {
 
         // Genesis
         provider
-            .append(id, "test".to_string(), link1, None, 0)
+            .append(id, "test".to_string(), link1, None, 0, false)
             .await
             .unwrap();
 
         // Append with non-existent previous should fail
         let result = provider
-            .append(id, "test".to_string(), link2.clone(), Some(link2), 1)
+            .append(id, "test".to_string(), link2.clone(), Some(link2), 1, false)
             .await;
         assert!(matches!(
             result,
@@ -282,13 +330,13 @@ mod tests {
 
         // Genesis
         provider
-            .append(id, "test".to_string(), link1.clone(), None, 0)
+            .append(id, "test".to_string(), link1.clone(), None, 0, false)
             .await
             .unwrap();
 
         // Valid append
         provider
-            .append(id, "test".to_string(), link2.clone(), Some(link1), 1)
+            .append(id, "test".to_string(), link2.clone(), Some(link1), 1, false)
             .await
             .unwrap();
 
@@ -299,5 +347,59 @@ mod tests {
         // Check has
         let heights = provider.has(id, link2).await.unwrap();
         assert_eq!(heights, vec![1]);
+    }
+
+    #[tokio::test]
+    async fn test_latest_published() {
+        let provider = MemoryBucketLogProvider::new();
+        let id = Uuid::new_v4();
+        let link1 = Link::new(0x55, Hash::from_bytes([1; 32]));
+        let link2 = Link::new(0x55, Hash::from_bytes([2; 32]));
+        let link3 = Link::new(0x55, Hash::from_bytes([3; 32]));
+
+        // Genesis (unpublished)
+        provider
+            .append(id, "test".to_string(), link1.clone(), None, 0, false)
+            .await
+            .unwrap();
+
+        // No published version yet
+        assert!(provider.latest_published(id).await.unwrap().is_none());
+
+        // Second version (published)
+        provider
+            .append(
+                id,
+                "test".to_string(),
+                link2.clone(),
+                Some(link1.clone()),
+                1,
+                true,
+            )
+            .await
+            .unwrap();
+
+        // Should return the published version
+        let (link, height) = provider.latest_published(id).await.unwrap().unwrap();
+        assert_eq!(link, link2);
+        assert_eq!(height, 1);
+
+        // Third version (unpublished)
+        provider
+            .append(
+                id,
+                "test".to_string(),
+                link3.clone(),
+                Some(link2.clone()),
+                2,
+                false,
+            )
+            .await
+            .unwrap();
+
+        // Should still return the published version at height 1
+        let (link, height) = provider.latest_published(id).await.unwrap().unwrap();
+        assert_eq!(link, link2);
+        assert_eq!(height, 1);
     }
 }
