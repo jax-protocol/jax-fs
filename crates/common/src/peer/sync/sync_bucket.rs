@@ -246,10 +246,12 @@ where
 
     // Validate the chain (walking from oldest to newest)
     // The first manifest is validated against the trusted_base (common ancestor)
+    // NOTE: Chain validation only checks author authorization, not receiver authorization.
+    // The receiver check is done separately on the final manifest in execute().
     let mut previous: Option<&Manifest> = trusted_base;
 
     for (manifest, link) in manifests.iter() {
-        let result = verify_provenance(peer, manifest, previous)?;
+        let result = verify_author(manifest, previous)?;
         match result {
             ProvenanceResult::Valid | ProvenanceResult::UnsignedLegacy => {
                 // Valid, continue to next manifest
@@ -427,7 +429,65 @@ where
     Ok(())
 }
 
-/// Verify a manifest's provenance.
+/// Verify the author's authorization to create a manifest.
+///
+/// Checks that:
+/// 1. The manifest is properly signed (or unsigned during migration)
+/// 2. The author was in the previous manifest's shares (authorized to make changes)
+///
+/// This is used for chain validation where we don't yet know if the receiver
+/// is in the final shares.
+///
+/// # Arguments
+///
+/// * `manifest` - The manifest to verify
+/// * `previous` - The previous manifest in the chain (if any). The author must
+///   have been in this manifest's shares to be authorized. Pass `None` for
+///   genesis manifests.
+fn verify_author(
+    manifest: &Manifest,
+    previous: Option<&Manifest>,
+) -> Result<ProvenanceResult, SyncError> {
+    // 1. Check manifest is signed
+    if !manifest.is_signed() {
+        // Allow unsigned for backwards compatibility during migration
+        tracing::warn!("Received unsigned manifest for bucket {}", manifest.id());
+        return Ok(ProvenanceResult::UnsignedLegacy);
+    }
+
+    // 2. Verify signature
+    match manifest.verify_signature() {
+        Ok(true) => {}
+        Ok(false) => return Ok(ProvenanceResult::InvalidSignature),
+        Err(e) => {
+            tracing::warn!("Signature verification error: {}", e);
+            return Ok(ProvenanceResult::InvalidSignature);
+        }
+    }
+
+    // 3. Check author was authorized in PREVIOUS manifest (not current!)
+    //    An attacker could add themselves to the current manifest's shares.
+    //    The author must have been in the previous manifest to make this update.
+    let author = manifest.author().expect("is_signed() was true");
+    let author_hex = author.to_hex();
+
+    let check_shares = previous
+        .map(|p| p.shares())
+        .unwrap_or_else(|| manifest.shares());
+    if check_shares.get(&author_hex).is_none() {
+        return Ok(ProvenanceResult::AuthorNotInShares);
+    }
+
+    tracing::debug!(
+        "Author verified: bucket={}, author={}",
+        manifest.id(),
+        author_hex
+    );
+
+    Ok(ProvenanceResult::Valid)
+}
+
+/// Verify a manifest's full provenance including receiver authorization.
 ///
 /// Checks that:
 /// 1. Our key is in the manifest's shares (we're authorized to receive it)
@@ -463,42 +523,23 @@ where
         return Ok(ProvenanceResult::NotAuthorized);
     }
 
-    // 2. Check manifest is signed
-    if !manifest.is_signed() {
-        // Allow unsigned for backwards compatibility during migration
-        tracing::warn!("Received unsigned manifest for bucket {}", manifest.id());
-        return Ok(ProvenanceResult::UnsignedLegacy);
+    // 2. Verify author (signature + author in previous shares)
+    let author_result = verify_author(manifest, previous)?;
+    if author_result != ProvenanceResult::Valid && author_result != ProvenanceResult::UnsignedLegacy
+    {
+        return Ok(author_result);
     }
 
-    // 3. Verify signature
-    match manifest.verify_signature() {
-        Ok(true) => {}
-        Ok(false) => return Ok(ProvenanceResult::InvalidSignature),
-        Err(e) => {
-            tracing::warn!("Signature verification error: {}", e);
-            return Ok(ProvenanceResult::InvalidSignature);
-        }
+    // Log success with receiver info
+    if manifest.is_signed() {
+        let author = manifest.author().expect("is_signed() was true");
+        tracing::debug!(
+            "Provenance valid: bucket={}, author={}, our_key={}",
+            manifest.id(),
+            author.to_hex(),
+            our_key_hex
+        );
     }
 
-    // 4. Check author was authorized in PREVIOUS manifest (not current!)
-    //    An attacker could add themselves to the current manifest's shares.
-    //    The author must have been in the previous manifest to make this update.
-    let author = manifest.author().expect("is_signed() was true");
-    let author_hex = author.to_hex();
-
-    let check_shares = previous
-        .map(|p| p.shares())
-        .unwrap_or_else(|| manifest.shares());
-    if check_shares.get(&author_hex).is_none() {
-        return Ok(ProvenanceResult::AuthorNotInShares);
-    }
-
-    tracing::debug!(
-        "Provenance valid: bucket={}, author={}, our_key={}",
-        manifest.id(),
-        author_hex,
-        our_key_hex
-    );
-
-    Ok(ProvenanceResult::Valid)
+    Ok(author_result)
 }
