@@ -10,6 +10,7 @@ This directory contains detailed documentation about JaxBucket's architecture an
 | [Data Model](./data-model.md) | Buckets, Manifests, Nodes, Pins, and Bucket Log |
 | [Cryptography](./cryptography.md) | Identity, key sharing, and content encryption |
 | [Synchronization](./synchronization.md) | Peer structure and sync protocol |
+| [Conflict Resolution](./conflict-resolution.md) | Pluggable conflict handling for concurrent edits |
 | [Security](./security.md) | Threat model, best practices, and implementation details |
 
 ## Quick Overview
@@ -45,4 +46,5 @@ For a complete understanding, read in this order:
 2. **[Data Model](./data-model.md)** - Understand how data is structured
 3. **[Cryptography](./cryptography.md)** - Learn how encryption works
 4. **[Synchronization](./synchronization.md)** - See how peers sync data
-5. **[Security](./security.md)** - Understand security guarantees and limitations
+5. **[Conflict Resolution](./conflict-resolution.md)** - Learn how concurrent edits are handled
+6. **[Security](./security.md)** - Understand security guarantees and limitations
