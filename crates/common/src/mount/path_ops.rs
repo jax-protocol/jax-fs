@@ -783,17 +783,36 @@ mod tests {
     #[test]
     fn test_merge_with_resolver_conflict_file() {
         use super::super::conflict::{ConflictFile, Resolution};
+        use crate::linked_data::Link;
 
         let peer1 = make_peer_id(1);
         let peer2 = make_peer_id(2);
 
+        // Create deterministic content links for testing
+        let make_link = |seed: u8| {
+            let mut hash_bytes = [0u8; 32];
+            hash_bytes[0] = seed;
+            let hash = iroh_blobs::Hash::from_bytes(hash_bytes);
+            Link::new(crate::linked_data::LD_RAW_CODEC, hash)
+        };
+
+        let link_local = make_link(0xAA);
+        let link_other = make_link(0xBB);
+        let link_incoming = make_link(0xCC);
+
         let mut log1 = PathOpLog::new();
-        log1.record(peer1, OpType::Add, "document.txt", None, false);
+        log1.record(peer1, OpType::Add, "document.txt", Some(link_local), false);
 
         let mut log2 = PathOpLog::new();
         // Simulate peer2 being "ahead" with a higher timestamp
-        log2.record(peer2, OpType::Add, "other.txt", None, false); // ts=1
-        log2.record(peer2, OpType::Add, "document.txt", None, false); // ts=2, conflicts
+        log2.record(peer2, OpType::Add, "other.txt", Some(link_other), false); // ts=1
+        log2.record(
+            peer2,
+            OpType::Add,
+            "document.txt",
+            Some(link_incoming.clone()),
+            false,
+        ); // ts=2, conflicts
 
         let resolver = ConflictFile::new();
         let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
@@ -802,11 +821,21 @@ mod tests {
         assert_eq!(result.operations_added, 2);
         assert_eq!(result.conflicts_resolved.len(), 1);
 
-        // Check the resolution was RenameIncoming
+        // Check the resolution was RenameIncoming with content hash
         let resolved = &result.conflicts_resolved[0];
         match &resolved.resolution {
             Resolution::RenameIncoming { new_path } => {
-                assert_eq!(new_path, &std::path::PathBuf::from("document@2.txt"));
+                // Conflict file should use first 8 chars of incoming's content hash
+                let expected_version: String = link_incoming
+                    .hash()
+                    .to_string()
+                    .chars()
+                    .take(8)
+                    .collect();
+                assert_eq!(
+                    new_path,
+                    &std::path::PathBuf::from(format!("document@{}.txt", expected_version))
+                );
             }
             _ => panic!("Expected RenameIncoming, got {:?}", resolved.resolution),
         }
@@ -816,7 +845,10 @@ mod tests {
         assert_eq!(original.id.peer_id, peer1);
 
         // Conflict file should exist with peer2's content
-        let conflict = log1.resolve_path("document@2.txt").unwrap();
-        assert_eq!(conflict.id.peer_id, peer2);
+        let resolved_conflict = &result.conflicts_resolved[0];
+        if let Resolution::RenameIncoming { new_path } = &resolved_conflict.resolution {
+            let conflict = log1.resolve_path(new_path).unwrap();
+            assert_eq!(conflict.id.peer_id, peer2);
+        }
     }
 }

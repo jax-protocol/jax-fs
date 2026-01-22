@@ -218,39 +218,46 @@ impl ConflictResolver for ForkOnConflict {
 /// Conflict-file resolution (recommended for peer sync)
 ///
 /// When a conflict is detected, renames the incoming file to include a version
-/// suffix: `<name>@<timestamp>.<ext>` or `<name>@<timestamp>` for files without
-/// extensions.
+/// suffix based on the content hash: `<name>@<short-hash>.<ext>`.
 ///
 /// This preserves both versions:
 /// - The base (local) operation wins and keeps the original path
-/// - The incoming operation is renamed to a conflict file
+/// - The incoming operation is renamed to a conflict file with its content version
 ///
 /// Users can then manually review and resolve the conflict files.
 ///
 /// # Example
 ///
-/// If `document.txt` conflicts:
+/// If `document.txt` conflicts and incoming has content hash `abc123...`:
 /// - Local version stays at `document.txt`
-/// - Incoming version becomes `document@1234567890.txt`
+/// - Incoming version becomes `document@abc123de.txt`
 #[derive(Debug, Clone, Default)]
-pub struct ConflictFile;
+pub struct ConflictFile {
+    /// Number of hex characters to use from the hash (default: 8)
+    pub hash_length: usize,
+}
 
 impl ConflictFile {
-    /// Create a new ConflictFile resolver
+    /// Create a new ConflictFile resolver with default settings
     pub fn new() -> Self {
-        Self
+        Self { hash_length: 8 }
     }
 
-    /// Generate a conflict filename for the incoming operation
+    /// Create a new ConflictFile resolver with custom hash length
+    pub fn with_hash_length(hash_length: usize) -> Self {
+        Self { hash_length }
+    }
+
+    /// Generate a conflict filename using a version string
     ///
-    /// Format: `<stem>@<timestamp>.<ext>` or `<stem>@<timestamp>` if no extension
-    pub fn conflict_path(path: &std::path::Path, timestamp: u64) -> PathBuf {
+    /// Format: `<stem>@<version>.<ext>` or `<stem>@<version>` if no extension
+    pub fn conflict_path(path: &std::path::Path, version: &str) -> PathBuf {
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
         let ext = path.extension().and_then(|e| e.to_str());
 
         let conflict_name = match ext {
-            Some(ext) => format!("{}@{}.{}", stem, timestamp, ext),
-            None => format!("{}@{}", stem, timestamp),
+            Some(ext) => format!("{}@{}.{}", stem, version, ext),
+            None => format!("{}@{}", stem, version),
         };
 
         match path.parent() {
@@ -267,8 +274,17 @@ impl ConflictResolver for ConflictFile {
         match (&conflict.base.op_type, &conflict.incoming.op_type) {
             (OpType::Add, OpType::Add) => {
                 // Both are adds - create a conflict file for incoming
-                let new_path =
-                    Self::conflict_path(&conflict.incoming.path, conflict.incoming.id.timestamp);
+                // Use the content link hash as the version identifier
+                let version = match &conflict.incoming.content_link {
+                    Some(link) => {
+                        let hash_str = link.hash().to_string();
+                        // Take first N characters of the hash
+                        hash_str.chars().take(self.hash_length).collect::<String>()
+                    }
+                    // Fallback to timestamp if no content link (shouldn't happen for Add)
+                    None => conflict.incoming.id.timestamp.to_string(),
+                };
+                let new_path = Self::conflict_path(&conflict.incoming.path, &version);
                 Resolution::RenameIncoming { new_path }
             }
             _ => {
@@ -328,6 +344,7 @@ pub fn conflicts_with_mv_source(op: &PathOperation, mv_from: &PathBuf) -> bool {
 mod tests {
     use super::*;
     use crate::crypto::SecretKey;
+    use crate::linked_data::Link;
     use crate::mount::OpId;
 
     fn make_peer_id(seed: u8) -> PublicKey {
@@ -343,6 +360,28 @@ mod tests {
             op_type,
             path: PathBuf::from(path),
             content_link: None,
+            is_dir: false,
+        }
+    }
+
+    fn make_op_with_link(
+        peer_id: PublicKey,
+        timestamp: u64,
+        op_type: OpType,
+        path: &str,
+        hash_seed: u8,
+    ) -> PathOperation {
+        // Create a deterministic hash from the seed
+        let mut hash_bytes = [0u8; 32];
+        hash_bytes[0] = hash_seed;
+        let hash = iroh_blobs::Hash::from_bytes(hash_bytes);
+        let link = Link::new(crate::linked_data::LD_RAW_CODEC, hash);
+
+        PathOperation {
+            id: OpId { timestamp, peer_id },
+            op_type,
+            path: PathBuf::from(path),
+            content_link: Some(link),
             is_dir: false,
         }
     }
@@ -566,22 +605,22 @@ mod tests {
     #[test]
     fn test_conflict_file_path_with_extension() {
         let path = PathBuf::from("document.txt");
-        let result = ConflictFile::conflict_path(&path, 1234567890);
-        assert_eq!(result, PathBuf::from("document@1234567890.txt"));
+        let result = ConflictFile::conflict_path(&path, "abc12345");
+        assert_eq!(result, PathBuf::from("document@abc12345.txt"));
     }
 
     #[test]
     fn test_conflict_file_path_without_extension() {
         let path = PathBuf::from("README");
-        let result = ConflictFile::conflict_path(&path, 1234567890);
-        assert_eq!(result, PathBuf::from("README@1234567890"));
+        let result = ConflictFile::conflict_path(&path, "abc12345");
+        assert_eq!(result, PathBuf::from("README@abc12345"));
     }
 
     #[test]
     fn test_conflict_file_path_nested() {
         let path = PathBuf::from("docs/notes/file.md");
-        let result = ConflictFile::conflict_path(&path, 42);
-        assert_eq!(result, PathBuf::from("docs/notes/file@42.md"));
+        let result = ConflictFile::conflict_path(&path, "v42");
+        assert_eq!(result, PathBuf::from("docs/notes/file@v42.md"));
     }
 
     #[test]
@@ -589,18 +628,31 @@ mod tests {
         let peer1 = make_peer_id(1);
         let peer2 = make_peer_id(2);
 
-        let base = make_op(peer1, 1, OpType::Add, "file.txt");
-        let incoming = make_op(peer2, 100, OpType::Add, "file.txt");
+        // Create ops with content links - hash_seed determines the hash
+        let base = make_op_with_link(peer1, 1, OpType::Add, "file.txt", 0xAA);
+        let incoming = make_op_with_link(peer2, 100, OpType::Add, "file.txt", 0xBB);
 
-        let conflict = Conflict::new(PathBuf::from("file.txt"), base, incoming);
+        let conflict = Conflict::new(PathBuf::from("file.txt"), base, incoming.clone());
         let resolver = ConflictFile::new();
 
         let resolution = resolver.resolve(&conflict, &peer1);
 
-        // Should rename incoming to conflict file
+        // Should rename incoming to conflict file using content hash
         match resolution {
             Resolution::RenameIncoming { new_path } => {
-                assert_eq!(new_path, PathBuf::from("file@100.txt"));
+                // The hash starts with 0xBB, so first 8 chars of hex representation
+                let expected_version: String = incoming
+                    .content_link
+                    .unwrap()
+                    .hash()
+                    .to_string()
+                    .chars()
+                    .take(8)
+                    .collect();
+                assert_eq!(
+                    new_path,
+                    PathBuf::from(format!("file@{}.txt", expected_version))
+                );
             }
             _ => panic!("Expected RenameIncoming, got {:?}", resolution),
         }
