@@ -52,8 +52,8 @@ mod pins;
 mod principal;
 
 pub use conflict::{
-    conflicts_with_mv_source, operations_conflict, BaseWins, Conflict, ConflictResolver,
-    ForkOnConflict, LastWriteWins, MergeResult, Resolution, ResolvedConflict,
+    conflicts_with_mv_source, operations_conflict, BaseWins, Conflict, ConflictFile,
+    ConflictResolver, ForkOnConflict, LastWriteWins, MergeResult, Resolution, ResolvedConflict,
 };
 pub use manifest::{Manifest, ManifestError, Share, Shares};
 pub use mount_inner::{Mount, MountError};

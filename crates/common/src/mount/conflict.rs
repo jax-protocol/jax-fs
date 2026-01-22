@@ -9,6 +9,7 @@
 //! - **[`LastWriteWins`]**: Higher timestamp wins (default CRDT behavior)
 //! - **[`BaseWins`]**: Local operations win over incoming ones
 //! - **[`ForkOnConflict`]**: Keep both versions, returning conflicts for manual resolution
+//! - **[`ConflictFile`]**: Rename incoming to `<name>@<timestamp>` to preserve both versions
 //!
 //! # Custom Resolvers
 //!
@@ -69,6 +70,11 @@ pub enum Resolution {
     KeepBoth,
     /// Skip both operations (neither is applied)
     SkipBoth,
+    /// Rename the incoming operation to a new path (creates a conflict file)
+    RenameIncoming {
+        /// The new path for the incoming operation
+        new_path: PathBuf,
+    },
 }
 
 /// Result of a merge operation with conflict information
@@ -206,6 +212,74 @@ impl ForkOnConflict {
 impl ConflictResolver for ForkOnConflict {
     fn resolve(&self, _conflict: &Conflict, _local_peer: &PublicKey) -> Resolution {
         Resolution::KeepBoth
+    }
+}
+
+/// Conflict-file resolution (recommended for peer sync)
+///
+/// When a conflict is detected, renames the incoming file to include a version
+/// suffix: `<name>@<timestamp>.<ext>` or `<name>@<timestamp>` for files without
+/// extensions.
+///
+/// This preserves both versions:
+/// - The base (local) operation wins and keeps the original path
+/// - The incoming operation is renamed to a conflict file
+///
+/// Users can then manually review and resolve the conflict files.
+///
+/// # Example
+///
+/// If `document.txt` conflicts:
+/// - Local version stays at `document.txt`
+/// - Incoming version becomes `document@1234567890.txt`
+#[derive(Debug, Clone, Default)]
+pub struct ConflictFile;
+
+impl ConflictFile {
+    /// Create a new ConflictFile resolver
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// Generate a conflict filename for the incoming operation
+    ///
+    /// Format: `<stem>@<timestamp>.<ext>` or `<stem>@<timestamp>` if no extension
+    pub fn conflict_path(path: &std::path::Path, timestamp: u64) -> PathBuf {
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+        let ext = path.extension().and_then(|e| e.to_str());
+
+        let conflict_name = match ext {
+            Some(ext) => format!("{}@{}.{}", stem, timestamp, ext),
+            None => format!("{}@{}", stem, timestamp),
+        };
+
+        match path.parent() {
+            Some(parent) if parent != std::path::Path::new("") => parent.join(conflict_name),
+            _ => PathBuf::from(conflict_name),
+        }
+    }
+}
+
+impl ConflictResolver for ConflictFile {
+    fn resolve(&self, conflict: &Conflict, _local_peer: &PublicKey) -> Resolution {
+        // Only create conflict files for Add operations (file content conflicts)
+        // For Remove or Mv, use standard CRDT resolution
+        match (&conflict.base.op_type, &conflict.incoming.op_type) {
+            (OpType::Add, OpType::Add) => {
+                // Both are adds - create a conflict file for incoming
+                let new_path =
+                    Self::conflict_path(&conflict.incoming.path, conflict.incoming.id.timestamp);
+                Resolution::RenameIncoming { new_path }
+            }
+            _ => {
+                // For other conflicts (Remove, Mv), fall back to last-write-wins
+                if conflict.incoming.id > conflict.base.id {
+                    Resolution::UseIncoming
+                } else {
+                    Resolution::UseBase
+                }
+            }
+        }
     }
 }
 
@@ -487,5 +561,80 @@ mod tests {
 
         assert!(result.has_unresolved());
         assert_eq!(result.total_conflicts(), 1);
+    }
+
+    #[test]
+    fn test_conflict_file_path_with_extension() {
+        let path = PathBuf::from("document.txt");
+        let result = ConflictFile::conflict_path(&path, 1234567890);
+        assert_eq!(result, PathBuf::from("document@1234567890.txt"));
+    }
+
+    #[test]
+    fn test_conflict_file_path_without_extension() {
+        let path = PathBuf::from("README");
+        let result = ConflictFile::conflict_path(&path, 1234567890);
+        assert_eq!(result, PathBuf::from("README@1234567890"));
+    }
+
+    #[test]
+    fn test_conflict_file_path_nested() {
+        let path = PathBuf::from("docs/notes/file.md");
+        let result = ConflictFile::conflict_path(&path, 42);
+        assert_eq!(result, PathBuf::from("docs/notes/file@42.md"));
+    }
+
+    #[test]
+    fn test_conflict_file_resolver_add_vs_add() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let base = make_op(peer1, 1, OpType::Add, "file.txt");
+        let incoming = make_op(peer2, 100, OpType::Add, "file.txt");
+
+        let conflict = Conflict::new(PathBuf::from("file.txt"), base, incoming);
+        let resolver = ConflictFile::new();
+
+        let resolution = resolver.resolve(&conflict, &peer1);
+
+        // Should rename incoming to conflict file
+        match resolution {
+            Resolution::RenameIncoming { new_path } => {
+                assert_eq!(new_path, PathBuf::from("file@100.txt"));
+            }
+            _ => panic!("Expected RenameIncoming, got {:?}", resolution),
+        }
+    }
+
+    #[test]
+    fn test_conflict_file_resolver_add_vs_remove() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let base = make_op(peer1, 1, OpType::Add, "file.txt");
+        let incoming = make_op(peer2, 100, OpType::Remove, "file.txt");
+
+        let conflict = Conflict::new(PathBuf::from("file.txt"), base, incoming);
+        let resolver = ConflictFile::new();
+
+        // Non-Add conflicts fall back to last-write-wins
+        // incoming (ts=100) > base (ts=1)
+        assert_eq!(resolver.resolve(&conflict, &peer1), Resolution::UseIncoming);
+    }
+
+    #[test]
+    fn test_conflict_file_resolver_remove_vs_add() {
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let base = make_op(peer1, 100, OpType::Remove, "file.txt");
+        let incoming = make_op(peer2, 1, OpType::Add, "file.txt");
+
+        let conflict = Conflict::new(PathBuf::from("file.txt"), base, incoming);
+        let resolver = ConflictFile::new();
+
+        // Non-Add conflicts fall back to last-write-wins
+        // base (ts=100) > incoming (ts=1)
+        assert_eq!(resolver.resolve(&conflict, &peer1), Resolution::UseBase);
     }
 }

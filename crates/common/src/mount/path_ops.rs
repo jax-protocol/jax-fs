@@ -269,6 +269,17 @@ impl PathOpLog {
                                 resolution,
                             });
                         }
+                        Resolution::RenameIncoming { new_path } => {
+                            // Create a modified copy of the incoming operation with the new path
+                            let mut renamed_op = op.clone();
+                            renamed_op.path = new_path.clone();
+                            self.operations.insert(id.clone(), renamed_op);
+                            result.operations_added += 1;
+                            result.conflicts_resolved.push(ResolvedConflict {
+                                conflict,
+                                resolution: Resolution::RenameIncoming { new_path },
+                            });
+                        }
                     }
                 }
                 None => {
@@ -767,5 +778,45 @@ mod tests {
 
         // file3.txt is always added
         assert!(log1.resolve_path("file3.txt").is_some());
+    }
+
+    #[test]
+    fn test_merge_with_resolver_conflict_file() {
+        use super::super::conflict::{ConflictFile, Resolution};
+
+        let peer1 = make_peer_id(1);
+        let peer2 = make_peer_id(2);
+
+        let mut log1 = PathOpLog::new();
+        log1.record(peer1, OpType::Add, "document.txt", None, false);
+
+        let mut log2 = PathOpLog::new();
+        // Simulate peer2 being "ahead" with a higher timestamp
+        log2.record(peer2, OpType::Add, "other.txt", None, false); // ts=1
+        log2.record(peer2, OpType::Add, "document.txt", None, false); // ts=2, conflicts
+
+        let resolver = ConflictFile::new();
+        let result = log1.merge_with_resolver(&log2, &resolver, &peer1);
+
+        // Both files should be added (other.txt normally, document.txt as conflict file)
+        assert_eq!(result.operations_added, 2);
+        assert_eq!(result.conflicts_resolved.len(), 1);
+
+        // Check the resolution was RenameIncoming
+        let resolved = &result.conflicts_resolved[0];
+        match &resolved.resolution {
+            Resolution::RenameIncoming { new_path } => {
+                assert_eq!(new_path, &std::path::PathBuf::from("document@2.txt"));
+            }
+            _ => panic!("Expected RenameIncoming, got {:?}", resolved.resolution),
+        }
+
+        // Original document.txt should resolve to local version (ts=1)
+        let original = log1.resolve_path("document.txt").unwrap();
+        assert_eq!(original.id.peer_id, peer1);
+
+        // Conflict file should exist with peer2's content
+        let conflict = log1.resolve_path("document@2.txt").unwrap();
+        assert_eq!(conflict.id.peer_id, peer2);
     }
 }
