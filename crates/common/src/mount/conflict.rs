@@ -9,7 +9,7 @@
 //! - **[`LastWriteWins`]**: Higher timestamp wins (default CRDT behavior)
 //! - **[`BaseWins`]**: Local operations win over incoming ones
 //! - **[`ForkOnConflict`]**: Keep both versions, returning conflicts for manual resolution
-//! - **[`ConflictFile`]**: Rename incoming to `<name>@<timestamp>` to preserve both versions
+//! - **[`ConflictFile`]**: Rename incoming to `<name>@<content-hash>` to preserve both versions
 //!
 //! # Custom Resolvers
 //!
@@ -688,5 +688,155 @@ mod tests {
         // Non-Add conflicts fall back to last-write-wins
         // base (ts=100) > incoming (ts=1)
         assert_eq!(resolver.resolve(&conflict, &peer1), Resolution::UseBase);
+    }
+
+    // =========================================================================
+    // READABLE SCENARIO TESTS
+    // These tests demonstrate real-world conflict scenarios in plain English.
+    // =========================================================================
+
+    /// Scenario: Alice and Bob both create a file called "notes.txt" offline.
+    /// When they sync, we keep Alice's version at the original path and
+    /// rename Bob's to include his content's hash, like "notes@a1b2c3d4.txt".
+    #[test]
+    fn scenario_two_peers_create_same_file_offline() {
+        // Setup: Alice and Bob are peers
+        let alice = make_peer_id(1);
+        let bob = make_peer_id(2);
+
+        // Alice creates "notes.txt" with some content (hash seed 0x11)
+        let alice_creates_notes = make_op_with_link(
+            alice,
+            1000, // timestamp
+            OpType::Add,
+            "notes.txt",
+            0x11, // produces hash starting with "11000000..."
+        );
+
+        // Bob also creates "notes.txt" with different content (hash seed 0x22)
+        let bob_creates_notes = make_op_with_link(
+            bob,
+            1001, // slightly later timestamp
+            OpType::Add,
+            "notes.txt",
+            0x22, // produces hash starting with "22000000..."
+        );
+
+        // When we merge Bob's changes into Alice's log, there's a conflict
+        let conflict = Conflict::new(
+            PathBuf::from("notes.txt"),
+            alice_creates_notes,       // base: Alice's local version
+            bob_creates_notes.clone(), // incoming: Bob's version to merge
+        );
+
+        // Use ConflictFile resolver - it creates conflict files for Add vs Add
+        let resolver = ConflictFile::new();
+        let resolution = resolver.resolve(&conflict, &alice);
+
+        // Result: Bob's file gets renamed to include his content hash
+        match resolution {
+            Resolution::RenameIncoming { new_path } => {
+                // The new path should be "notes@<first-8-chars-of-hash>.txt"
+                let path_str = new_path.to_string_lossy();
+                assert!(path_str.starts_with("notes@"), "Should have @ separator");
+                assert!(path_str.ends_with(".txt"), "Should keep extension");
+                assert!(path_str.contains("22"), "Should contain Bob's hash prefix");
+            }
+            other => panic!("Expected RenameIncoming, got {:?}", other),
+        }
+    }
+
+    /// Scenario: File naming format examples.
+    /// Shows exactly what conflict filenames look like.
+    #[test]
+    fn scenario_conflict_file_naming_examples() {
+        // Example 1: Simple text file
+        // "report.txt" with hash "abc123def456..." becomes "report@abc123de.txt"
+        let path1 = ConflictFile::conflict_path(&PathBuf::from("report.txt"), "abc123de");
+        assert_eq!(path1.to_string_lossy(), "report@abc123de.txt");
+
+        // Example 2: File without extension
+        // "Makefile" with hash "deadbeef..." becomes "Makefile@deadbeef"
+        let path2 = ConflictFile::conflict_path(&PathBuf::from("Makefile"), "deadbeef");
+        assert_eq!(path2.to_string_lossy(), "Makefile@deadbeef");
+
+        // Example 3: Nested path
+        // "src/lib/utils.rs" with hash "cafebabe..." becomes "src/lib/utils@cafebabe.rs"
+        let path3 = ConflictFile::conflict_path(&PathBuf::from("src/lib/utils.rs"), "cafebabe");
+        assert_eq!(path3.to_string_lossy(), "src/lib/utils@cafebabe.rs");
+    }
+
+    /// Scenario: Different conflict types get different resolutions.
+    /// Only Add-vs-Add creates conflict files. Other conflicts use last-write-wins.
+    #[test]
+    fn scenario_different_conflict_types() {
+        let alice = make_peer_id(1);
+        let bob = make_peer_id(2);
+        let resolver = ConflictFile::new();
+
+        // Case 1: Add vs Add → Creates conflict file (both users want the file)
+        let alice_adds = make_op_with_link(alice, 1, OpType::Add, "file.txt", 0xAA);
+        let bob_adds = make_op_with_link(bob, 2, OpType::Add, "file.txt", 0xBB);
+        let add_conflict = Conflict::new(PathBuf::from("file.txt"), alice_adds, bob_adds);
+        assert!(matches!(
+            resolver.resolve(&add_conflict, &alice),
+            Resolution::RenameIncoming { .. }
+        ));
+
+        // Case 2: Add vs Remove → Last-write-wins (one wants it, one doesn't)
+        let alice_adds = make_op(alice, 1, OpType::Add, "file.txt");
+        let bob_removes = make_op(bob, 2, OpType::Remove, "file.txt");
+        let mixed_conflict = Conflict::new(PathBuf::from("file.txt"), alice_adds, bob_removes);
+        // Bob's remove (ts=2) wins over Alice's add (ts=1)
+        assert_eq!(
+            resolver.resolve(&mixed_conflict, &alice),
+            Resolution::UseIncoming
+        );
+
+        // Case 3: Remove vs Remove → Last-write-wins (both want it gone, no conflict file needed)
+        let alice_removes = make_op(alice, 1, OpType::Remove, "file.txt");
+        let bob_removes = make_op(bob, 2, OpType::Remove, "file.txt");
+        let both_remove = Conflict::new(PathBuf::from("file.txt"), alice_removes, bob_removes);
+        // Bob's remove (ts=2) wins
+        assert_eq!(
+            resolver.resolve(&both_remove, &alice),
+            Resolution::UseIncoming
+        );
+    }
+
+    /// Scenario: Custom hash length.
+    /// You can configure how many characters of the hash to use.
+    #[test]
+    fn scenario_custom_hash_length() {
+        let alice = make_peer_id(1);
+        let bob = make_peer_id(2);
+
+        let alice_adds = make_op_with_link(alice, 1, OpType::Add, "doc.md", 0xAA);
+        let bob_adds = make_op_with_link(bob, 2, OpType::Add, "doc.md", 0xBB);
+        let conflict = Conflict::new(PathBuf::from("doc.md"), alice_adds, bob_adds);
+
+        // Default: 8 characters
+        let resolver_8 = ConflictFile::new();
+        if let Resolution::RenameIncoming { new_path } = resolver_8.resolve(&conflict, &alice) {
+            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let hash_part = name.split('@').nth(1).unwrap();
+            assert_eq!(hash_part.len(), 8, "Default should use 8 hash chars");
+        }
+
+        // Custom: 4 characters (shorter, but more collision risk)
+        let resolver_4 = ConflictFile::with_hash_length(4);
+        if let Resolution::RenameIncoming { new_path } = resolver_4.resolve(&conflict, &alice) {
+            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let hash_part = name.split('@').nth(1).unwrap();
+            assert_eq!(hash_part.len(), 4, "Custom should use 4 hash chars");
+        }
+
+        // Custom: 16 characters (longer, less collision risk)
+        let resolver_16 = ConflictFile::with_hash_length(16);
+        if let Resolution::RenameIncoming { new_path } = resolver_16.resolve(&conflict, &alice) {
+            let name = new_path.file_stem().unwrap().to_string_lossy();
+            let hash_part = name.split('@').nth(1).unwrap();
+            assert_eq!(hash_part.len(), 16, "Custom should use 16 hash chars");
+        }
     }
 }

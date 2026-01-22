@@ -826,12 +826,8 @@ mod tests {
         match &resolved.resolution {
             Resolution::RenameIncoming { new_path } => {
                 // Conflict file should use first 8 chars of incoming's content hash
-                let expected_version: String = link_incoming
-                    .hash()
-                    .to_string()
-                    .chars()
-                    .take(8)
-                    .collect();
+                let expected_version: String =
+                    link_incoming.hash().to_string().chars().take(8).collect();
                 assert_eq!(
                     new_path,
                     &std::path::PathBuf::from(format!("document@{}.txt", expected_version))
