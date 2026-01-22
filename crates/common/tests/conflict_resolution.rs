@@ -29,10 +29,24 @@ fn make_peer_id(seed: u8) -> ::common::crypto::PublicKey {
 /// - Rename Bob's version to "notes@<hash>.txt"
 #[tokio::test]
 async fn scenario_two_peers_same_file_conflict_file_resolver() {
-    // Setup: Create two mounts that will simulate Alice and Bob
+    use ::common::mount::Mount;
+
+    // Setup: Create Alice's mount
     let (mut alice_mount, blobs, alice_key, _temp) = common::setup_test_env().await;
 
-    // Alice adds a file
+    // Add Bob as an owner so he can load the mount
+    let bob_key = SecretKey::generate();
+    alice_mount.add_owner(bob_key.public()).await.unwrap();
+
+    // Save to create the common ancestor (v0)
+    let (ancestor_link, _, _) = alice_mount.save(&blobs, false).await.unwrap();
+
+    // Bob loads from the same ancestor - now both start from identical state
+    let mut bob_mount = Mount::load(&ancestor_link, &bob_key, &blobs)
+        .await
+        .expect("Bob should be able to load as owner");
+
+    // Alice adds her version of notes.txt (diverging from ancestor)
     alice_mount
         .add(
             &PathBuf::from("/notes.txt"),
@@ -41,13 +55,7 @@ async fn scenario_two_peers_same_file_conflict_file_resolver() {
         .await
         .unwrap();
 
-    // Save Alice's mount to get the link
-    let (_link_v1, _, _) = alice_mount.save(&blobs, false).await.unwrap();
-
-    // Create a fresh mount for Bob (simulating starting from same ancestor)
-    let (mut bob_mount, _, _, _temp_bob) = common::setup_test_env().await;
-
-    // Bob adds his own version of the same file
+    // Bob adds his version of notes.txt (also diverging from same ancestor)
     bob_mount
         .add(
             &PathBuf::from("/notes.txt"),
@@ -56,7 +64,7 @@ async fn scenario_two_peers_same_file_conflict_file_resolver() {
         .await
         .unwrap();
 
-    // Get both ops logs
+    // Get both ops logs - these now represent divergent changes from same ancestor
     let alice_ops_log = alice_mount.inner().await.ops_log().clone();
     let bob_ops_log = bob_mount.inner().await.ops_log().clone();
 
