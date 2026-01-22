@@ -1,6 +1,7 @@
 # Blobs Store Configurability
 
 **Status:** Planned
+**Priority:** Low
 
 ## Objective
 
