@@ -15,7 +15,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
-## v0.1.7 (2025-11-18)
+## v0.1.7 (2026-01-27)
+
+### New Features
+
+ - <csr-id-cabccaca7a0cbd91b294d5d96a1cc9992c8ffef3/> add SQLite + object storage blob store backend
+   * feat: add jax-blobs-store crate with SQLite + object storage backend
+   
+   New crate providing blob storage with:
+   - SQLite for metadata (hash, size, state, timestamps)
+   - Pluggable object storage backends (S3/MinIO/local/memory)
+   - Content-addressed storage using BLAKE3 hashes (iroh-blobs compatible)
+   - Recovery support to rebuild metadata from object storage
+ - <csr-id-709e366fcc16213c35135d841c1b01d3ec0e2a6b/> add gateway mode to daemon with read-only file explorer
+   * feat: add gateway subcommand for minimal content serving
+   
+   Add `jax gw` subcommand that runs a minimal gateway service with P2P peer
+   (mirror role) and gateway content serving only. This provides a lightweight
+   deployment option for serving published bucket content without the full
+   Askama UI or REST API.
+   
+   Key changes:
+   - Add gw.rs operation with --port flag (default 8080)
+   - Add gateway_process.rs for minimal service spawning
+   - Add run_gateway() in http_server for gateway-only router
+   - Only /gw/:bucket_id/*file_path and /_status/* endpoints
+ - <csr-id-7af5ca16a8e0748a922a39e3e8fecb1a7411e3db/> add mirror principal role and bucket publishing workflow
+   * feat: add mirror principal role and bucket publishing workflow
+   
+   Implement polymorphic principal roles (Owner and Mirror) with publishing:
+   - Mirror principals can sync buckets but cannot decrypt until published
+   - Extended /share endpoint with role parameter (defaults to owner)
+   - Added /publish endpoint to grant mirrors decryption access
+   - Mirrors start with Option<SecretShare> None until bucket is published
+   - MirrorCannotMount error when unpublished mirror tries to load bucket
+ - <csr-id-b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865/> add mv operation to Mount
+   * feat: add mv operation to Mount for moving/renaming files and directories
+   
+   Adds a new `mv` method to the Mount struct that allows moving or renaming
+   files and directories. The operation preserves the existing NodeLink (no
+   re-encryption of content needed), creates intermediate directories if
+   needed, and properly tracks all new node hashes in pins.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+ - <csr-id-1ae7702a086b04103207142d83642917b72e88e9/> add URL rewriting and index file support to gateway handler
+   * feat: add URL rewriting and index file support to gateway handler
+   
+   This change enhances the gateway handler to make HTML/Markdown content portable:
+   
+   - Transform relative URLs in HTML/Markdown to absolute gateway URLs
+     - Handles href, src, action, data, srcset attributes
+     - Resolves ./, ../, and relative paths correctly
+     - URLs like ./assets/image.jpg become <host>/gw/<bucket-id>/path/assets/image.jpg
+   
+   - Add index file detection for directories
+     - Priority: index.html, index.htm, index.md, index.txt
+     - Serves HTML files directly with URL rewriting
+     - Converts Markdown to HTML with URL rewriting
+     - Falls back to JSON directory listing if no index found
+     - Works for root directories
+   
+   - Add Markdown to HTML conversion
+     - Uses pulldown-cmark for parsing
+     - Generates styled HTML with responsive layout
+     - Supports tables, strikethrough, task lists
+   
+   - Host extraction from request headers
+     - Auto-detects HTTP/HTTPS based on hostname
+   
+   This makes it possible to work with local assets while rendering portable
+   documents that function correctly when hosted through the gateway.
+   
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
 ### Bug Fixes
 
@@ -29,9 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
- - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#20](https://github.com/jax-protocol/jax-buckets/issues/20)
+ - 7 commits contributed to the release over the course of 70 calendar days.
+ - 70 days passed between releases.
+ - 6 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 7 unique issues were worked on: [#20](https://github.com/jax-protocol/jax-buckets/issues/20), [#21](https://github.com/jax-protocol/jax-buckets/issues/21), [#22](https://github.com/jax-protocol/jax-buckets/issues/22), [#27](https://github.com/jax-protocol/jax-buckets/issues/27), [#36](https://github.com/jax-protocol/jax-buckets/issues/36), [#42](https://github.com/jax-protocol/jax-buckets/issues/42), [#52](https://github.com/jax-protocol/jax-buckets/issues/52)
 
 ### Commit Details
 
@@ -41,6 +113,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#20](https://github.com/jax-protocol/jax-buckets/issues/20)**
     - Use gateway URL for download button instead of localhost API ([`76d4562`](https://github.com/jax-protocol/jax-buckets/commit/76d456262a6fa4f16b4dfb6e7e120ac057bc47da))
+ * **[#21](https://github.com/jax-protocol/jax-buckets/issues/21)**
+    - Bump jax-bucket v0.1.7 ([`4af30f7`](https://github.com/jax-protocol/jax-buckets/commit/4af30f7e4b554389b8cae0b140dcb926bf2e4993))
+ * **[#22](https://github.com/jax-protocol/jax-buckets/issues/22)**
+    - Add URL rewriting and index file support to gateway handler ([`1ae7702`](https://github.com/jax-protocol/jax-buckets/commit/1ae7702a086b04103207142d83642917b72e88e9))
+ * **[#27](https://github.com/jax-protocol/jax-buckets/issues/27)**
+    - Add mv operation to Mount ([`b30cb13`](https://github.com/jax-protocol/jax-buckets/commit/b30cb13139cc12ec1d4f31e2e8d14cfcfbf00865))
+ * **[#36](https://github.com/jax-protocol/jax-buckets/issues/36)**
+    - Add mirror principal role and bucket publishing workflow ([`7af5ca1`](https://github.com/jax-protocol/jax-buckets/commit/7af5ca16a8e0748a922a39e3e8fecb1a7411e3db))
+ * **[#42](https://github.com/jax-protocol/jax-buckets/issues/42)**
+    - Add gateway mode to daemon with read-only file explorer ([`709e366`](https://github.com/jax-protocol/jax-buckets/commit/709e366fcc16213c35135d841c1b01d3ec0e2a6b))
+ * **[#52](https://github.com/jax-protocol/jax-buckets/issues/52)**
+    - Add SQLite + object storage blob store backend ([`cabccac`](https://github.com/jax-protocol/jax-buckets/commit/cabccaca7a0cbd91b294d5d96a1cc9992c8ffef3))
 </details>
 
 ## v0.1.6 (2025-11-18)
