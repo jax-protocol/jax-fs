@@ -1,4 +1,5 @@
 //! Shared test utilities for mount integration tests
+#![allow(dead_code)]
 
 use common::crypto::SecretKey;
 use common::mount::Mount;
