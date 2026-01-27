@@ -47,8 +47,8 @@ pub async fn handler(
 ) -> Result<impl IntoResponse, LsError> {
     let deep = req.deep.unwrap_or(false);
 
-    // Load mount at current head using peer
-    let mount = state.peer().mount(req.bucket_id).await?;
+    // Load mount based on role (owners see HEAD, mirrors see latest_published)
+    let mount = state.peer().mount_for_read(req.bucket_id).await?;
 
     let path_str = req.path.as_deref().unwrap_or("/");
     let path_buf = std::path::PathBuf::from(path_str);

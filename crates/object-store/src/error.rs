@@ -29,6 +29,10 @@ pub enum BlobStoreError {
     #[error("blob not found: {0}")]
     NotFound(String),
 
+    /// Invalid hash list format
+    #[error("invalid hash list: {0}")]
+    InvalidHashList(String),
+
     /// Invalid configuration
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
@@ -36,6 +40,10 @@ pub enum BlobStoreError {
     /// Path error
     #[error("path error: {0}")]
     Path(PathBuf),
+
+    /// S3 bucket not found - must be created before use
+    #[error("S3 bucket '{0}' does not exist. Create it before starting the node.")]
+    BucketNotFound(String),
 }
 
 /// Result type alias for blob store operations.

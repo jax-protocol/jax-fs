@@ -17,6 +17,8 @@ use iroh_blobs::{
     BlobsProtocol, Hash,
 };
 
+use object_store::ObjectStore as ObjStore;
+
 use crate::{
     crypto::PublicKey,
     linked_data::{BlockEncoded, CodecError, DagCborCodec},
@@ -53,37 +55,63 @@ pub enum BlobsStoreError {
     Request(#[from] RequestError),
     #[error("decode error: {0}")]
     Decode(#[from] CodecError),
+    #[error("object store error: {0}")]
+    ObjectStore(#[from] object_store::BlobStoreError),
 }
 
 impl BlobsStore {
-    /// Load a blob store from the given path, using the given endpoint.
-    ///  Endpoint exposes a network interface for blob operations
-    ///  with peers.
-    ///
-    /// # Arguments
-    /// * `path` - Path to the blob store on disk
-    /// * `endpoint` - Endpoint to use for network operations
-    ///     Exposes a peer for the private key used to initiate
-    ///     the endpoint.
-    #[allow(clippy::doc_overindented_list_items)]
-    pub async fn fs(path: &Path) -> Result<Self, BlobsStoreError> {
-        tracing::debug!("BlobsStore::load called with path: {:?}", path);
+    /// Legacy: load from filesystem using iroh's FsStore directly.
+    pub async fn legacy_fs(path: &Path) -> Result<Self, BlobsStoreError> {
+        tracing::debug!("BlobsStore::legacy_fs called with path: {:?}", path);
         let store = FsStore::load(path).await?;
-        tracing::debug!("BlobsStore::load completed loading FsStore");
-        // let blobs = Blobs::builder(store).build(&endpoint);
+        tracing::debug!("BlobsStore::legacy_fs completed loading FsStore");
         let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {
             inner: Arc::new(blobs),
         })
     }
 
-    /// Load a memory blobs store
-    pub async fn memory() -> Result<Self, BlobsStoreError> {
+    /// Legacy: in-memory using iroh's MemStore directly.
+    pub async fn legacy_memory() -> Result<Self, BlobsStoreError> {
         let store = MemStore::new();
         let blobs = BlobsProtocol::new(&store, None);
         Ok(Self {
             inner: Arc::new(blobs),
         })
+    }
+
+    /// Local filesystem via ObjectStore (SQLite + local object storage).
+    pub async fn fs(data_dir: &Path) -> Result<Self, BlobsStoreError> {
+        let store = ObjStore::new_local(data_dir).await?;
+        Ok(Self::from_store(store.into()))
+    }
+
+    /// In-memory via ObjectStore.
+    pub async fn memory() -> Result<Self, BlobsStoreError> {
+        let store = ObjStore::new_ephemeral().await?;
+        Ok(Self::from_store(store.into()))
+    }
+
+    /// S3-backed via ObjectStore.
+    pub async fn s3(
+        db_path: &Path,
+        endpoint: &str,
+        access_key: &str,
+        secret_key: &str,
+        bucket: &str,
+        region: Option<&str>,
+    ) -> Result<Self, BlobsStoreError> {
+        let store =
+            ObjStore::new_s3(db_path, endpoint, access_key, secret_key, bucket, region).await?;
+        Ok(Self::from_store(store.into()))
+    }
+
+    /// Wrap an existing iroh-blobs Store (kept for flexibility).
+    pub fn from_store(store: iroh_blobs::api::Store) -> Self {
+        let blobs = BlobsProtocol::new(&store, None);
+        Self {
+            inner: Arc::new(blobs),
+        }
     }
 
     /// Get a handle to the underlying blobs client against
@@ -368,8 +396,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let blob_path = temp_dir.path().join("blobs");
 
-        // let store = FsStore::load(&blob_path).await.unwrap();
-        // let blobs = BlobsProtocol::new(&store, None);
         let blobs = BlobsStore::fs(&blob_path).await.unwrap();
         (blobs, temp_dir)
     }

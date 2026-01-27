@@ -59,15 +59,16 @@ Shared library (`jax-common`) with crypto, storage, and peer protocol.
   - `sync/` - Sync jobs (download, ping, sync bucket)
 - `src/bucket_log/` - Append-only log for bucket history
 
-### `crates/blobs-store` - Blob Storage
+### `crates/object-store` - Blob Storage
 
-SQLite + object storage backend for blob data (`jax-blobs-store`).
+SQLite + object storage backend for blob data (`jax-object-store`).
 
 **Key areas:**
 
-- `src/store.rs` - Main BlobStore API (put, get, delete, list, recover)
+- `src/object_store.rs` - Public ObjectStore API + internal BlobStore (put, get, delete, list, recover)
 - `src/database.rs` - SQLite metadata storage (hash, size, state)
-- `src/object_store.rs` - S3/MinIO/local/memory storage wrapper
+- `src/storage.rs` - S3/MinIO/local/memory storage wrapper + ObjectStoreConfig
+- `src/actor.rs` - iroh-blobs proto::Request command handler (ObjectStoreActor)
 - `src/error.rs` - Error types
 - `migrations/` - SQLite schema
 

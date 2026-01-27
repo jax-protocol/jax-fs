@@ -339,6 +339,14 @@ impl Mount {
         ))
     }
 
+    /// Load just the manifest from a link without full mount decryption.
+    ///
+    /// This is useful for checking roles/shares before deciding which version to load.
+    /// Returns the manifest if the blob exists, without attempting decryption.
+    pub async fn load_manifest(link: &Link, blobs: &BlobsStore) -> Result<Manifest, MountError> {
+        Self::_get_manifest_from_blobs(link, blobs).await
+    }
+
     /// Add an owner to this bucket.
     /// Owners get an encrypted share immediately.
     pub async fn add_owner(&mut self, peer: PublicKey) -> Result<(), MountError> {

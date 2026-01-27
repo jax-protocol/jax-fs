@@ -291,6 +291,70 @@ impl<L: BucketLogProvider> Peer<L> {
         Mount::load(&link, &self.secret_key, &self.blobs_store).await
     }
 
+    /// Load mount for reading based on the peer's role in the bucket.
+    ///
+    /// This method determines the appropriate version to load based on the peer's role:
+    /// - **Owners** see HEAD (latest state, including unpublished changes)
+    /// - **Mirrors** (or unknown roles) see the latest_published version
+    ///
+    /// This ensures that mirrors only see content that has been explicitly published
+    /// to them, while owners always see the most recent state.
+    ///
+    /// # Arguments
+    ///
+    /// * `bucket_id` - The UUID of the bucket to load
+    ///
+    /// # Returns
+    ///
+    /// The Mount at the appropriate version for this peer's role
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Bucket not found in log
+    /// - No published version available (for mirrors)
+    /// - Failed to load mount from blobs
+    pub async fn mount_for_read(&self, bucket_id: Uuid) -> Result<Mount, MountError> {
+        use crate::mount::PrincipalRole;
+
+        // Get current head link from log
+        let (head_link, _) = self
+            .log_provider
+            .head(bucket_id, None)
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to get current head: {}", e)))?;
+
+        // Check our role from the HEAD manifest
+        let our_role = Mount::load_manifest(&head_link, &self.blobs_store)
+            .await
+            .ok()
+            .and_then(|m| {
+                m.get_share(&self.secret_key.public())
+                    .map(|s| s.role().clone())
+            });
+
+        match our_role {
+            Some(PrincipalRole::Owner) => {
+                // Owners see HEAD (latest state)
+                self.mount(bucket_id).await
+            }
+            _ => {
+                // Mirrors (or unknown role) see latest_published
+                let (link, _) = self
+                    .log_provider
+                    .latest_published(bucket_id)
+                    .await
+                    .map_err(|e| {
+                        MountError::Default(anyhow!("Failed to get latest published: {}", e))
+                    })?
+                    .ok_or_else(|| {
+                        MountError::Default(anyhow!("No published version available"))
+                    })?;
+                Mount::load(&link, &self.secret_key, &self.blobs_store).await
+            }
+        }
+    }
+
     /// Save a mount and append it to the bucket's log
     ///
     /// This method:

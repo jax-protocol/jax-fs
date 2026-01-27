@@ -1190,6 +1190,30 @@ footer a:hover {
     border: 1px solid hsl(var(--border));
 }
 
+.status-owner {
+    background: hsl(45 93% 47% / 0.15);
+    color: hsl(45 93% 47%);
+    border: 1px solid hsl(45 93% 47% / 0.3);
+}
+
+.status-mirror {
+    background: hsl(217 91% 60% / 0.15);
+    color: hsl(217 91% 60%);
+    border: 1px solid hsl(217 91% 60% / 0.3);
+}
+
+.status-none {
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+    border: 1px solid hsl(var(--border));
+}
+
+.sidebar-bucket-role {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
 .sidebar-bucket-meta {
     display: flex;
     flex-direction: column;

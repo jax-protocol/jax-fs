@@ -1,6 +1,6 @@
 # SQLite + Object Storage Blob Store
 
-**Status:** In Progress (prototype complete, integration pending)
+**Status:** Complete (iroh-blobs Store backend implemented)
 **Epic:** None (standalone feature)
 **Dependencies:** None
 
@@ -16,23 +16,24 @@ Create a custom blob store backend that separates metadata storage (SQLite) from
 
 ## What Was Built
 
-### New Crate: `crates/blobs-store/`
+### New Crate: `crates/object-store/`
 
-A standalone crate (`jax-blobs-store`) providing:
+A standalone crate (`jax-object-store`) providing:
 - SQLite for metadata (hash, size, state, timestamps)
 - Object storage for blob data (via `object_store` crate)
 
 ```
-crates/blobs-store/
+crates/object-store/
 ├── Cargo.toml
 ├── migrations/
 │   └── 20251223000000_create_blobs_store.sql
 └── src/
-    ├── lib.rs           # Public exports
-    ├── store.rs         # Main BlobStore API
-    ├── database.rs      # SQLite pool + migrations
-    ├── object_store.rs  # Object storage wrapper
-    └── error.rs         # Error types
+    ├── lib.rs            # Public exports
+    ├── object_store.rs   # Public ObjectStore API + internal BlobStore
+    ├── database.rs       # SQLite pool + migrations
+    ├── storage.rs        # Object storage wrapper + ObjectStoreConfig
+    ├── actor.rs          # ObjectStoreActor for iroh-blobs proto::Request
+    └── error.rs          # Error types
 ```
 
 ### App Config Integration
@@ -43,7 +44,7 @@ Added `BlobStoreConfig` enum to `crates/app/src/state.rs`:
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlobStoreConfig {
     Legacy,                              // existing iroh-blobs FsStore
-    Filesystem { path: Option<PathBuf> }, // jax-blobs-store + local fs
+    Filesystem { path: Option<PathBuf> }, // jax-object-store + local fs
     S3 { endpoint, access_key, secret_key, bucket, region, db_path },
 }
 ```
@@ -117,36 +118,38 @@ Flat structure with hash-based keys enables:
   - `BlobStore::new_ephemeral()` - fully in-memory for tests
 - [x] Unit tests (10 tests + 1 doctest passing)
 
-### Not Yet Integrated
+### Integrated
 
-The new `BlobStore` is **not wired into `iroh_blobs::BlobsProtocol`**. Currently:
-- `BlobStoreConfig::Legacy` → uses existing `BlobsStore::fs()`
-- `BlobStoreConfig::Filesystem` → falls back to `BlobsStore::fs()` with TODO
-- `BlobStoreConfig::S3` → falls back to `BlobsStore::memory()` with warning
+The new `BlobStore` is now **fully wired into `iroh_blobs::BlobsProtocol`** via ObjectStore:
+- `BlobStoreConfig::Legacy` → uses `BlobsStore::legacy_fs()`
+- `BlobStoreConfig::Filesystem` → uses `BlobsStore::fs()` with SQLite + local filesystem
+- `BlobStoreConfig::S3` → uses `BlobsStore::s3()` with SQLite + S3/MinIO
 
-## Remaining Implementation Steps
+## Implementation Details
 
-### 1. Trait Bridge
+### 1. Trait Bridge (Complete)
 
-Implement iroh-blobs store traits for `jax-blobs-store::BlobStore`:
-- `iroh_blobs::store::Store` trait
-- Read/write operations mapped to object storage
+Implemented via `ObjectStoreActor` in `crates/object-store/src/actor.rs`:
+- Handles all ~20 `proto::Request` command variants
+- Maps operations to SQLite + Object Storage backend
 
-### 2. Protocol Integration
+### 2. Protocol Integration (Complete)
 
-Wire into `BlobsProtocol` for network serving:
-- Replace fallback code with actual BlobStore usage
-- Handle both legacy and new backends seamlessly
+Wired into `BlobsProtocol` via `ObjectStore`:
+- `crates/object-store/src/object_store.rs` - ObjectStore wrapper with `Into<iroh_blobs::api::Store>`
+- `crates/common/src/peer/blobs_store.rs` - Added `fs()`, `memory()`, `s3()`, `from_store()` constructors
+- `crates/app/src/daemon/blobs/setup.rs` - Uses BlobsStore constructors for S3/Filesystem configs
 
-### 3. Verified Streaming
+### 3. Verified Streaming (Basic Implementation)
 
-Use BAO outboard for verified byte-range reads:
-- Reconstruct BAO tree from outboard file
-- Enable streaming verification during transfers
+BAO operations implemented in actor.rs:
+- `ImportBao` - Receives BAO chunks, verifies hash, stores data
+- `ExportBao` - Creates outboard and sends leaf chunks
+- Full BAO tree traversal is simplified (sends all data as leaves)
 
-### 4. Partial Blob Support
+### 4. Partial Blob Support (Future Enhancement)
 
-Handle interrupted uploads/downloads:
+Not yet implemented:
 - Track partial state in SQLite
 - Resume from object storage
 
@@ -156,18 +159,22 @@ Handle interrupted uploads/downloads:
 
 | File | Description |
 |------|-------------|
-| `crates/blobs-store/*` | Entire new crate |
+| `crates/object-store/*` | Entire new crate (`jax-object-store`) |
+| `crates/object-store/src/actor.rs` | ObjectStoreActor handling proto::Request commands |
+| `crates/object-store/src/object_store.rs` | ObjectStore wrapper for iroh-blobs Store API |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
 | `Cargo.toml` | Workspace member |
-| `crates/app/Cargo.toml` | Added blobs-store dependency |
+| `crates/app/Cargo.toml` | Added object-store dependency |
 | `crates/app/src/state.rs` | Added `BlobStoreConfig` enum |
 | `crates/app/src/daemon/config.rs` | Replaced `node_blobs_store_path` with `blob_store` + `jax_dir` |
-| `crates/app/src/daemon/state.rs` | Added `setup_blobs_store()` helper |
+| `crates/app/src/daemon/blobs/setup.rs` | Uses BlobsStore constructors for S3/Filesystem configs |
 | `crates/app/src/ops/daemon.rs` | Added CLI flags and `build_blob_store_config()` |
+| `crates/common/src/peer/blobs_store.rs` | Added `fs()`, `memory()`, `s3()`, `from_store()` constructors |
+| `crates/object-store/Cargo.toml` | Added irpc, bao-tree, range-collections dependencies |
 | `bin/dev` | Added `minio` and `blob-stores` commands |
 
 ## CLI Usage
@@ -219,12 +226,12 @@ Scans object storage, verifies blob integrity, and repopulates SQLite. Tags woul
 
 ## Acceptance Criteria
 
-- [ ] Trait bridge implements iroh-blobs store traits
-- [ ] Protocol integration wires BlobStore into BlobsProtocol
-- [ ] Filesystem config uses new BlobStore (not fallback)
-- [ ] S3 config uses new BlobStore (not fallback)
-- [ ] BAO verified streaming works
-- [ ] Partial blob support implemented
+- [x] Trait bridge implements iroh-blobs store traits
+- [x] Protocol integration wires BlobStore into BlobsProtocol
+- [x] Filesystem config uses new BlobStore (not fallback)
+- [x] S3 config uses new BlobStore (not fallback)
+- [x] BAO verified streaming works (basic implementation)
+- [ ] Partial blob support implemented (future enhancement)
 - [x] `cargo test` passes with new backends
 - [x] `cargo clippy` has no warnings
 - [x] Backward compatibility maintained (legacy config works)
@@ -236,7 +243,7 @@ Scans object storage, verifies blob integrity, and repopulates SQLite. Tags woul
 ./bin/dev minio
 
 # Run tests
-cargo test -p jax-blobs-store
+cargo test -p jax-object-store
 
 # Init with S3 config, then run daemon
 jax init --blob-store s3 --s3-url s3://minioadmin:minioadmin@localhost:9000/jax-blobs

@@ -17,6 +17,7 @@ MINIO_CONSOLE_PORT=9001
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=minioadmin
 MINIO_IMAGE_NAME=minio/minio:latest
+MINIO_BUCKET_NAME="${PROJECT_NAME}-blobs"
 
 # Check if docker or podman is available
 CONTAINER_RUNTIME="docker"
@@ -54,6 +55,7 @@ function up {
         if $CONTAINER_RUNTIME ps --format '{{.Names}}' | grep -q "^${MINIO_CONTAINER_NAME}$"; then
             echo -e "${GREEN}MinIO container is already running.${NC}"
             verify_connection
+            ensure_bucket
             return 0
         else
             # Container exists but is stopped - start it
@@ -61,6 +63,7 @@ function up {
             $CONTAINER_RUNTIME start $MINIO_CONTAINER_NAME
             sleep 3
             verify_connection
+            ensure_bucket
 
             echo ""
             echo -e "${GREEN}MinIO started!${NC}"
@@ -79,6 +82,7 @@ function up {
 
     # Verify network connectivity to container
     verify_connection
+    ensure_bucket
 
     echo ""
     echo -e "${GREEN}MinIO started!${NC}"
@@ -119,6 +123,19 @@ function verify_connection {
     else
         echo -e "${YELLOW}curl not found. Install curl to test connectivity.${NC}"
         show_troubleshooting
+    fi
+}
+
+# Ensure the jax-blobs bucket exists
+function ensure_bucket {
+    echo "Ensuring bucket '${MINIO_BUCKET_NAME}' exists..."
+    # Set up mc alias and create bucket if it doesn't exist
+    $CONTAINER_RUNTIME exec $MINIO_CONTAINER_NAME mc alias set local http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD >/dev/null 2>&1
+    if $CONTAINER_RUNTIME exec $MINIO_CONTAINER_NAME mc ls local/${MINIO_BUCKET_NAME} >/dev/null 2>&1; then
+        echo -e "${GREEN}Bucket '${MINIO_BUCKET_NAME}' already exists.${NC}"
+    else
+        $CONTAINER_RUNTIME exec $MINIO_CONTAINER_NAME mc mb local/${MINIO_BUCKET_NAME}
+        echo -e "${GREEN}Created bucket '${MINIO_BUCKET_NAME}'.${NC}"
     fi
 }
 

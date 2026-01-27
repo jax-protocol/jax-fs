@@ -6,6 +6,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::linked_data::BlockEncoded;
+use common::mount::PrincipalRole;
 use common::prelude::Manifest;
 
 use crate::ServiceState;
@@ -59,6 +60,8 @@ pub struct BucketLogsTemplate {
     pub file_metadata: Option<super::file_explorer::FileMetadata>,
     pub path_segments: Vec<super::file_explorer::PathSegment>,
     pub is_published: bool,
+    /// Our node's role for this bucket (Owner, Mirror, or None if not a share)
+    pub our_role: Option<PrincipalRole>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +100,16 @@ pub async fn handler(
         Ok(None) => return error_response("Bucket not found"),
         Err(e) => return error_response(&format!("Database error: {}", e)),
     };
+
+    // Get our role from the HEAD manifest
+    let our_public_key = state.peer().secret().public();
+    let our_role =
+        match common::mount::Mount::load_manifest(&bucket.link, state.peer().blobs()).await {
+            Ok(manifest) => manifest
+                .get_share(&our_public_key)
+                .map(|s| s.role().clone()),
+            Err(_) => None,
+        };
 
     // Get total count
     let total_entries = match state.database().get_bucket_log_count(&bucket_id).await {
@@ -228,6 +241,7 @@ pub async fn handler(
             file_metadata: None,
             path_segments: vec![],
             is_published,
+            our_role: our_role.clone(),
         };
         return template.into_response();
     }
@@ -314,6 +328,7 @@ pub async fn handler(
         file_metadata: None,
         path_segments: vec![],
         is_published,
+        our_role,
     };
 
     template.into_response()

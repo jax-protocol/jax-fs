@@ -41,6 +41,26 @@
             {% endif %}
         </div>
     </div>
+    <div class="sidebar-bucket-role">
+        <div class="sidebar-id-label">Your Role</div>
+        <div class="sidebar-status-value">
+            {% match our_role %}
+            {% when Some with (role) %}
+            <span class="status-badge {% if role.to_string() == "Owner" %}status-owner{% else %}status-mirror{% endif %}">
+                {% if role.to_string() == "Owner" %}
+                <i class="fas fa-crown"></i>
+                {% else %}
+                <i class="fas fa-eye"></i>
+                {% endif %}
+                {{ role }}
+            </span>
+            {% when None %}
+            <span class="status-badge status-none">
+                <i class="fas fa-question"></i> Unknown
+            </span>
+            {% endmatch %}
+        </div>
+    </div>
     <div class="sidebar-bucket-meta">
         <button uk-toggle="target: #bucket-data-modal" class="sidebar-details-btn">
             <i class="fas fa-file-code"></i> Manifest

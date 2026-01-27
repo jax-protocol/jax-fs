@@ -2725,24 +2725,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
-name = "jax-blobs-store"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "chrono",
- "futures",
- "iroh-blobs",
- "object_store",
- "serde",
- "sqlx",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "jax-bucket"
 version = "0.1.7"
 dependencies = [
@@ -2761,8 +2743,8 @@ dependencies = [
  "futures",
  "http",
  "iroh",
- "jax-blobs-store",
  "jax-common",
+ "jax-object-store",
  "mime_guess",
  "pulldown-cmark",
  "regex",
@@ -2808,6 +2790,7 @@ dependencies = [
  "ipld-core",
  "iroh",
  "iroh-blobs",
+ "jax-object-store",
  "mime",
  "mime_guess",
  "mime_serde_shim",
@@ -2827,6 +2810,30 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "x25519-dalek",
+]
+
+[[package]]
+name = "jax-object-store"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bao-tree",
+ "bytes",
+ "chrono",
+ "derive_more 2.0.1",
+ "futures",
+ "iroh-blobs",
+ "irpc",
+ "n0-future 0.2.0",
+ "object_store",
+ "range-collections",
+ "ref-cast",
+ "serde",
+ "sqlx",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

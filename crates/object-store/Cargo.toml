@@ -1,5 +1,5 @@
 [package]
-name = "jax-blobs-store"
+name = "jax-object-store"
 version = "0.1.0"
 edition.workspace = true
 description = "SQLite + object storage backend for blob data"
@@ -24,8 +24,26 @@ chrono = { workspace = true }
 # Logging
 tracing = { workspace = true }
 
-# iroh-blobs for Hash type
+# iroh-blobs for Hash type and Store API
 iroh-blobs = { workspace = true }
+
+# irpc for RPC channels (same version as iroh-blobs uses)
+irpc = { version = "0.9.0", features = ["rpc", "stream", "derive"], default-features = false }
+
+# bao-tree for BAO content types
+bao-tree = { version = "0.15.1", features = ["experimental-mixed", "serde"], default-features = false }
+
+# range-collections for range types
+range-collections = { version = "0.4.6", features = ["serde"] }
+
+# n0-future for Stream trait
+n0-future = "0.2.0"
+
+# ref-cast for RefCast derive
+ref-cast = "1.0"
+
+# derive_more for From derive
+derive_more = { version = "2.0", features = ["from"] }
 
 # SQLite
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }

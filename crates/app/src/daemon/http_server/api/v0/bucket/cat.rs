@@ -100,7 +100,7 @@ pub async fn handler_get(
 }
 
 async fn handle_cat_request(state: ServiceState, req: CatRequest) -> Result<CatResponse, CatError> {
-    // Load mount - either from specific link or current state
+    // Load mount - either from specific link or role-based
     let mount = if let Some(hash_str) = &req.at {
         // Parse the hash string and create a Link
         match hash_str.parse::<common::linked_data::Hash>() {
@@ -121,7 +121,8 @@ async fn handle_cat_request(state: ServiceState, req: CatRequest) -> Result<CatR
             }
         }
     } else {
-        state.peer().mount(req.bucket_id).await?
+        // Load mount based on role (owners see HEAD, mirrors see latest_published)
+        state.peer().mount_for_read(req.bucket_id).await?
     };
 
     let path_buf = std::path::PathBuf::from(&req.path);

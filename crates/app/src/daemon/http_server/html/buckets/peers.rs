@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use common::crypto::PublicKey;
 use common::linked_data::BlockEncoded;
+use common::mount::PrincipalRole;
 use common::peer::PingReplyStatus;
 use common::prelude::Manifest;
 
@@ -69,6 +70,8 @@ pub struct PeersExplorerTemplate {
     pub file_metadata: Option<FileMetadata>,
     pub path_segments: Vec<PathSegment>,
     pub is_published: bool,
+    /// Our node's role for this bucket (Owner, Mirror, or None if not a share)
+    pub our_role: Option<PrincipalRole>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -94,7 +97,8 @@ pub async fn handler(
     };
 
     // Load mount and get bucket shares from manifest
-    let mount = match state.peer().mount(bucket_id).await {
+    // (owners see HEAD, mirrors see latest_published)
+    let mount = match state.peer().mount_for_read(bucket_id).await {
         Ok(mount) => mount,
         Err(e) => {
             tracing::error!("Failed to load mount: {}", e);
@@ -103,6 +107,13 @@ pub async fn handler(
     };
 
     let manifest = mount.inner().await.manifest().clone();
+
+    // Get our role from the manifest
+    let our_public_key = state.peer().secret().public();
+    let our_role = manifest
+        .get_share(&our_public_key)
+        .map(|s| s.role().clone());
+
     let shares: Vec<ShareInfo> = manifest
         .shares()
         .iter()
@@ -292,6 +303,7 @@ pub async fn handler(
         file_metadata: None,
         path_segments: vec![],
         is_published,
+        our_role,
     };
 
     template.into_response()

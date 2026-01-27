@@ -7,6 +7,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::linked_data::BlockEncoded;
+use common::mount::PrincipalRole;
 
 use crate::daemon::http_server::Config;
 use crate::ServiceState;
@@ -61,6 +62,8 @@ pub struct FileViewerTemplate {
     pub current_path: String,
     pub gateway_url: String,
     pub is_published: bool,
+    /// Our node's role for this bucket (Owner, Mirror, or None if not a share)
+    pub our_role: Option<PrincipalRole>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -86,7 +89,9 @@ pub async fn handler(
         Err(e) => return error_response(&format!("{}", e)),
     };
 
-    // Load mount - either from specific link or current state
+    // Load mount - either from specific link or role-based
+    // - Owners see HEAD (latest state, including unpublished changes)
+    // - Mirrors see latest_published (what was explicitly shared with them)
     let (mount, viewing_link) = if let Some(hash_str) = &query.at {
         // Parse the hash string and create a Link with blake3 codec
         match hash_str.parse::<common::linked_data::Hash>() {
@@ -108,14 +113,27 @@ pub async fn handler(
             }
         }
     } else {
-        match state.peer().mount(bucket_id).await {
-            Ok(mount) => (mount, bucket.link.clone()),
+        // Load based on role (owners see HEAD, mirrors see latest_published)
+        match state.peer().mount_for_read(bucket_id).await {
+            Ok(mount) => {
+                let link = mount.link().await;
+                (mount, link)
+            }
             Err(e) => {
                 tracing::error!("Failed to load mount: {}", e);
                 return error_response("Failed to load bucket");
             }
         }
     };
+
+    // Get our role from the loaded manifest for display purposes
+    let our_public_key = state.peer().secret().public();
+    let our_role = mount
+        .inner()
+        .await
+        .manifest()
+        .get_share(&our_public_key)
+        .map(|s| s.role().clone());
 
     let path_buf = std::path::PathBuf::from(&file_path);
 
@@ -352,6 +370,7 @@ pub async fn handler(
         current_path,
         gateway_url,
         is_published,
+        our_role,
     };
 
     template.into_response()

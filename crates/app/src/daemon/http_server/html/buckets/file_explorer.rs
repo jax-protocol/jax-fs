@@ -8,7 +8,7 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use common::linked_data::BlockEncoded;
-use common::mount::Manifest;
+use common::mount::{Manifest, PrincipalRole};
 
 use crate::daemon::http_server::{Config, MAX_UPLOAD_SIZE_BYTES};
 use crate::ServiceState;
@@ -52,6 +52,8 @@ pub struct BucketExplorerTemplate {
     pub api_url: String,
     pub max_upload_size_mb: usize,
     pub file_metadata: Option<FileMetadata>,
+    /// Our node's role for this bucket (Owner, Mirror, or None if not a share)
+    pub our_role: Option<PrincipalRole>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -116,13 +118,14 @@ pub async fn handler(
         Err(e) => return error_response(&format!("{}", e)),
     };
 
-    // Load mount - either from specific link or latest published version
-    // Gateways always show the last published version, never HEAD
+    // Load mount - either from specific link or based on our role
+    // - Owners see HEAD (latest state, including unpublished changes)
+    // - Mirrors see latest_published (what was explicitly shared with them)
+
     let (mount, viewing_link) = if let Some(hash_str) = &query.at {
-        // Parse the hash string and create a Link with blake3 codec
+        // Viewing a specific historical version
         match hash_str.parse::<common::linked_data::Hash>() {
             Ok(hash) => {
-                // Create a Link from the hash using the raw codec
                 let link = common::linked_data::Link::new(common::linked_data::LD_RAW_CODEC, hash);
                 match common::mount::Mount::load(&link, state.peer().secret(), state.peer().blobs())
                     .await
@@ -140,29 +143,14 @@ pub async fn handler(
             }
         }
     } else {
-        // Always use latest published version
-        use common::bucket_log::BucketLogProvider;
-        match state.peer().logs().latest_published(bucket_id).await {
-            Ok(Some((published_link, _height))) => {
-                match common::mount::Mount::load(
-                    &published_link,
-                    state.peer().secret(),
-                    state.peer().blobs(),
-                )
-                .await
-                {
-                    Ok(mount) => (mount, published_link),
-                    Err(_e) => {
-                        let template = SyncingTemplate {
-                            bucket_id: bucket_id.to_string(),
-                            bucket_name: bucket.name.clone(),
-                        };
-                        return template.into_response();
-                    }
-                }
+        // Load based on role (owners see HEAD, mirrors see latest_published)
+        match state.peer().mount_for_read(bucket_id).await {
+            Ok(mount) => {
+                let link = mount.link().await;
+                (mount, link)
             }
-            _ => {
-                // No published version available
+            Err(e) => {
+                tracing::error!("Failed to load mount: {}", e);
                 let template = SyncingTemplate {
                     bucket_id: bucket_id.to_string(),
                     bucket_name: bucket.name.clone(),
@@ -171,6 +159,15 @@ pub async fn handler(
             }
         }
     };
+
+    // Get our role from the loaded manifest for display purposes
+    let our_public_key = state.peer().secret().public();
+    let our_role = mount
+        .inner()
+        .await
+        .manifest()
+        .get_share(&our_public_key)
+        .map(|s| s.role().clone());
 
     let path_buf = std::path::PathBuf::from(&current_path);
     let items_map = match mount.ls(&path_buf).await {
@@ -353,6 +350,7 @@ pub async fn handler(
         api_url,
         max_upload_size_mb: MAX_UPLOAD_SIZE_BYTES / (1024 * 1024),
         file_metadata: None,
+        our_role,
     };
 
     template.into_response()
