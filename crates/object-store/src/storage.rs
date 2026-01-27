@@ -44,9 +44,8 @@ pub enum ObjectStoreConfig {
 
 /// Wrapper around different object storage backends.
 #[derive(Debug, Clone)]
-pub struct Storage {
+pub(crate) struct Storage {
     inner: Arc<dyn ObjectStore>,
-    config: ObjectStoreConfig,
 }
 
 impl Storage {
@@ -113,20 +112,7 @@ impl Storage {
             }
         };
 
-        Ok(Self { inner, config })
-    }
-
-    /// Create an in-memory storage backend.
-    pub fn memory() -> Self {
-        Self {
-            inner: Arc::new(InMemory::new()),
-            config: ObjectStoreConfig::Memory,
-        }
-    }
-
-    /// Get the configuration.
-    pub fn config(&self) -> &ObjectStoreConfig {
-        &self.config
+        Ok(Self { inner })
     }
 
     /// Build the object path for blob data.
@@ -146,13 +132,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Put blob outboard data into storage.
-    pub async fn put_outboard(&self, hash: &str, data: Bytes) -> Result<()> {
-        let path = Self::outboard_path(hash);
-        self.inner.put(&path, data.into()).await?;
-        Ok(())
-    }
-
     /// Get blob data from storage.
     pub async fn get_data(&self, hash: &str) -> Result<Option<Bytes>> {
         let path = Self::data_path(hash);
@@ -162,29 +141,6 @@ impl Storage {
                 Ok(Some(bytes))
             }
             Err(object_store::Error::NotFound { .. }) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    /// Get blob outboard data from storage.
-    pub async fn get_outboard(&self, hash: &str) -> Result<Option<Bytes>> {
-        let path = Self::outboard_path(hash);
-        match self.inner.get(&path).await {
-            Ok(result) => {
-                let bytes = result.bytes().await?;
-                Ok(Some(bytes))
-            }
-            Err(object_store::Error::NotFound { .. }) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    /// Check if blob data exists in storage.
-    pub async fn has_data(&self, hash: &str) -> Result<bool> {
-        let path = Self::data_path(hash);
-        match self.inner.head(&path).await {
-            Ok(_) => Ok(true),
-            Err(object_store::Error::NotFound { .. }) => Ok(false),
             Err(e) => Err(e.into()),
         }
     }
@@ -210,9 +166,48 @@ impl Storage {
             Err(e) => Err(e.into()),
         }
     }
+}
+
+#[cfg(test)]
+impl Storage {
+    /// Create an in-memory storage backend (test-only).
+    pub fn memory() -> Self {
+        Self {
+            inner: Arc::new(InMemory::new()),
+        }
+    }
+
+    /// Put blob outboard data into storage.
+    pub async fn put_outboard(&self, hash: &str, data: Bytes) -> Result<()> {
+        let path = Self::outboard_path(hash);
+        self.inner.put(&path, data.into()).await?;
+        Ok(())
+    }
+
+    /// Get blob outboard data from storage.
+    pub async fn get_outboard(&self, hash: &str) -> Result<Option<Bytes>> {
+        let path = Self::outboard_path(hash);
+        match self.inner.get(&path).await {
+            Ok(result) => {
+                let bytes = result.bytes().await?;
+                Ok(Some(bytes))
+            }
+            Err(object_store::Error::NotFound { .. }) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Check if blob data exists in storage.
+    pub async fn has_data(&self, hash: &str) -> Result<bool> {
+        let path = Self::data_path(hash);
+        match self.inner.head(&path).await {
+            Ok(_) => Ok(true),
+            Err(object_store::Error::NotFound { .. }) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
 
     /// List all blob hashes in the data directory.
-    /// Used for recovery operations to sync metadata from storage.
     pub async fn list_data_hashes(&self) -> Result<Vec<String>> {
         use futures::TryStreamExt;
 
@@ -225,7 +220,6 @@ impl Storage {
             .into_iter()
             .filter_map(|meta| {
                 let path = meta.location.as_ref();
-                // Extract hash from "data/{hash}"
                 path.strip_prefix("data/").map(|s| s.to_string())
             })
             .collect();

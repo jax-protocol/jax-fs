@@ -10,8 +10,12 @@ use sqlx::{
 use crate::error::Result;
 
 /// Blob metadata stored in SQLite.
+///
+/// All fields are populated from the database row; some are only
+/// accessed in tests but are part of the schema mapping.
 #[derive(Debug, Clone)]
-pub struct BlobMetadata {
+#[allow(dead_code)]
+pub(crate) struct BlobMetadata {
     pub hash: String,
     pub size: i64,
     pub has_outboard: bool,
@@ -22,7 +26,7 @@ pub struct BlobMetadata {
 
 /// State of a blob in the store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BlobState {
+pub(crate) enum BlobState {
     /// Blob is complete and ready to use
     #[default]
     Complete,
@@ -53,7 +57,7 @@ impl BlobState {
 
 /// SQLite database connection pool.
 #[derive(Debug, Clone)]
-pub struct Database {
+pub(crate) struct Database {
     pool: SqlitePool,
 }
 
@@ -191,7 +195,10 @@ impl Database {
 
         Ok(rows.iter().map(|r| r.get("hash")).collect())
     }
+}
 
+#[cfg(test)]
+impl Database {
     /// Count blobs.
     pub async fn count_blobs(&self) -> Result<i64> {
         let row = sqlx::query(

@@ -46,6 +46,9 @@ ipld-core = { workspace = true }
 serde_ipld_dagcbor.workspace = true
 multihash = "0.19"
 
+# Object store
+object-store = { package = "jax-object-store", version = "^0.1.0", path = "../object-store" }
+
 # iroh
 iroh.workspace = true
 iroh-blobs.workspace = true

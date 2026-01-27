@@ -2,7 +2,6 @@
 
 use std::path::Path;
 
-use blobs_store::S3Store;
 use common::peer::BlobsStore;
 
 use crate::state::BlobStoreConfig;
@@ -13,8 +12,8 @@ use super::BlobsSetupError;
 ///
 /// Supports three modes:
 /// - Legacy: Uses iroh's FsStore (default, for backwards compatibility)
-/// - Filesystem: Uses SQLite + local filesystem via S3Store
-/// - S3: Uses SQLite + S3/MinIO via S3Store
+/// - Filesystem: Uses SQLite + local filesystem via ObjectStore
+/// - S3: Uses SQLite + S3/MinIO via ObjectStore
 pub async fn setup_blobs_store(
     config: &BlobStoreConfig,
     jax_dir: &Path,
@@ -24,18 +23,17 @@ pub async fn setup_blobs_store(
             // Use iroh's FsStore for backwards compatibility
             let blobs_path = jax_dir.join("blobs");
             tracing::info!(path = %blobs_path.display(), "Using iroh blob store");
-            BlobsStore::fs(&blobs_path)
+            BlobsStore::legacy_fs(&blobs_path)
                 .await
                 .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
 
         BlobStoreConfig::Filesystem { path } => {
-            // Use S3Store with local filesystem backend
+            // Use ObjectStore with local filesystem backend
             tracing::info!(path = %path.display(), "Using SQLite + local filesystem blob store");
-            let s3_store = S3Store::new_local(path)
+            BlobsStore::fs(path)
                 .await
-                .map_err(|e| BlobsSetupError::StoreError(e.to_string()))?;
-            Ok(BlobsStore::from_store(s3_store.into()))
+                .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
 
         BlobStoreConfig::S3 { url } => {
@@ -52,7 +50,7 @@ pub async fn setup_blobs_store(
             // SQLite database goes in jax_dir
             let db_path = jax_dir.join("blobs.db");
 
-            let s3_store = S3Store::new_s3(
+            BlobsStore::s3(
                 &db_path,
                 &s3_config.endpoint,
                 &s3_config.access_key,
@@ -61,9 +59,7 @@ pub async fn setup_blobs_store(
                 None, // Use default region
             )
             .await
-            .map_err(|e| BlobsSetupError::StoreError(e.to_string()))?;
-
-            Ok(BlobsStore::from_store(s3_store.into()))
+            .map_err(|e| BlobsSetupError::StoreError(e.to_string()))
         }
     }
 }

@@ -35,7 +35,7 @@ The reported sizes (e.g., `8988579870866186464`) are clearly garbage values - th
 
 | File | Area |
 |------|------|
-| `crates/blobs-store/src/actor.rs` | ImportBao handler |
+| `crates/object-store/src/actor.rs` | ImportBao handler (ObjectStoreActor) |
 | `crates/common/src/peer/sync/` | Sync job implementation |
 
 ## Acceptance Criteria

@@ -8,14 +8,19 @@
 Make the blobs store more configurable:
 1. Allow separate paths for SQLite metadata DB vs object storage
 2. Make max blob import size configurable
-3. Rename `S3Store` to `ObjectStore` (more accurate naming)
 
 ## Background
 
-Currently `S3Store::new_local(data_dir)` hardcodes the SQLite DB at `data_dir/blobs.db`. Some deployments may want:
+Currently `ObjectStore::new_local(data_dir)` hardcodes the SQLite DB at `data_dir/blobs.db`. Some deployments may want:
 - SQLite on fast local SSD, objects on slower/larger storage
 - SQLite in a specific location for backup purposes
 - Different max blob sizes (1GB default may be too small for video, too large for constrained nodes)
+
+## Completed
+
+### ~~Rename S3Store → ObjectStore~~
+
+Done. The crate was renamed from `jax-blobs-store` to `jax-object-store` (`crates/object-store/`), and `S3Store` was renamed to `ObjectStore` in `crates/object-store/src/object_store.rs`.
 
 ## Proposed Changes
 
@@ -23,7 +28,7 @@ Currently `S3Store::new_local(data_dir)` hardcodes the SQLite DB at `data_dir/bl
 
 ```rust
 // Current
-S3Store::new_local(data_dir: &Path)
+ObjectStore::new_local(data_dir: &Path)
 
 // Proposed
 ObjectStore::new_local(db_path: &Path, objects_path: &Path)
@@ -42,17 +47,12 @@ pub struct BlobStoreConfig {
 }
 ```
 
-### 3. Rename S3Store → ObjectStore
-
-The current name is misleading since it also supports local filesystem and memory backends.
-
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `crates/blobs-store/src/iroh_store.rs` | Rename S3Store → ObjectStore, update constructors |
-| `crates/blobs-store/src/actor.rs` | Make MAX_IMPORT_SIZE configurable |
-| `crates/blobs-store/src/store.rs` | Update BlobStore constructors |
+| `crates/object-store/src/object_store.rs` | Update ObjectStore constructors for separate paths |
+| `crates/object-store/src/actor.rs` | Make MAX_IMPORT_SIZE configurable |
 | `crates/app/src/daemon/blobs/setup.rs` | Update usage |
 | `crates/common/src/peer/blobs_store.rs` | Update usage |
 
@@ -60,7 +60,7 @@ The current name is misleading since it also supports local filesystem and memor
 
 - [ ] SQLite path configurable separately from object storage path
 - [ ] Max import size configurable (with sensible default)
-- [ ] S3Store renamed to ObjectStore
+- [x] S3Store renamed to ObjectStore
 - [ ] Existing configs continue to work (backward compatible)
 - [ ] `cargo test` passes
 - [ ] `cargo clippy` clean

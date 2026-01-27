@@ -39,7 +39,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, trace, warn, Instrument};
 
-use crate::store::BlobStore;
+use crate::object_store::BlobStore;
 
 /// Block size for BAO tree operations (matches iroh-blobs IROH_BLOCK_SIZE)
 const IROH_BLOCK_SIZE: bao_tree::BlockSize = bao_tree::BlockSize::from_chunk_log(4);
@@ -108,7 +108,7 @@ impl TempTagManager {
 }
 
 /// Actor that handles iroh-blobs protocol commands using our SQLite + S3 backend.
-pub struct S3Actor {
+pub struct ObjectStoreActor {
     /// Receiver for incoming commands
     commands: tokio::sync::mpsc::Receiver<Command>,
     /// Background tasks
@@ -125,7 +125,7 @@ pub struct S3Actor {
     idle_waiters: Vec<irpc::channel::oneshot::Sender<()>>,
 }
 
-impl S3Actor {
+impl ObjectStoreActor {
     /// Create a new actor with the given blob store.
     pub fn new(store: BlobStore, commands: tokio::sync::mpsc::Receiver<Command>) -> Self {
         Self {
