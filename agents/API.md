@@ -4,19 +4,21 @@ This document describes the HTTP API endpoints for jax-daemon.
 
 ## Overview
 
-jax-daemon has two server types:
-- **App Server**: Full API + Web UI (writable operations)
-- **Gateway Server**: Read-only content serving
+jax-daemon runs two servers on separate ports:
+- **API Server**: REST API for bucket operations (private, localhost only)
+- **Gateway Server**: Read-only content serving (public-facing)
 
 ## Base URLs
 
 When using the dev environment (`./bin/dev`):
 
-| Node | App Server | Gateway |
+| Node | API Server | Gateway |
 |------|------------|---------|
-| node0 | http://localhost:8080 | http://localhost:9090 |
-| node1 | http://localhost:8081 | - |
-| node2 | - | http://localhost:9092 |
+| owner | http://localhost:5002 | http://localhost:8081 |
+| _owner | http://localhost:5003 | http://localhost:8082 |
+| mirror | http://localhost:5004 | http://localhost:8083 |
+
+Default production ports: API on 5001, Gateway on 8080.
 
 ## Health Endpoints
 
@@ -26,7 +28,7 @@ All servers expose health endpoints at `/_status/`:
 Liveness check - returns immediately if server is running.
 
 ```bash
-curl http://localhost:8080/_status/livez
+curl http://localhost:5001/_status/livez
 ```
 
 Response: `{"status": "ok"}`
@@ -35,7 +37,7 @@ Response: `{"status": "ok"}`
 Readiness check - verifies all dependencies are ready.
 
 ```bash
-curl http://localhost:8080/_status/readyz
+curl http://localhost:5001/_status/readyz
 ```
 
 Response: `{"status": "ok"}` or `{"status": "error", "message": "..."}`
@@ -44,7 +46,7 @@ Response: `{"status": "ok"}` or `{"status": "error", "message": "..."}`
 Returns the node's peer identity.
 
 ```bash
-curl http://localhost:8080/_status/identity
+curl http://localhost:5001/_status/identity
 ```
 
 Response:
@@ -58,7 +60,7 @@ Response:
 Returns build version information.
 
 ```bash
-curl http://localhost:8080/_status/version
+curl http://localhost:5001/_status/version
 ```
 
 ## Bucket API
@@ -70,7 +72,7 @@ All bucket operations are under `/api/v0/bucket/`. Most use POST with JSON bodie
 Creates a new bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket \
+curl -X POST http://localhost:5001/api/v0/bucket \
   -H "Content-Type: application/json" \
   -d '{"name": "my-bucket"}'
 ```
@@ -96,7 +98,7 @@ Response (201 Created):
 Lists all buckets on the node.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/list \
+curl -X POST http://localhost:5001/api/v0/bucket/list \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -128,7 +130,7 @@ Response:
 Lists contents of a directory within a bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/ls \
+curl -X POST http://localhost:5001/api/v0/bucket/ls \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "path": "/"}'
 ```
@@ -169,7 +171,7 @@ Response:
 Reads file content, returns base64-encoded.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/cat \
+curl -X POST http://localhost:5001/api/v0/bucket/cat \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "path": "/readme.txt"}'
 ```
@@ -198,7 +200,7 @@ Response:
 Returns raw file content with proper Content-Type.
 
 ```bash
-curl "http://localhost:8080/api/v0/bucket/cat?bucket_id=550e8400-...&path=/readme.txt"
+curl "http://localhost:5001/api/v0/bucket/cat?bucket_id=550e8400-...&path=/readme.txt"
 ```
 
 Query params:
@@ -212,7 +214,7 @@ Query params:
 Uploads files using multipart form data.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/add \
+curl -X POST http://localhost:5001/api/v0/bucket/add \
   -F "bucket_id=550e8400-..." \
   -F "mount_path=/" \
   -F "file=@local-file.txt"
@@ -247,7 +249,7 @@ Response:
 Creates a directory within a bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/mkdir \
+curl -X POST http://localhost:5001/api/v0/bucket/mkdir \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "path": "/new-folder"}'
 ```
@@ -265,7 +267,7 @@ Request:
 Deletes a file or directory from a bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/delete \
+curl -X POST http://localhost:5001/api/v0/bucket/delete \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "path": "/old-file.txt"}'
 ```
@@ -283,7 +285,7 @@ Request:
 Moves or renames a file or directory.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/mv \
+curl -X POST http://localhost:5001/api/v0/bucket/mv \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "from": "/old.txt", "to": "/new.txt"}'
 ```
@@ -293,7 +295,7 @@ curl -X POST http://localhost:8080/api/v0/bucket/mv \
 Renames a bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/rename \
+curl -X POST http://localhost:5001/api/v0/bucket/rename \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "name": "new-name"}'
 ```
@@ -303,7 +305,7 @@ curl -X POST http://localhost:8080/api/v0/bucket/rename \
 Creates a shareable link for a bucket (read-only access).
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/share \
+curl -X POST http://localhost:5001/api/v0/bucket/share \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-..."}'
 ```
@@ -313,7 +315,7 @@ curl -X POST http://localhost:8080/api/v0/bucket/share \
 Initiates sync with a remote peer for a bucket.
 
 ```bash
-curl -X POST http://localhost:8080/api/v0/bucket/ping \
+curl -X POST http://localhost:5001/api/v0/bucket/ping \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "node_id": "2gx..."}'
 ```
@@ -339,8 +341,8 @@ Serves files from a bucket. The bucket_id can be either:
 ./bin/dev api full fetch 550e8400-... /file.txt # Fetch file content
 
 # Direct curl (if needed)
-curl http://localhost:9090/gw/550e8400-.../
-curl http://localhost:9090/gw/550e8400-.../path/to/file.txt
+curl http://localhost:8080/gw/550e8400-.../
+curl http://localhost:8080/gw/550e8400-.../path/to/file.txt
 ```
 
 Query parameters:
