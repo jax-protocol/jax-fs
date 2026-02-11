@@ -76,6 +76,7 @@ pub fn run() {
             commands::bucket::rename_path,
             commands::bucket::move_path,
             commands::bucket::share_bucket,
+            commands::bucket::is_published,
             commands::bucket::publish_bucket,
             commands::bucket::ping_peer,
             commands::bucket::upload_native_files,

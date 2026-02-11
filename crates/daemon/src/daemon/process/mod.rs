@@ -130,7 +130,7 @@ async fn shutdown_and_join(
 /// Use this when you need access to `ServiceState` (e.g. from Tauri IPC commands).
 /// The returned `ShutdownHandle` must be kept alive; dropping it does not stop the service.
 pub async fn start_service(service_config: &ServiceConfig) -> (ServiceState, ShutdownHandle) {
-    let (graceful_waiter, shutdown_rx) = utils::graceful_shutdown_blocker();
+    let (graceful_waiter, shutdown_tx, shutdown_rx) = utils::graceful_shutdown_blocker();
     let state = create_state(service_config).await;
 
     let mut handles = Vec::new();
@@ -178,11 +178,6 @@ pub async fn start_service(service_config: &ServiceConfig) -> (ServiceState, Shu
         api_port,
         gw_port
     );
-
-    // Extract the sender from the watch channel so ShutdownHandle can trigger shutdown
-    // We need to get it from the graceful_shutdown_blocker — but that only gives us a receiver.
-    // Instead, create our own channel for programmatic shutdown.
-    let (shutdown_tx, _) = watch::channel(());
 
     let handle = ShutdownHandle {
         graceful_waiter,

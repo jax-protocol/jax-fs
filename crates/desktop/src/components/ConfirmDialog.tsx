@@ -5,6 +5,7 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel?: string;
+  confirmColor?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -75,8 +76,8 @@ const ConfirmDialog: Component<ConfirmDialogProps> = (props) => {
               style={{
                 padding: '0.5rem 1rem',
                 'border-radius': '8px',
-                border: '1px solid var(--accent-red)',
-                background: 'var(--accent-red)',
+                border: `1px solid ${props.confirmColor || 'var(--accent-red)'}`,
+                background: props.confirmColor || 'var(--accent-red)',
                 color: '#ffffff',
                 cursor: 'pointer',
                 'font-size': '0.875rem',

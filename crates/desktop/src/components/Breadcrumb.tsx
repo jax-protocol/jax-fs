@@ -18,7 +18,7 @@ const Breadcrumb: Component<BreadcrumbProps> = (props) => {
       <For each={props.items}>
         {(item, index) => (
           <>
-            {index() > 0 && (
+            {index() > 1 && (
               <span style={{ color: 'var(--muted-fg)', 'user-select': 'none' }}>/</span>
             )}
             {index() === props.items.length - 1 ? (

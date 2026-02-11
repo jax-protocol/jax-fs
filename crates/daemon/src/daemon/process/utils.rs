@@ -8,12 +8,15 @@ use tokio::task::JoinHandle;
 
 const REQUEST_GRACE_PERIOD: Duration = Duration::from_secs(10);
 
-/// Spawns a task that listens for SIGINT and SIGTERM and sends a shutdown signal via a watch
-pub fn graceful_shutdown_blocker() -> (JoinHandle<()>, watch::Receiver<()>) {
+/// Spawns a task that listens for SIGINT and SIGTERM and sends a shutdown signal via a watch.
+///
+/// Returns the join handle, the sender (for programmatic shutdown), and the receiver.
+pub fn graceful_shutdown_blocker() -> (JoinHandle<()>, watch::Sender<()>, watch::Receiver<()>) {
     let mut sigint = signal(SignalKind::interrupt()).unwrap();
     let mut sigterm = signal(SignalKind::terminate()).unwrap();
 
     let (tx, rx) = tokio::sync::watch::channel(());
+    let signal_tx = tx.clone();
 
     let handle = tokio::spawn(async move {
         tokio::select! {
@@ -28,10 +31,10 @@ pub fn graceful_shutdown_blocker() -> (JoinHandle<()>, watch::Receiver<()>) {
 
         // Time to start signaling any services that care about gracefully shutting down that the
         // time is at hand.
-        let _ = tx.send(());
+        let _ = signal_tx.send(());
     });
 
-    (handle, rx)
+    (handle, tx, rx)
 }
 
 /// Registers a panic hook that logs panics using the `tracing` crate

@@ -1,12 +1,18 @@
 //! System tray setup and handlers
 
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, Manager,
 };
 
 use crate::AppState;
+
+/// Holds a reference to the tray status menu item so we can update its text.
+pub struct TrayState {
+    pub status_item: MenuItem<tauri::Wry>,
+}
 
 /// Setup the system tray
 pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -15,11 +21,21 @@ pub fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let status = MenuItem::with_id(app, "status", "Status: Starting...", false, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
+    // Store the status item so we can update it later
+    app.manage(TrayState {
+        status_item: status.clone(),
+    });
+
     // Build menu
     let menu = Menu::with_items(app, &[&open, &status, &quit])?;
 
+    // Load tray icon from bundled resources
+    let icon = Image::from_path("icons/tray-icon.png")?;
+
     // Build tray icon
-    let _tray = TrayIconBuilder::new()
+    let _tray = TrayIconBuilder::with_id("main")
+        .icon(icon)
+        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {
@@ -79,4 +95,7 @@ async fn update_tray_status(app: &tauri::AppHandle) {
     };
 
     tracing::debug!("Tray status: {}", status_text);
+
+    let tray_state = app.state::<TrayState>();
+    let _ = tray_state.status_item.set_text(&status_text);
 }

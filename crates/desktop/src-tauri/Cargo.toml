@@ -20,7 +20,7 @@ jax-app = { package = "jax-bucket", path = "../../daemon" }
 common = { package = "jax-common", path = "../../common" }
 
 # Tauri
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"

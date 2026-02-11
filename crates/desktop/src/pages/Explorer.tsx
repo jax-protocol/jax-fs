@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, For, Show, createMemo } from 'solid-js';
 import { useParams, useSearchParams, useNavigate } from '@solidjs/router';
-import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, FileEntry } from '../lib/api';
+import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, addFile, publishBucket, isPublished as checkPublished, FileEntry } from '../lib/api';
 import { pathToBreadcrumbs } from '../lib/utils';
 import Breadcrumb from '../components/Breadcrumb';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -23,6 +23,10 @@ const Explorer: Component = () => {
   const [showNewFolder, setShowNewFolder] = createSignal(false);
   const [newFolderName, setNewFolderName] = createSignal('');
 
+  // New file state
+  const [showNewFile, setShowNewFile] = createSignal(false);
+  const [newFileName, setNewFileName] = createSignal('');
+
   // Rename state
   const [renamingPath, setRenamingPath] = createSignal<string | null>(null);
   const [renameValue, setRenameValue] = createSignal('');
@@ -32,6 +36,11 @@ const Explorer: Component = () => {
 
   // Share panel
   const [showSharePanel, setShowSharePanel] = createSignal(false);
+
+  // Publish state
+  const [publishing, setPublishing] = createSignal(false);
+  const [isPublished, setIsPublished] = createSignal<boolean | null>(null);
+  const [showPublishConfirm, setShowPublishConfirm] = createSignal(false);
 
   const fetchEntries = async () => {
     try {
@@ -56,9 +65,20 @@ const Explorer: Component = () => {
     }
   };
 
-  onMount(() => {
+  const fetchPublishedStatus = async () => {
+    try {
+      setIsPublished(await checkPublished(params.bucketId));
+    } catch {
+      // Non-critical, ignore
+    }
+  };
+
+  const refresh = () => {
     fetchEntries();
-  });
+    fetchPublishedStatus();
+  };
+
+  onMount(refresh);
 
   // Re-fetch when path changes
   const navigateToPath = (path: string) => {
@@ -67,7 +87,7 @@ const Explorer: Component = () => {
     } else {
       setSearchParams({ path });
     }
-    setTimeout(() => fetchEntries(), 0);
+    setTimeout(refresh, 0);
   };
 
   const handleEntryClick = (entry: FileEntry) => {
@@ -90,7 +110,7 @@ const Explorer: Component = () => {
 
       setError(null);
       await uploadNativeFiles(params.bucketId, currentPath(), paths);
-      await fetchEntries();
+      refresh();
     } catch (e) {
       setError(String(e));
     }
@@ -108,7 +128,25 @@ const Explorer: Component = () => {
       await mkdir(params.bucketId, path);
       setShowNewFolder(false);
       setNewFolderName('');
-      await fetchEntries();
+      refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleNewFile = async () => {
+    const name = newFileName().trim();
+    if (!name) return;
+
+    try {
+      setError(null);
+      const path = currentPath().endsWith('/')
+        ? `${currentPath()}${name}`
+        : `${currentPath()}/${name}`;
+      await addFile(params.bucketId, path, []);
+      setShowNewFile(false);
+      setNewFileName('');
+      refresh();
     } catch (e) {
       setError(String(e));
     }
@@ -127,7 +165,7 @@ const Explorer: Component = () => {
       const newPath = parent === '/' ? `/${newName}` : `${parent}/${newName}`;
       await renamePath(params.bucketId, entry.path, newPath);
       setRenamingPath(null);
-      await fetchEntries();
+      refresh();
     } catch (e) {
       setError(String(e));
     }
@@ -141,7 +179,7 @@ const Explorer: Component = () => {
       setError(null);
       await deletePath(params.bucketId, target.path);
       setDeleteTarget(null);
-      await fetchEntries();
+      refresh();
     } catch (e) {
       setError(String(e));
     }
@@ -149,7 +187,21 @@ const Explorer: Component = () => {
 
   const goToHead = () => {
     navigate(`/buckets/${params.bucketId}?path=${encodeURIComponent(currentPath())}`);
-    setTimeout(() => fetchEntries(), 0);
+    setTimeout(refresh, 0);
+  };
+
+  const handlePublish = async () => {
+    try {
+      setPublishing(true);
+      setShowPublishConfirm(false);
+      setError(null);
+      await publishBucket(params.bucketId);
+      fetchPublishedStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const breadcrumbs = () => pathToBreadcrumbs(currentPath());
@@ -199,12 +251,26 @@ const Explorer: Component = () => {
       }}>
         <div>
           <h2 style={{ 'font-size': '1.5rem', 'font-weight': '700', 'margin-bottom': '0.5rem' }}>
-            Explorer
+            Files
           </h2>
           <Breadcrumb items={breadcrumbs()} onNavigate={navigateToPath} />
         </div>
-        <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)', 'font-family': 'monospace' }}>
-          {params.bucketId.substring(0, 8)}...
+        <div style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem' }}>
+          <Show when={isPublished()}>
+            <span style={{
+              'font-size': '0.6875rem',
+              'font-weight': '600',
+              padding: '0.125rem 0.5rem',
+              'border-radius': '9999px',
+              background: 'hsl(142 76% 36% / 0.12)',
+              color: 'var(--accent-green)',
+            }}>
+              Published
+            </span>
+          </Show>
+          <span style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)', 'font-family': 'monospace' }}>
+            {params.bucketId.substring(0, 8)}...
+          </span>
         </div>
       </div>
 
@@ -247,6 +313,22 @@ const Explorer: Component = () => {
           >
             New Folder
           </button>
+          <button
+            onClick={() => { setShowNewFile(true); setNewFileName(''); }}
+            style={{
+              padding: '0.5rem 0.75rem',
+              'border-radius': '8px',
+              border: '1px solid var(--border)',
+              background: 'var(--muted)',
+              color: 'var(--fg)',
+              cursor: 'pointer',
+              'font-size': '0.8125rem',
+              'font-weight': '500',
+              'font-family': 'inherit',
+            }}
+          >
+            New File
+          </button>
         </Show>
         <button
           onClick={() => navigate(`/buckets/${params.bucketId}/history`)}
@@ -282,6 +364,25 @@ const Explorer: Component = () => {
           >
             Share
           </button>
+          <Show when={!isPublished()}>
+            <button
+              onClick={() => setShowPublishConfirm(true)}
+              disabled={publishing()}
+              style={{
+                padding: '0.5rem 0.75rem',
+                'border-radius': '8px',
+                border: '1px solid var(--accent-green)',
+                background: publishing() ? 'var(--muted)' : 'var(--accent-green)',
+                color: publishing() ? 'var(--muted-fg)' : 'white',
+                cursor: publishing() ? 'not-allowed' : 'pointer',
+                'font-size': '0.8125rem',
+                'font-weight': '500',
+                'font-family': 'inherit',
+              }}
+            >
+              {publishing() ? 'Publishing...' : 'Publish'}
+            </button>
+          </Show>
         </Show>
       </div>
 
@@ -334,6 +435,71 @@ const Explorer: Component = () => {
           </button>
           <button
             onClick={() => setShowNewFolder(false)}
+            style={{
+              padding: '0.375rem 0.625rem',
+              'border-radius': '6px',
+              border: '1px solid var(--border)',
+              background: 'var(--muted)',
+              color: 'var(--fg)',
+              cursor: 'pointer',
+              'font-size': '0.8125rem',
+              'font-family': 'inherit',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </Show>
+
+      {/* New file inline input */}
+      <Show when={showNewFile() && !isHistoryView()}>
+        <div style={{
+          display: 'flex',
+          gap: '0.5rem',
+          'margin-bottom': '1rem',
+          'align-items': 'center',
+        }}>
+          <input
+            type="text"
+            placeholder="File name..."
+            value={newFileName()}
+            onInput={(e) => setNewFileName(e.currentTarget.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') handleNewFile();
+              if (e.key === 'Escape') setShowNewFile(false);
+            }}
+            autofocus
+            style={{
+              padding: '0.375rem 0.625rem',
+              'border-radius': '6px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--fg)',
+              'font-size': '0.8125rem',
+              'font-family': 'inherit',
+              outline: 'none',
+              width: '200px',
+            }}
+          />
+          <button
+            onClick={handleNewFile}
+            disabled={!newFileName().trim()}
+            style={{
+              padding: '0.375rem 0.625rem',
+              'border-radius': '6px',
+              border: '1px solid var(--border)',
+              background: 'var(--fg)',
+              color: 'var(--bg)',
+              cursor: 'pointer',
+              'font-size': '0.8125rem',
+              'font-family': 'inherit',
+              opacity: !newFileName().trim() ? '0.4' : '1',
+            }}
+          >
+            Create
+          </button>
+          <button
+            onClick={() => setShowNewFile(false)}
             style={{
               padding: '0.375rem 0.625rem',
               'border-radius': '6px',
@@ -424,8 +590,17 @@ const Explorer: Component = () => {
               }}>
                 {/* Name column */}
                 <div style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem', 'min-width': '0' }}>
-                  <span style={{ 'font-size': '1rem', 'flex-shrink': '0' }}>
-                    {entry.is_dir ? '\u{1F4C1}' : '\u{1F4C4}'}
+                  <span style={{ 'flex-shrink': '0', display: 'inline-flex', 'align-items': 'center' }}>
+                    {entry.is_dir ? (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ display: 'block' }}>
+                        <path d="M1.5 3C1.5 2.44772 1.94772 2 2.5 2H6.29289C6.4255 2 6.55268 2.05268 6.64645 2.14645L7.85355 3.35355C7.94732 3.44732 8.0745 3.5 8.20711 3.5H13.5C14.0523 3.5 14.5 3.94772 14.5 4.5V13C14.5 13.5523 14.0523 14 13.5 14H2.5C1.94772 14 1.5 13.5523 1.5 13V3Z" fill="var(--muted-fg)" opacity="0.5" stroke="var(--muted-fg)" stroke-width="1"/>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ display: 'block' }}>
+                        <path d="M4 1.5H9.58579C9.71839 1.5 9.84557 1.55268 9.93934 1.64645L12.8536 4.56066C12.9473 4.65443 13 4.78161 13 4.91421V14C13 14.2761 12.7761 14.5 12.5 14.5H4C3.72386 14.5 3.5 14.2761 3.5 14V2C3.5 1.72386 3.72386 1.5 4 1.5Z" stroke="var(--muted-fg)" stroke-width="1"/>
+                        <path d="M9.5 1.5V4.5H12.5" stroke="var(--muted-fg)" stroke-width="1" fill="none"/>
+                      </svg>
+                    )}
                   </span>
                   <Show when={renamingPath() === entry.path && !isHistoryView()} fallback={
                     <button
@@ -535,6 +710,17 @@ const Explorer: Component = () => {
         message={`Are you sure you want to delete "${deleteTarget()?.name}"? This action cannot be undone.`}
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      {/* Publish confirmation dialog */}
+      <ConfirmDialog
+        open={showPublishConfirm()}
+        title="Publish bucket"
+        message="Publishing makes this version available to all shared peers. Mirrors will be able to decrypt and read the contents. Continue?"
+        confirmLabel="Publish"
+        confirmColor="var(--accent-green)"
+        onConfirm={handlePublish}
+        onCancel={() => setShowPublishConfirm(false)}
       />
 
       {/* Share panel */}

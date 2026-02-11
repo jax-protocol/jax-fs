@@ -87,6 +87,10 @@ export async function shareBucket(bucketId: string, peerPublicKey: string, role:
   return invoke('share_bucket', { bucketId, peerPublicKey, role });
 }
 
+export async function isPublished(bucketId: string): Promise<boolean> {
+  return invoke('is_published', { bucketId });
+}
+
 export async function publishBucket(bucketId: string): Promise<void> {
   return invoke('publish_bucket', { bucketId });
 }

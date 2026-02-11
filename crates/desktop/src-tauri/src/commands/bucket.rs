@@ -441,6 +441,21 @@ pub async fn share_bucket(
     Ok(())
 }
 
+/// Check if the current HEAD of a bucket is published
+#[tauri::command]
+pub async fn is_published(state: State<'_, AppState>, bucket_id: String) -> Result<bool, String> {
+    let service = get_service(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+
+    let mount = service
+        .peer()
+        .mount_for_read(bucket_uuid)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(mount.is_published().await)
+}
+
 /// Publish a bucket
 #[tauri::command]
 pub async fn publish_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {

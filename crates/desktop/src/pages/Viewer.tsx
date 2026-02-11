@@ -191,7 +191,7 @@ const Viewer: Component = () => {
             'font-family': 'inherit',
           }}
         >
-          Back
+          <span style={{ display: 'inline-flex', 'align-items': 'center', gap: '0.375rem' }}><svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ display: 'block' }}><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</span>
         </button>
         <Show when={isText() && !isHistoryView()}>
           <button
