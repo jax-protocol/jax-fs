@@ -4,7 +4,7 @@
 
 ## Objective
 
-Add role selection (Owner or Mirror) to the share modal UI, allowing users to specify whether to share a bucket with a peer as a full owner or as a read-only mirror.
+Add role selection (Owner or Mirror) to the share UI, allowing users to specify whether to share a bucket with a peer as a full owner or as a read-only mirror.
 
 ## Background
 
@@ -12,13 +12,13 @@ The system supports two roles:
 - **Owner**: Full read/write access, can modify bucket contents, add/remove principals, publish
 - **Mirror**: Read-only access after publication, can sync and serve content, cannot modify
 
-Currently, the share modal only supports sharing as Owner. The `add_mirror()` method exists in the backend but is not exposed through the UI or API.
+Currently, the share flow only supports sharing as Owner. The `add_mirror()` method exists in the backend but is not exposed through the UI or API.
 
 ## Implementation Steps
 
 ### 1. Update ShareRequest struct
 
-**File:** `crates/app/src/daemon/http_server/api/v0/bucket/share.rs`
+**File:** `crates/daemon/src/daemon/http_server/api/v0/bucket/share.rs`
 
 Add `role` field with default value "owner":
 
@@ -39,7 +39,7 @@ pub struct ShareRequest {
 
 ### 2. Update API handler
 
-**File:** `crates/app/src/daemon/http_server/api/v0/bucket/share.rs`
+**File:** `crates/daemon/src/daemon/http_server/api/v0/bucket/share.rs`
 
 ```rust
 match req.role.to_lowercase().as_str() {
@@ -56,65 +56,36 @@ Add error variant:
 InvalidRole(String),
 ```
 
-### 3. Add role selector to share modal
+### 3. Add role selector to SolidJS share UI
 
-**File:** `crates/app/templates/components/modals/share.html`
+**Target:** Tauri desktop app (`crates/desktop/src/`)
 
-Add radio buttons after the peer public key input:
+Add Owner/Mirror radio buttons to the share dialog. The share dialog should include a role selector matching the app's grayscale design with green/red accents.
 
-```html
-<div class="share-form-field">
-    <label class="share-label">
-        <i class="fas fa-user-shield"></i> Role
-    </label>
-    <div class="share-role-options">
-        <label class="share-role-option">
-            <input type="radio" name="role" value="owner" checked>
-            <span class="share-role-label">
-                <i class="fas fa-crown"></i>
-                <span class="share-role-title">Owner</span>
-                <span class="share-role-desc">Full read/write access. Can modify files and manage sharing.</span>
-            </span>
-        </label>
-        <label class="share-role-option">
-            <input type="radio" name="role" value="mirror">
-            <span class="share-role-label">
-                <i class="fas fa-satellite-dish"></i>
-                <span class="share-role-title">Mirror</span>
-                <span class="share-role-desc">Read-only access after publish. Ideal for CDN/gateway nodes.</span>
-            </span>
-        </label>
-    </div>
-</div>
-```
+### 4. Update IPC command
 
-### 4. Update JavaScript
+**File:** `crates/desktop/src-tauri/src/commands/bucket.rs`
 
-Include role in fetch request:
+Include `role` parameter in the `share` IPC command, forwarded to the REST API.
 
-```javascript
-const role = form.querySelector('input[name="role"]:checked').value;
-body: JSON.stringify({
-    bucket_id: bucketId,
-    peer_public_key: peerPublicKey,
-    role: role
-})
-```
+### 5. Update TypeScript API client
 
-### 5. Add CSS styles
+**File:** `crates/desktop/src/lib/api.ts`
 
-Style the role selector to match existing design.
+Add `role` field to the share request type.
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `crates/app/src/daemon/http_server/api/v0/bucket/share.rs` | Add `role` field, handle owner/mirror, add error |
-| `crates/app/templates/components/modals/share.html` | Add role radio buttons, update JS, add CSS |
+| `crates/daemon/src/daemon/http_server/api/v0/bucket/share.rs` | Add `role` field, handle owner/mirror, add error |
+| `crates/desktop/src-tauri/src/commands/bucket.rs` | Add `role` param to share IPC command |
+| `crates/desktop/src/lib/api.ts` | Add `role` to share request type |
+| `crates/desktop/src/` (share dialog component) | Add role radio buttons |
 
 ## Acceptance Criteria
 
-- [ ] Share modal displays Owner/Mirror radio buttons
+- [ ] Share dialog displays Owner/Mirror radio buttons
 - [ ] Owner is selected by default
 - [ ] Mirror role adds peer with `PrincipalRole::Mirror`
 - [ ] API returns error for invalid role values
@@ -123,7 +94,7 @@ Style the role selector to match existing design.
 
 ## Verification
 
-1. Open bucket in web UI, click Share
+1. Open bucket in desktop app, click Share
 2. Verify role selector with Owner default
 3. Select Mirror, enter peer key, share
 4. Verify peer added as Mirror via CLI or manifest inspection
