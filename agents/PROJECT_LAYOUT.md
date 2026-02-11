@@ -10,27 +10,23 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 
 **Key areas:**
 
-- `src/lib.rs` - Library entry point, re-exports daemon and state modules
+- `src/lib.rs` - Library entry point, re-exports service modules and state
 - `src/main.rs` - Binary entry point, CLI parsing
-- `src/daemon/` - HTTP server and database
-  - `http_server/api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
-  - `http_server/html/gateway/` - Gateway HTML handlers for published content
-  - `http_server/gateway_index.rs` - Gateway index page (lists published buckets)
-  - `database/` - SQLite storage and bucket log provider
-  - `blobs/` - Blob store setup and configuration
-- `src/ops/` - CLI command implementations
-
-#### Gateway Templates
-
-The gateway uses [Askama](https://github.com/djc/askama) for HTML templating of published content.
-
-- `templates/layouts/base.html` - Base HTML layout
-- `templates/pages/gateway/` - Gateway UI templates
-  - `index.html` - Gateway homepage (node ID, published buckets list)
-  - `explorer.html` - Directory listing for published buckets
-  - `viewer.html` - File viewer for published content
-
-Templates are compiled at build time. Handler structs derive `Template` and reference template files.
+- `src/http_server/` - HTTP servers (API + gateway)
+  - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
+  - `api/client/` - API client for CLI commands
+  - `html/gateway/` - Gateway HTML handlers for published content
+  - `gateway_index.rs` - Gateway index page (lists published buckets)
+- `src/database/` - SQLite storage and bucket log provider
+- `src/blobs/` - Blob store setup and configuration
+- `src/process/` - Service lifecycle (start, spawn, shutdown)
+- `src/service_config.rs` - Service configuration (ports, paths, blob store)
+- `src/service_state.rs` - Runtime state (database, peer)
+- `src/state.rs` - App state (jax directory paths, config file)
+- `src/cli/` - CLI-specific code (not exported by library)
+  - `args.rs` - CLI argument parsing
+  - `op.rs` - Op trait and command_enum macro
+  - `ops/` - CLI command implementations (bucket, daemon, init, version)
 
 ### `crates/common` - Core Library
 

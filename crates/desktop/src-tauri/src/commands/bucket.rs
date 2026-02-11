@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use common::linked_data::{Hash, Link};
 use common::mount::Mount;
-use jax_daemon::daemon::ServiceState;
+use jax_daemon::ServiceState;
 
 use crate::AppState;
 

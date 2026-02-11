@@ -1,12 +1,8 @@
 // CLI modules
-mod args;
-mod op;
-mod ops;
+mod cli;
 
-use args::Args;
 use clap::{Parser, Subcommand};
-use op::Op;
-use ops::{Bucket, Daemon, Init, Version};
+use cli::{args::Args, op::Op, Bucket, Daemon, Init, Version};
 
 command_enum! {
     (Bucket, Bucket),
@@ -20,7 +16,7 @@ async fn main() {
     let args = Args::parse();
 
     // Build context - always has API client initialized
-    let ctx = match op::OpContext::new(args.remote, args.config_path) {
+    let ctx = match cli::op::OpContext::new(args.remote, args.config_path) {
         Ok(ctx) => ctx,
         Err(e) => {
             eprintln!("Error: Failed to create API client: {}", e);

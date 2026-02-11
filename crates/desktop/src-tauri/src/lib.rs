@@ -12,7 +12,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
-use jax_daemon::daemon::ServiceState;
+use jax_daemon::ServiceState;
 
 /// Inner daemon state, populated once the daemon has started.
 pub struct DaemonInner {
@@ -99,8 +99,8 @@ pub fn run() {
 
 /// Spawn the jax daemon in the background
 async fn spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    use jax_daemon::daemon::{start_service, ServiceConfig};
     use jax_daemon::state::AppState as JaxAppState;
+    use jax_daemon::{start_service, ServiceConfig};
 
     // Load jax state from default location (~/.jax)
     let jax_state = JaxAppState::load(None)
