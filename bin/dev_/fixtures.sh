@@ -342,26 +342,31 @@ fixture_mount() {
     # Create mount point if needed
     mkdir -p "$mount_point" 2>/dev/null || true
 
-    # Create mount via API
+    # Create mount via API (response has .mount.mount_id structure)
     local result=$(curl -s -X POST "$(api_url "$node")/mounts" \
         -H "Content-Type: application/json" \
         -d "{\"bucket_id\": \"$bucket_id\", \"mount_point\": \"$mount_point\"}")
 
-    local mount_id=$(echo "$result" | jq -r '.mount_id // empty')
+    # Try both response formats: .mount.mount_id (nested) or .mount_id (flat)
+    local mount_id=$(echo "$result" | jq -r '.mount.mount_id // .mount_id // empty')
     if [[ -z "$mount_id" ]]; then
         echo -e "  ${RED}Failed to create mount: $result${NC}"
         return 1
     fi
 
-    # Start the mount
+    echo -e "  ${GREEN}Created mount config: $mount_id${NC}"
+
+    # Start the mount (response has .started field)
     local start_result=$(curl -s -X POST "$(api_url "$node")/mounts/$mount_id/start" \
         -H "Content-Type: application/json" \
         -d '{}')
 
-    if echo "$start_result" | jq -e '.success' >/dev/null 2>&1; then
-        echo -e "  ${GREEN}Mounted at $mount_point (id: $mount_id)${NC}"
+    if echo "$start_result" | jq -e '.started // .success' >/dev/null 2>&1; then
+        echo -e "  ${GREEN}Mounted at $mount_point${NC}"
         # Store mount_id for later unmount
         echo "$bucket=$mount_id" >> "${TMPDIR:-/tmp}/jax-dev-mount-cache-$$"
+        # Give FUSE a moment to initialize
+        sleep 1
     else
         echo -e "  ${RED}Failed to start mount: $start_result${NC}"
         return 1
