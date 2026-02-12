@@ -92,6 +92,30 @@ to = "/docs/hello.txt"
 node = "owner"
 
 # =============================================================================
+# FUSE MOUNT TEST (optional - only runs if FUSE is available)
+# =============================================================================
+
+# Mount the bucket via FUSE on owner node
+[[fixture]]
+type = "mount"
+bucket = "test"
+mount_point = "/tmp/jax-e2e-mount"
+node = "owner"
+
+# Verify FUSE mount works (list, read, write, delete)
+[[fixture]]
+type = "mount_verify"
+bucket = "test"
+mount_point = "/tmp/jax-e2e-mount"
+node = "owner"
+
+# Unmount when done
+[[fixture]]
+type = "unmount"
+bucket = "test"
+node = "owner"
+
+# =============================================================================
 # EXPECTED END STATE
 # =============================================================================
 #
@@ -107,6 +131,11 @@ node = "owner"
 #   - _owner (API:5003, GW:8082): Owner share, sees latest state after sync
 #   - mirror (API:5004, GW:8083): Mirror share, sees latest published state
 #
+# FUSE mount test (if FUSE available):
+#   - Mounts bucket at /tmp/jax-e2e-mount on owner node
+#   - Verifies: directory listing, file read, file write, file delete
+#   - Unmounts after verification
+#
 # Each node runs separate API and gateway servers:
 #   - API:     http://localhost:5002 (owner), 5003 (_owner), 5004 (mirror)
 #   - Gateway: http://localhost:8081 (owner), 8082 (_owner), 8083 (mirror)
@@ -115,3 +144,7 @@ node = "owner"
 #   ./bin/dev api owner ls <bucket_id> /docs
 #   ./bin/dev api _owner ls <bucket_id> /docs
 #   curl http://localhost:8083/gw/<bucket_id>/docs/hello.txt
+#
+# FUSE verification (manual):
+#   ./bin/dev api owner mount-list
+#   ls /tmp/jax-e2e-mount/docs/

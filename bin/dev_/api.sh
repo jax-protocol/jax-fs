@@ -162,6 +162,73 @@ api_delete() {
         -d "{\"bucket_id\": \"$bucket_id\", \"path\": \"$path\"}" | jq .
 }
 
+# FUSE Mount commands
+
+api_mount_list() {
+    local url=$(api_url)
+    echo -e "${BLUE}GET $url/mounts${NC}"
+    curl -s "$url/mounts" | jq .
+}
+
+api_mount_create() {
+    local bucket_id="$1"
+    local mount_point="$2"
+
+    if [[ -z "$bucket_id" ]] || [[ -z "$mount_point" ]]; then
+        echo "Usage: ./bin/dev api <node> mount-create <bucket_id> <mount_point>"
+        return 1
+    fi
+
+    local url=$(api_url)
+    echo -e "${BLUE}POST $url/mounts${NC}"
+    curl -s -X POST "$url/mounts" \
+        -H "Content-Type: application/json" \
+        -d "{\"bucket_id\": \"$bucket_id\", \"mount_point\": \"$mount_point\"}" | jq .
+}
+
+api_mount_start() {
+    local mount_id="$1"
+
+    if [[ -z "$mount_id" ]]; then
+        echo "Usage: ./bin/dev api <node> mount-start <mount_id>"
+        return 1
+    fi
+
+    local url=$(api_url)
+    echo -e "${BLUE}POST $url/mounts/$mount_id/start${NC}"
+    curl -s -X POST "$url/mounts/$mount_id/start" \
+        -H "Content-Type: application/json" \
+        -d '{}' | jq .
+}
+
+api_mount_stop() {
+    local mount_id="$1"
+
+    if [[ -z "$mount_id" ]]; then
+        echo "Usage: ./bin/dev api <node> mount-stop <mount_id>"
+        return 1
+    fi
+
+    local url=$(api_url)
+    echo -e "${BLUE}POST $url/mounts/$mount_id/stop${NC}"
+    curl -s -X POST "$url/mounts/$mount_id/stop" \
+        -H "Content-Type: application/json" \
+        -d '{}' | jq .
+}
+
+api_mount_delete() {
+    local mount_id="$1"
+
+    if [[ -z "$mount_id" ]]; then
+        echo "Usage: ./bin/dev api <node> mount-delete <mount_id>"
+        return 1
+    fi
+
+    local url=$(api_url)
+    echo -e "${BLUE}DELETE $url/mounts/$mount_id${NC}"
+    curl -s -X DELETE "$url/mounts/$mount_id" | jq .
+}
+
 # Get gateway base URL for a node
 gateway_url() {
     local node_arg="${1:-$API_NODE}"
@@ -222,6 +289,13 @@ api_help() {
     echo "  mkdir <bucket_id> <path>      Create directory"
     echo "  delete <bucket_id> <path>     Delete file/directory"
     echo ""
+    echo "FUSE mount commands (requires fuse feature):"
+    echo "  mount-list                              List all mounts"
+    echo "  mount-create <bucket_id> <mount_point>  Create a mount config"
+    echo "  mount-start <mount_id>                  Start a mount"
+    echo "  mount-stop <mount_id>                   Stop a mount"
+    echo "  mount-delete <mount_id>                 Delete a mount config"
+    echo ""
     echo "Examples:"
     echo "  ./bin/dev api owner health       # Health check on owner"
     echo "  ./bin/dev api mirror health      # Health check on mirror"
@@ -229,6 +303,7 @@ api_help() {
     echo "  ./bin/dev api _owner list        # List buckets on replica"
     echo "  ./bin/dev api owner create test  # Create bucket"
     echo "  ./bin/dev api owner ls abc-123 / # List files"
+    echo "  ./bin/dev api owner mount-list   # List FUSE mounts"
 }
 
 cmd_api() {
@@ -254,18 +329,23 @@ cmd_api() {
 
     # Second arg is command
     case "$cmd" in
-        health)   shift; api_health "$@" ;;
-        ready)    shift; api_ready "$@" ;;
-        identity) shift; api_identity "$@" ;;
-        version)  shift; api_version "$@" ;;
-        fetch)    shift; api_fetch "$@" ;;
-        list)     shift; api_list "$@" ;;
-        create)   shift; api_create "$@" ;;
-        ls)       shift; api_ls "$@" ;;
-        cat)      shift; api_cat "$@" ;;
-        upload)   shift; api_upload "$@" ;;
-        mkdir)    shift; api_mkdir "$@" ;;
-        delete)   shift; api_delete "$@" ;;
+        health)       shift; api_health "$@" ;;
+        ready)        shift; api_ready "$@" ;;
+        identity)     shift; api_identity "$@" ;;
+        version)      shift; api_version "$@" ;;
+        fetch)        shift; api_fetch "$@" ;;
+        list)         shift; api_list "$@" ;;
+        create)       shift; api_create "$@" ;;
+        ls)           shift; api_ls "$@" ;;
+        cat)          shift; api_cat "$@" ;;
+        upload)       shift; api_upload "$@" ;;
+        mkdir)        shift; api_mkdir "$@" ;;
+        delete)       shift; api_delete "$@" ;;
+        mount-list)   shift; api_mount_list "$@" ;;
+        mount-create) shift; api_mount_create "$@" ;;
+        mount-start)  shift; api_mount_start "$@" ;;
+        mount-stop)   shift; api_mount_stop "$@" ;;
+        mount-delete) shift; api_mount_delete "$@" ;;
         help|-h|--help) api_help ;;
         *)        echo -e "${RED}Unknown command: $cmd${NC}"; api_help; return 1 ;;
     esac
