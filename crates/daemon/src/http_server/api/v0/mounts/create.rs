@@ -53,14 +53,14 @@ pub struct MountInfo {
 impl From<FuseMount> for MountInfo {
     fn from(m: FuseMount) -> Self {
         Self {
-            mount_id: m.mount_id,
-            bucket_id: m.bucket_id,
+            mount_id: *m.mount_id,
+            bucket_id: *m.bucket_id,
             mount_point: m.mount_point,
-            enabled: m.enabled,
-            auto_mount: m.auto_mount,
-            read_only: m.read_only,
-            cache_size_mb: m.cache_size_mb,
-            cache_ttl_secs: m.cache_ttl_secs,
+            enabled: *m.enabled,
+            auto_mount: *m.auto_mount,
+            read_only: *m.read_only,
+            cache_size_mb: m.cache_size_mb as u32,
+            cache_ttl_secs: m.cache_ttl_secs as u32,
             status: m.status.as_str().to_string(),
             error_message: m.error_message,
             created_at: m.created_at.to_string(),

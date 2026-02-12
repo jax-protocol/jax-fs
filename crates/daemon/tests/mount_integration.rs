@@ -46,19 +46,19 @@ async fn test_create_and_get_mount() {
     .await
     .unwrap();
 
-    assert_eq!(mount.bucket_id, bucket_id);
+    assert_eq!(*mount.bucket_id, bucket_id);
     assert_eq!(mount.mount_point, mount_point);
-    assert!(!mount.auto_mount);
-    assert!(!mount.read_only);
+    assert!(!*mount.auto_mount);
+    assert!(!*mount.read_only);
     assert_eq!(mount.cache_size_mb, 50);
     assert_eq!(mount.cache_ttl_secs, 30);
     assert_eq!(mount.status, MountStatus::Stopped);
-    assert!(mount.enabled);
+    assert!(*mount.enabled);
 
     // Get the mount by ID
-    let retrieved = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
-    assert_eq!(retrieved.mount_id, mount.mount_id);
-    assert_eq!(retrieved.bucket_id, bucket_id);
+    let retrieved = FuseMount::get(*mount.mount_id, &db).await.unwrap().unwrap();
+    assert_eq!(*retrieved.mount_id, *mount.mount_id);
+    assert_eq!(*retrieved.bucket_id, bucket_id);
 }
 
 #[tokio::test]
@@ -100,12 +100,12 @@ async fn test_update_mount() {
     let mount = FuseMount::create(Uuid::new_v4(), &mount_point, false, false, None, None, &db)
         .await
         .unwrap();
-    assert!(!mount.auto_mount);
-    assert!(!mount.read_only);
+    assert!(!*mount.auto_mount);
+    assert!(!*mount.read_only);
 
     // Update the mount
     let updated = FuseMount::update(
-        &mount.mount_id,
+        *mount.mount_id,
         None,
         Some(false),
         Some(true),
@@ -117,9 +117,9 @@ async fn test_update_mount() {
     .await
     .unwrap()
     .unwrap();
-    assert!(!updated.enabled);
-    assert!(updated.auto_mount);
-    assert!(updated.read_only);
+    assert!(!*updated.enabled);
+    assert!(*updated.auto_mount);
+    assert!(*updated.read_only);
     assert_eq!(updated.cache_size_mb, 200);
     assert_eq!(updated.cache_ttl_secs, 120);
 }
@@ -135,23 +135,23 @@ async fn test_delete_mount() {
         .unwrap();
 
     // Verify mount exists
-    assert!(FuseMount::get(&mount.mount_id, &db)
+    assert!(FuseMount::get(*mount.mount_id, &db)
         .await
         .unwrap()
         .is_some());
 
     // Delete the mount
-    let deleted = FuseMount::delete(&mount.mount_id, &db).await.unwrap();
+    let deleted = FuseMount::delete(*mount.mount_id, &db).await.unwrap();
     assert!(deleted);
 
     // Verify mount is gone
-    assert!(FuseMount::get(&mount.mount_id, &db)
+    assert!(FuseMount::get(*mount.mount_id, &db)
         .await
         .unwrap()
         .is_none());
 
     // Deleting again should return false
-    let deleted_again = FuseMount::delete(&mount.mount_id, &db).await.unwrap();
+    let deleted_again = FuseMount::delete(*mount.mount_id, &db).await.unwrap();
     assert!(!deleted_again);
 }
 
@@ -167,25 +167,25 @@ async fn test_update_mount_status() {
     assert_eq!(mount.status, MountStatus::Stopped);
 
     // Update to starting
-    FuseMount::update_status(&mount.mount_id, MountStatus::Starting, None, &db)
+    FuseMount::update_status(*mount.mount_id, MountStatus::Starting, None, &db)
         .await
         .unwrap();
-    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
+    let mount = FuseMount::get(*mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Starting);
     assert!(mount.error_message.is_none());
 
     // Update to running
-    FuseMount::update_status(&mount.mount_id, MountStatus::Running, None, &db)
+    FuseMount::update_status(*mount.mount_id, MountStatus::Running, None, &db)
         .await
         .unwrap();
-    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
+    let mount = FuseMount::get(*mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Running);
 
     // Update to error with message
-    FuseMount::update_status(&mount.mount_id, MountStatus::Error, Some("Test error"), &db)
+    FuseMount::update_status(*mount.mount_id, MountStatus::Error, Some("Test error"), &db)
         .await
         .unwrap();
-    let mount = FuseMount::get(&mount.mount_id, &db).await.unwrap().unwrap();
+    let mount = FuseMount::get(*mount.mount_id, &db).await.unwrap().unwrap();
     assert_eq!(mount.status, MountStatus::Error);
     assert_eq!(mount.error_message.as_deref(), Some("Test error"));
 }
@@ -221,7 +221,7 @@ async fn test_get_auto_mount_list() {
         // Disable the mount if needed
         if !enabled {
             FuseMount::update(
-                &mount.mount_id,
+                *mount.mount_id,
                 None,
                 Some(false),
                 None,
@@ -238,8 +238,8 @@ async fn test_get_auto_mount_list() {
     // Only mounts with auto_mount=true AND enabled=true should be returned
     let auto_mounts = FuseMount::auto_list(&db).await.unwrap();
     assert_eq!(auto_mounts.len(), 1);
-    assert!(auto_mounts[0].auto_mount);
-    assert!(auto_mounts[0].enabled);
+    assert!(*auto_mounts[0].auto_mount);
+    assert!(*auto_mounts[0].enabled);
 }
 
 #[tokio::test]
@@ -283,13 +283,13 @@ async fn test_get_mounts_by_bucket() {
     .unwrap();
 
     // Get mounts by bucket
-    let bucket_mounts = FuseMount::by_bucket(&bucket_id, &db).await.unwrap();
+    let bucket_mounts = FuseMount::by_bucket(bucket_id, &db).await.unwrap();
     assert_eq!(bucket_mounts.len(), 2);
     for mount in &bucket_mounts {
-        assert_eq!(mount.bucket_id, bucket_id);
+        assert_eq!(*mount.bucket_id, bucket_id);
     }
 
-    let other_mounts = FuseMount::by_bucket(&other_bucket, &db).await.unwrap();
+    let other_mounts = FuseMount::by_bucket(other_bucket, &db).await.unwrap();
     assert_eq!(other_mounts.len(), 1);
-    assert_eq!(other_mounts[0].bucket_id, other_bucket);
+    assert_eq!(*other_mounts[0].bucket_id, other_bucket);
 }
