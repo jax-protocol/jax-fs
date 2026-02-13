@@ -15,74 +15,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.8 (2026-02-13)
+
+### New Features
+
+ - <csr-id-63712a7a66ce843e31c3a300ed3159b3a9042e2f/> implement missing FUSE operations for Unix command compatibility
+   * feat(fuse): implement setattr and xattr stubs for FUSE compatibility
+   
+   Add missing FUSE operations that were causing "Function not implemented"
+   errors for standard Unix commands (touch, mv, echo > file, truncate):
+   
+   - setattr: handles truncate (size) and mtime changes
+   - handle_truncate helper: resizes files via write buffers or Mount
+   - xattr stubs (setxattr, getxattr, listxattr, removexattr): return
+     ENOTSUP for macOS compatibility
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#73](https://github.com/jax-protocol/jax-fs/issues/73)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#73](https://github.com/jax-protocol/jax-fs/issues/73)**
+    - Implement missing FUSE operations for Unix command compatibility ([`63712a7`](https://github.com/jax-protocol/jax-fs/commit/63712a7a66ce843e31c3a300ed3159b3a9042e2f))
+</details>
+
 ## v0.1.7 (2026-02-13)
 
 ### New Features (BREAKING)
 
+<csr-id-a413ee6c2157ffec2f39a9b2df6ea389e3988df2/>
+
  - <csr-id-ec12a4b6731782a787a29c90a440417916c26157/> add FUSE filesystem for mounting buckets as local directories
    * feat!: add FUSE filesystem for mounting buckets as local directories
-   
-   Implement complete FUSE integration allowing buckets to be mounted as
-   native filesystems. Mounts appear in macOS Finder sidebar under Locations
-   and support standard file operations (read, write, create, delete, rename).
-   
-   Daemon FUSE module (crates/daemon/src/fuse/):
-   - JaxFs: FUSE filesystem using fuser with all 10 core operations
-   - MountManager: Lifecycle management (start, stop, auto-mount)
-   - InodeTable: Bidirectional inode ↔ path mapping
-   - FileCache: LRU cache with TTL for content and metadata
-   - SyncEvents: Cache invalidation on peer sync
-   
-   Daemon infrastructure:
-   - SQLite fuse_mounts table for mount persistence
-   - mount_queries.rs for CRUD + status operations
-   - REST API at /api/v0/mounts/ (create, list, get, update, delete, start, stop)
-   - CLI commands: jax mount list|add|remove|start|stop|set
-   - Auto-mount on daemon startup, graceful unmount on shutdown
-   - Platform-specific unmount (macOS umount, Linux fusermount -u)
-   
-   Desktop app integration:
-   - IPC commands for full mount management
-   - Simplified mountBucket/unmountBucket API with auto mount point selection
-   - One-click Mount/Unmount buttons on Buckets page
-   - Advanced Mounts page for manual mount point configuration
-   - macOS: /Volumes/<bucket-name> with Finder sidebar integration
-   - Linux: /media/$USER/<bucket-name>
-   - Privilege escalation: AppleScript (macOS), pkexec (Linux)
-   - Naming conflict resolution with numeric suffixes
-   
-   Technical details:
-   - Direct Mount access (not HTTP) to avoid self-call deadlock
-   - macOS mount options: volname, local, noappledouble for Finder
-   - macOS resource fork filtering (._* files)
-   - Write buffering with sync-on-first-write for pending files
-   - fuse feature enabled by default (runtime detection for availability)
- - <csr-id-a413ee6c2157ffec2f39a9b2df6ea389e3988df2/> restructure daemon, add Tauri desktop app with full UI
-   * feat!: restructure daemon, add Tauri desktop app with full UI
-   
-   Rename crates/app → crates/daemon (lib+bin) and create crates/desktop
-   (Tauri 2.0 + SolidJS). The daemon becomes a headless service with
-   separate API and gateway ports for security isolation. The desktop app
-   embeds the daemon in-process with direct ServiceState access for IPC.
-   
-   Daemon changes:
-   - Remove Askama HTML UI (replaced by Tauri desktop app)
-   - Split HTTP server into run_api (private) and run_gateway (public)
-   - Export start_service + ShutdownHandle for embedding
-   - Add bucket_log history queries with published field
-   - Replace --app-port/--gateway-port with --api-port/--gateway-port
-   
-   Desktop app (crates/desktop):
-   - Tauri backend with direct ServiceState IPC (no HTTP proxying)
-   - SolidJS frontend: Explorer, Viewer, Editor, History, Settings pages
-   - File explorer with breadcrumbs, upload, mkdir, delete, rename, move
-   - File viewer for text, markdown, images, video, audio
-   - Version history with read-only browsing of past versions
-   - Settings: auto-launch toggle, theme switcher, local config display
-   - SharePanel for per-bucket peer sharing from Explorer
-   - System tray with Open, Status, Quit
-   - Tauri capabilities for dialog and autostart permissions
-   - Separate CI (ci-tauri.yml) and release (release-desktop.yml) workflows
+- JaxFs: FUSE filesystem using fuser with all 10 core operations
+- MountManager: Lifecycle management (start, stop, auto-mount)
+- InodeTable: Bidirectional inode ↔ path mapping
+- FileCache: LRU cache with TTL for content and metadata
+- SyncEvents: Cache invalidation on peer sync
+- SQLite fuse_mounts table for mount persistence
+- mount_queries.rs for CRUD + status operations
+- REST API at /api/v0/mounts/ (create, list, get, update, delete, start, stop)
+- CLI commands: jax mount list|add|remove|start|stop|set
+- Auto-mount on daemon startup, graceful unmount on shutdown
+- Platform-specific unmount (macOS umount, Linux fusermount -u)
+- IPC commands for full mount management
+- Simplified mountBucket/unmountBucket API with auto mount point selection
+- One-click Mount/Unmount buttons on Buckets page
+- Advanced Mounts page for manual mount point configuration
+- macOS: /Volumes/<bucket-name> with Finder sidebar integration
+- Linux: /media/$USER/<bucket-name>
+- Privilege escalation: AppleScript (macOS), pkexec (Linux)
+- Naming conflict resolution with numeric suffixes
+- Direct Mount access (not HTTP) to avoid self-call deadlock
+- macOS mount options: volname, local, noappledouble for Finder
+- macOS resource fork filtering (._* files)
+- Write buffering with sync-on-first-write for pending files
+- fuse feature enabled by default (runtime detection for availability)
+* feat!: restructure daemon, add Tauri desktop app with full UI
+- Remove Askama HTML UI (replaced by Tauri desktop app)
+- Split HTTP server into run_api (private) and run_gateway (public)
+- Export start_service + ShutdownHandle for embedding
+- Add bucket_log history queries with published field
+- Replace --app-port/--gateway-port with --api-port/--gateway-port
+- Tauri backend with direct ServiceState IPC (no HTTP proxying)
+- SolidJS frontend: Explorer, Viewer, Editor, History, Settings pages
+- File explorer with breadcrumbs, upload, mkdir, delete, rename, move
+- File viewer for text, markdown, images, video, audio
+- Version history with read-only browsing of past versions
+- Settings: auto-launch toggle, theme switcher, local config display
+- SharePanel for per-bucket peer sharing from Explorer
+- System tray with Open, Status, Quit
+- Tauri capabilities for dialog and autostart permissions
+- Separate CI (ci-tauri.yml) and release (release-desktop.yml) workflows
 
 ### Bug Fixes
 
@@ -96,9 +109,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#62](https://github.com/jax-protocol/jax-fs/issues/62), [#64](https://github.com/jax-protocol/jax-fs/issues/64)
+ - 3 unique issues were worked on: [#62](https://github.com/jax-protocol/jax-fs/issues/62), [#64](https://github.com/jax-protocol/jax-fs/issues/64), [#65](https://github.com/jax-protocol/jax-fs/issues/65)
 
 ### Commit Details
 
@@ -110,7 +123,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Restructure daemon, add Tauri desktop app with full UI ([`a413ee6`](https://github.com/jax-protocol/jax-fs/commit/a413ee6c2157ffec2f39a9b2df6ea389e3988df2))
  * **[#64](https://github.com/jax-protocol/jax-fs/issues/64)**
     - Add FUSE filesystem for mounting buckets as local directories ([`ec12a4b`](https://github.com/jax-protocol/jax-fs/commit/ec12a4b6731782a787a29c90a440417916c26157))
+ * **[#65](https://github.com/jax-protocol/jax-fs/issues/65)**
+    - Bump jax-object-store v0.1.0, jax-common v0.1.6, jax-daemon v0.1.7 ([`f0219f2`](https://github.com/jax-protocol/jax-fs/commit/f0219f2d882d65272b5cbe81a39680a06006a0d3))
 </details>
+
+<csr-unknown>
+Implement complete FUSE integration allowing buckets to be mounted asnative filesystems. Mounts appear in macOS Finder sidebar under Locationsand support standard file operations (read, write, create, delete, rename).Daemon FUSE module (crates/daemon/src/fuse/):Daemon infrastructure:Desktop app integration:Technical details: restructure daemon, add Tauri desktop app with full UIRename crates/app → crates/daemon (lib+bin) and create crates/desktop(Tauri 2.0 + SolidJS). The daemon becomes a headless service withseparate API and gateway ports for security isolation. The desktop appembeds the daemon in-process with direct ServiceState access for IPC.Daemon changes:Desktop app (crates/desktop):<csr-unknown/>
 
 ## v0.1.6 (2025-11-18)
 
