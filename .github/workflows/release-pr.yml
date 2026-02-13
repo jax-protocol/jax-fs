@@ -132,11 +132,11 @@ jobs:
         id: unpublished
         if: steps.check.outputs.needs_release == 'true' && steps.check.outputs.reason == 'unpublished_crates'
         run: |
-          # For unpublished crates, just create a marker commit
+          # For unpublished crates, create a marker commit with timestamp
           # The publish workflow will handle the actual publish
-          echo "Initial publish of new crates" > .initial-publish
+          echo "Initial publish of new crates - $(date -u +%Y-%m-%dT%H:%M:%SZ)" > .initial-publish
           git add .initial-publish
-          git commit -m "chore: initial publish of jax-daemon, jax-object-store, jax-common"
+          git commit -m "chore: initial publish of${{ steps.check.outputs.unpublished }}"
           echo "has_changes=true" >> $GITHUB_OUTPUT
 
       - name: Push release branch

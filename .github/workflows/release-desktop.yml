@@ -15,28 +15,13 @@ permissions:
 
 jobs:
   build:
-    name: Build (${{ matrix.platform.name }})
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - name: macOS (Apple Silicon)
-            os: macos-latest
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
-          - name: macOS (Intel)
-            os: macos-latest
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
-
-    runs-on: ${{ matrix.platform.os }}
+    name: Build macOS
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform.target }}
 
       - name: Install macFUSE
         run: brew install --cask macfuse
@@ -65,9 +50,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-tauri-release-build-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-tauri-release-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-tauri-release-build-${{ matrix.platform.target }}-
+            ${{ runner.os }}-tauri-release-build-
 
       - name: Install frontend dependencies
         working-directory: crates/desktop
@@ -80,18 +65,26 @@ jobs:
         with:
           projectPath: crates/desktop
           tauriScript: pnpm tauri
-          args: ${{ matrix.platform.args }}
 
-      - name: Find DMG files
+      - name: Find and list DMG files
+        id: find-dmg
         run: |
           echo "Looking for DMG files..."
-          find . -name "*.dmg" -type f 2>/dev/null
+          find crates/desktop/src-tauri/target -name "*.dmg" -type f 2>/dev/null || true
+          DMG_PATH=$(find crates/desktop/src-tauri/target -name "*.dmg" -type f 2>/dev/null | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            echo "Found DMG: $DMG_PATH"
+            echo "dmg_path=$DMG_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "No DMG found!"
+            exit 1
+          fi
 
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jax-desktop-${{ matrix.platform.target }}
-          path: crates/desktop/src-tauri/target/**/bundle/dmg/*.dmg
+          name: jax-desktop-macos
+          path: crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
   release:
@@ -101,11 +94,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
 
       - name: Get version
         id: version
@@ -138,11 +130,11 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | macOS (Apple Silicon) | `.dmg` (aarch64) |
-            | macOS (Intel) | `.dmg` (x86_64) |
+            | macOS (Apple Silicon) | `.dmg` |
 
             ### Installation
-            - **macOS**: Download the `.dmg`, open it, drag Jax to Applications
-            - **Requires macFUSE** for FUSE mount support
+            1. Download the `.dmg` file
+            2. Open it and drag Jax to Applications
+            3. **Requires [macFUSE](https://osxfuse.github.io/)** for FUSE mount support
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
