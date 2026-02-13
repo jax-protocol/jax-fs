@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use fuser::BackgroundSession;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
 use uuid::Uuid;
 
 use crate::database::models::FuseMount;
@@ -36,12 +35,49 @@ impl Default for MountManagerConfig {
     }
 }
 
+/// Handle to a FUSE session running in a background thread
+///
+/// This wrapper makes the session Send+Sync by running the actual BackgroundSession
+/// in a dedicated thread and communicating via channel.
+pub struct SessionHandle {
+    /// Sending on this channel signals the session thread to drop the session and unmount
+    unmount_tx: Option<oneshot::Sender<()>>,
+}
+
+impl SessionHandle {
+    /// Create a new session handle that owns the FUSE session in a background thread
+    fn spawn(session: fuser::BackgroundSession) -> Self {
+        let (unmount_tx, unmount_rx) = oneshot::channel();
+
+        // Spawn a thread that owns the session
+        // When unmount_rx receives a message (or is dropped), the session is dropped
+        std::thread::spawn(move || {
+            // Keep the session alive until we receive the unmount signal
+            let _session = session;
+            // Block until unmount is requested or the sender is dropped
+            let _ = unmount_rx.blocking_recv();
+            // Session is dropped here, which unmounts the filesystem
+        });
+
+        Self {
+            unmount_tx: Some(unmount_tx),
+        }
+    }
+
+    /// Signal the session to unmount
+    fn unmount(&mut self) {
+        if let Some(tx) = self.unmount_tx.take() {
+            let _ = tx.send(());
+        }
+    }
+}
+
 /// A live mount with its associated state
 pub struct LiveMount {
     /// The bucket mount (kept alive for quick access)
     pub mount: Arc<RwLock<Mount>>,
     /// FUSE session handle (if running)
-    pub session: Option<BackgroundSession>,
+    pub session: Option<SessionHandle>,
     /// File cache for this mount
     pub cache: FileCache,
     /// Configuration from database
@@ -414,10 +450,13 @@ impl MountManager {
             ))
         })?;
 
+        // Wrap session in a handle for thread safety
+        let session_handle = SessionHandle::spawn(session);
+
         // Create live mount
         let live_mount = LiveMount {
             mount: mount_arc,
-            session: Some(session),
+            session: Some(session_handle),
             cache,
             config: mount_config.clone(),
         };
@@ -443,7 +482,10 @@ impl MountManager {
         let mount_point = {
             let mut mounts = self.mounts.write().await;
             if let Some(live) = mounts.get_mut(mount_id) {
-                // Drop the session to unmount
+                // Signal the session to unmount
+                if let Some(ref mut session) = live.session {
+                    session.unmount();
+                }
                 live.session.take();
 
                 live.config.mount_point.clone()
