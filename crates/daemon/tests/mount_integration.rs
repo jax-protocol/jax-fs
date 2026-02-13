@@ -10,25 +10,16 @@ use uuid::Uuid;
 
 use jax_daemon::{Database, FuseMount, MountStatus};
 
-/// Create a test database
-async fn setup_test_db() -> (Database, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
-    let db_path = temp_dir.path().join("test.db");
-
-    // Create an empty db file
-    std::fs::File::create(&db_path).unwrap();
-
-    let db_url = format!("sqlite://{}", db_path.display());
-    let db = Database::connect(&url::Url::parse(&db_url).unwrap())
-        .await
-        .unwrap();
-
-    (db, temp_dir)
+/// Create an in-memory test database
+async fn setup_test_db() -> Database {
+    let db_url = url::Url::parse("sqlite::memory:").unwrap();
+    Database::connect(&db_url).await.unwrap()
 }
 
 #[tokio::test]
 async fn test_create_and_get_mount() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
@@ -63,7 +54,8 @@ async fn test_create_and_get_mount() {
 
 #[tokio::test]
 async fn test_list_mounts() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
 
     // Create multiple mounts
     for i in 0..3 {
@@ -93,7 +85,8 @@ async fn test_list_mounts() {
 
 #[tokio::test]
 async fn test_update_mount() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
@@ -126,7 +119,8 @@ async fn test_update_mount() {
 
 #[tokio::test]
 async fn test_delete_mount() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
@@ -157,7 +151,8 @@ async fn test_delete_mount() {
 
 #[tokio::test]
 async fn test_update_mount_status() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
     let mount_point = temp_dir.path().join("mount").to_string_lossy().to_string();
     std::fs::create_dir_all(&mount_point).unwrap();
 
@@ -192,7 +187,8 @@ async fn test_update_mount_status() {
 
 #[tokio::test]
 async fn test_get_auto_mount_list() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
 
     // Create mounts with different auto_mount settings
     for (i, (auto_mount, enabled)) in [(true, true), (true, false), (false, true), (false, false)]
@@ -244,7 +240,8 @@ async fn test_get_auto_mount_list() {
 
 #[tokio::test]
 async fn test_get_mounts_by_bucket() {
-    let (db, temp_dir) = setup_test_db().await;
+    let db = setup_test_db().await;
+    let temp_dir = TempDir::new().unwrap();
     let bucket_id = Uuid::new_v4();
 
     // Create multiple mounts for the same bucket
