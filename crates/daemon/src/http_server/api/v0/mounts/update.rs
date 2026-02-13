@@ -1,20 +1,13 @@
 //! Update mount API endpoint
 
-use axum::extract::Path;
-use axum::response::IntoResponse;
-#[cfg(feature = "fuse")]
-use axum::response::Response;
+use axum::extract::{Json, Path, State};
+use axum::response::{IntoResponse, Response};
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(feature = "fuse")]
-use axum::extract::State;
-use axum::Json;
-
 use super::create::MountInfo;
 use crate::http_server::api::client::ApiRequest;
-#[cfg(feature = "fuse")]
 use crate::ServiceState;
 
 /// Request body for updating a mount (used by handler)
@@ -42,7 +35,6 @@ pub struct UpdateMountResponse {
     pub mount: MountInfo,
 }
 
-#[cfg(feature = "fuse")]
 pub async fn handler(
     State(state): State<ServiceState>,
     Path(id): Path<Uuid>,
@@ -75,19 +67,6 @@ pub async fn handler(
         .into_response())
 }
 
-#[cfg(not(feature = "fuse"))]
-pub async fn handler(
-    Path(_id): Path<Uuid>,
-    Json(_req): Json<UpdateMountBody>,
-) -> impl IntoResponse {
-    (
-        http::StatusCode::NOT_IMPLEMENTED,
-        "FUSE support not enabled",
-    )
-        .into_response()
-}
-
-#[cfg(feature = "fuse")]
 #[derive(Debug, thiserror::Error)]
 pub enum UpdateMountError {
     #[error("Mount manager unavailable")]
@@ -98,7 +77,6 @@ pub enum UpdateMountError {
     Mount(#[from] crate::fuse::MountError),
 }
 
-#[cfg(feature = "fuse")]
 impl IntoResponse for UpdateMountError {
     fn into_response(self) -> Response {
         match self {
@@ -119,7 +97,6 @@ impl IntoResponse for UpdateMountError {
     }
 }
 
-// Client implementation - builds request for this operation
 impl ApiRequest for UpdateMountRequest {
     type Response = UpdateMountResponse;
 

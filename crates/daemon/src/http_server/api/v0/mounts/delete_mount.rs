@@ -1,20 +1,13 @@
 //! Delete mount API endpoint
 
-use axum::extract::Path;
-use axum::response::IntoResponse;
-#[cfg(feature = "fuse")]
-use axum::response::Response;
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[cfg(feature = "fuse")]
-use axum::extract::State;
-#[cfg(feature = "fuse")]
-use axum::Json;
-
 use crate::http_server::api::client::ApiRequest;
-#[cfg(feature = "fuse")]
 use crate::ServiceState;
 
 /// Request to delete a mount
@@ -29,7 +22,6 @@ pub struct DeleteMountResponse {
     pub deleted: bool,
 }
 
-#[cfg(feature = "fuse")]
 pub async fn handler(
     State(state): State<ServiceState>,
     Path(id): Path<Uuid>,
@@ -44,16 +36,6 @@ pub async fn handler(
     Ok((http::StatusCode::OK, Json(DeleteMountResponse { deleted })).into_response())
 }
 
-#[cfg(not(feature = "fuse"))]
-pub async fn handler(Path(_id): Path<Uuid>) -> impl IntoResponse {
-    (
-        http::StatusCode::NOT_IMPLEMENTED,
-        "FUSE support not enabled",
-    )
-        .into_response()
-}
-
-#[cfg(feature = "fuse")]
 #[derive(Debug, thiserror::Error)]
 pub enum DeleteMountError {
     #[error("Mount manager unavailable")]
@@ -62,7 +44,6 @@ pub enum DeleteMountError {
     Mount(#[from] crate::fuse::MountError),
 }
 
-#[cfg(feature = "fuse")]
 impl IntoResponse for DeleteMountError {
     fn into_response(self) -> Response {
         match self {
@@ -80,7 +61,6 @@ impl IntoResponse for DeleteMountError {
     }
 }
 
-// Client implementation - builds request for this operation
 impl ApiRequest for DeleteMountRequest {
     type Response = DeleteMountResponse;
 
