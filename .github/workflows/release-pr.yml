@@ -53,12 +53,29 @@ jobs:
       - name: Check if release is needed
         id: check
         run: |
+          # Check if any crates are unpublished on crates.io
+          UNPUBLISHED=""
+          for crate in jax-daemon jax-object-store jax-common; do
+            if ! cargo search "$crate" 2>/dev/null | grep -q "^$crate = "; then
+              echo "Crate $crate is not published on crates.io"
+              UNPUBLISHED="$UNPUBLISHED $crate"
+            fi
+          done
+
+          if [ -n "$UNPUBLISHED" ]; then
+            echo "Unpublished crates found:$UNPUBLISHED"
+            echo "needs_release=true" >> $GITHUB_OUTPUT
+            echo "reason=unpublished_crates" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # Get the latest release tag
           LATEST_TAG=$(git describe --tags --abbrev=0 --match "jax-daemon-v*" 2>/dev/null || echo "")
 
           if [ -z "$LATEST_TAG" ]; then
             echo "No previous release found, will create initial release"
             echo "needs_release=true" >> $GITHUB_OUTPUT
+            echo "reason=no_previous_release" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -70,6 +87,7 @@ jobs:
           if [ "$COMMIT_COUNT" -gt 0 ]; then
             echo "Found $COMMIT_COUNT conventional commits since $LATEST_TAG"
             echo "needs_release=true" >> $GITHUB_OUTPUT
+            echo "reason=new_commits" >> $GITHUB_OUTPUT
           else
             echo "No conventional commits since $LATEST_TAG - skipping release PR"
             echo "needs_release=false" >> $GITHUB_OUTPUT
@@ -92,6 +110,14 @@ jobs:
         id: smart-release
         if: steps.check.outputs.needs_release == 'true'
         run: |
+          # For unpublished crates, force a patch bump to ensure smart-release sees changes
+          if [ "${{ steps.check.outputs.reason }}" = "unpublished_crates" ]; then
+            echo "Forcing patch bump for unpublished crates..."
+            BUMP_FLAG="--bump patch"
+          else
+            BUMP_FLAG=""
+          fi
+
           # Execute release: updates files, creates commits, but NO TAGS
           # Tags will be created by publish workflow after PR is merged
           # May exit non-zero if no crates actually changed (e.g., only docs/CI changes)
@@ -100,7 +126,8 @@ jobs:
             --no-publish \
             --no-tag \
             --allow-dirty \
-            --update-crates-index; then
+            --update-crates-index \
+            $BUMP_FLAG; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "smart-release found no crate changes to release"
