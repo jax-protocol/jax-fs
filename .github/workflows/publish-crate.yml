@@ -77,20 +77,6 @@ jobs:
 
           echo "Tags processed successfully"
 
-      - name: Publish jax-common
-        run: |
-          cd crates/common
-          echo "Publishing jax-common..."
-          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-common publish failed or already published"
-          cd ../..
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      - name: Wait for crates.io indexing
-        run: |
-          echo "Waiting 90 seconds for crates.io to index jax-common..."
-          sleep 90
-
       - name: Publish jax-object-store
         run: |
           cd crates/object-store
@@ -103,6 +89,20 @@ jobs:
       - name: Wait for crates.io indexing (object-store)
         run: |
           echo "Waiting 90 seconds for crates.io to index jax-object-store..."
+          sleep 90
+
+      - name: Publish jax-common
+        run: |
+          cd crates/common
+          echo "Publishing jax-common..."
+          cargo publish --token $CARGO_REGISTRY_TOKEN || echo "jax-common publish failed or already published"
+          cd ../..
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Wait for crates.io indexing (common)
+        run: |
+          echo "Waiting 90 seconds for crates.io to index jax-common..."
           sleep 90
 
       - name: Publish jax-daemon
