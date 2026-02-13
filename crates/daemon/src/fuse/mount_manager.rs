@@ -369,16 +369,6 @@ impl MountManager {
             .await
             .map_err(MountError::Database)?;
 
-        // Get bucket name for volume label
-        let bucket_name = self
-            .db
-            .get_bucket_info(&mount_config.bucket_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|info| info.name)
-            .unwrap_or_else(|| "jax".to_string());
-
         // Load the bucket mount
         let bucket_mount = self
             .peer
@@ -425,13 +415,25 @@ impl MountManager {
         ];
 
         #[cfg(target_os = "macos")]
-        let options = vec![
-            fuser::MountOption::FSName("jax".to_string()),
-            fuser::MountOption::AutoUnmount,
-            fuser::MountOption::CUSTOM(format!("volname={}", bucket_name)),
-            fuser::MountOption::CUSTOM("local".to_string()),
-            fuser::MountOption::CUSTOM("noappledouble".to_string()),
-        ];
+        let options = {
+            // Get bucket name for volume label (macOS only)
+            let bucket_name = self
+                .db
+                .get_bucket_info(&mount_config.bucket_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|info| info.name)
+                .unwrap_or_else(|| "jax".to_string());
+
+            vec![
+                fuser::MountOption::FSName("jax".to_string()),
+                fuser::MountOption::AutoUnmount,
+                fuser::MountOption::CUSTOM(format!("volname={}", bucket_name)),
+                fuser::MountOption::CUSTOM("local".to_string()),
+                fuser::MountOption::CUSTOM("noappledouble".to_string()),
+            ]
+        };
 
         #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let options = vec![
