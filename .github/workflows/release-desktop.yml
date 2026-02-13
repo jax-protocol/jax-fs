@@ -82,18 +82,17 @@ jobs:
           tauriScript: pnpm tauri
           args: ${{ matrix.platform.args }}
 
-      - name: Find and upload DMG
+      - name: Find DMG files
         run: |
           echo "Looking for DMG files..."
-          find target -name "*.dmg" -type f 2>/dev/null || true
+          find . -name "*.dmg" -type f 2>/dev/null
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: jax-desktop-${{ matrix.platform.target }}
-          path: |
-            target/**/release/bundle/dmg/*.dmg
-          if-no-files-found: warn
+          path: crates/desktop/src-tauri/target/**/bundle/dmg/*.dmg
+          if-no-files-found: error
 
   release:
     name: Create Release
