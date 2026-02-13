@@ -26,6 +26,8 @@ FUSE (Filesystem in Userspace) allows mounting buckets as local directories. Use
 │  │ InodeTable  │  │  FileCache  │  │  WriteBuffers           │  │
 │  │ path ↔ ino  │  │  LRU + TTL  │  │  fh → pending data      │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+│                                                                 │
+│  save_tx ──────────────────────────────────────────────────────►│
 └─────────────────────────────────┬───────────────────────────────┘
                                   │ Direct Rust calls
                                   ▼
@@ -37,7 +39,7 @@ FUSE (Filesystem in Userspace) allows mounting buckets as local directories. Use
 │  - ops_log: PathOpLog (CRDT operations)                         │
 │  - manifest: Manifest metadata                                  │
 │                                                                 │
-│  Methods: ls(), cat(), add(), rm(), mkdir(), mv()               │
+│  Methods: ls(), cat(), add(), rm(), mkdir(), mv(), merge_from() │
 └─────────────────────────────────┬───────────────────────────────┘
                                   │
                                   ▼
@@ -58,7 +60,7 @@ FUSE (Filesystem in Userspace) allows mounting buckets as local directories. Use
 | `crates/daemon/src/fuse/mount_manager.rs` | Mount lifecycle management |
 | `crates/daemon/src/fuse/inode_table.rs` | Path ↔ inode mapping |
 | `crates/daemon/src/fuse/cache.rs` | LRU content/attr cache |
-| `crates/daemon/src/fuse/sync_events.rs` | Sync event types |
+| `crates/daemon/src/fuse/sync_events.rs` | Sync event and save request types |
 
 ## Data Flow
 
@@ -133,6 +135,7 @@ User: echo "hello" > /mnt/bucket/new.txt
 │    - Records in ops_log         │
 │    Mark clean                   │
 │    Invalidate cache             │
+│    Send SaveRequest ────────────┼──► MountManager
 └─────────────────────────────────┘
                 │
                 ▼
@@ -140,6 +143,27 @@ User: echo "hello" > /mnt/bucket/new.txt
 │  FUSE release(ino, fh)          │
 │  → Removes WriteBuffer[fh]      │
 └─────────────────────────────────┘
+```
+
+### Write Persistence
+
+After `flush()` succeeds, JaxFs sends a `SaveRequest` via channel to MountManager:
+
+```
+JaxFs.flush()
+    │
+    ├── mount.add(path, data)     // Updates in-memory state
+    ├── cache.invalidate(path)
+    └── save_tx.send(SaveRequest) // Request persistence
+            │
+            ▼
+MountManager.spawn_save_handler()
+    │
+    └── peer.save_mount(&mount)   // Persists to manifest + notifies peers
+            │
+            ├── Saves manifest to blobs
+            ├── Appends to bucket log
+            └── Dispatches PingPeer jobs
 ```
 
 ### What `Mount.add()` Does
@@ -154,11 +178,9 @@ When FUSE calls `mount.add(path, data)`:
 6. **Track pins**: Add all new hashes to `pins` set
 7. **Record operation**: `ops_log.record(Add, path, link)`
 
-**Important**: `add()` does NOT call `save()`. The manifest is not updated.
-
 ## MountManager
 
-The `MountManager` handles mount lifecycle:
+The `MountManager` handles mount lifecycle and persistence:
 
 ```rust
 pub struct MountManager {
@@ -166,7 +188,7 @@ pub struct MountManager {
     mounts: RwLock<HashMap<Uuid, LiveMount>>,
     /// Database for config persistence
     db: Database,
-    /// Peer for loading mounts
+    /// Peer for loading/saving mounts
     peer: Peer<Database>,
     /// Event channel for sync notifications
     sync_tx: broadcast::Sender<SyncEvent>,
@@ -191,7 +213,9 @@ mount start
     │
     ├── Load mount from peer: peer.mount(bucket_id)
     ├── Create FileCache
-    ├── Create JaxFs with mount reference
+    ├── Create save channel (mpsc)
+    ├── Create JaxFs with mount reference + save_tx
+    ├── Spawn save handler task
     ├── Spawn fuser::BackgroundSession
     ├── Store in mounts HashMap
     └── Update DB status → Running
@@ -205,9 +229,75 @@ mount stop
 on_bucket_synced (called when sync completes)
     │
     ├── Find affected mounts
-    ├── [CURRENT] Replace mount with fresh peer.mount()
+    ├── Check if ops_log has local changes
+    │   │
+    │   ├── If empty: Replace with fresh peer.mount()
+    │   │
+    │   └── If has changes: Merge with conflict resolution
+    │       ├── Load incoming mount
+    │       ├── mount.merge_from(incoming, ConflictFile)
+    │       ├── Log resolved conflicts
+    │       └── Save merged result
+    │
     ├── Invalidate cache
     └── Emit SyncEvent::MountInvalidated
+```
+
+## Sync Integration
+
+### Incoming Remote Changes
+
+When a remote peer syncs new changes:
+
+```
+Remote peer announces new manifest
+        │
+        ▼
+Sync engine downloads and applies manifest
+        │
+        ▼
+MountManager.on_bucket_synced(bucket_id)
+        │
+        ▼
+Check for local changes (ops_log.is_empty()?)
+        │
+        ├── No local changes:
+        │   └── Replace mount with peer.mount()
+        │
+        └── Has local changes:
+            ├── Load incoming: peer.mount(bucket_id)
+            ├── Merge: mount.merge_from(incoming, ConflictFile)
+            │   └── Creates conflict files for concurrent edits
+            ├── Save: peer.save_mount(&mount)
+            └── Log conflicts resolved
+        │
+        ▼
+Invalidate cache + emit MountInvalidated
+        │
+        ▼
+JaxFs sync listener receives event
+  - Calls cache.invalidate_all()
+  - Next FUSE read sees updated content
+```
+
+### Conflict Resolution
+
+When concurrent edits occur, the `ConflictFile` resolver creates conflict copies:
+
+```
+Peer A: Creates /config.json with "version: 1"
+Peer B: Creates /config.json with "version: 2"
+        │
+        ▼
+Both sync to each other
+        │
+        ▼
+merge_from() with ConflictFile resolver
+        │
+        ▼
+Result:
+  /config.json         ← One version (CRDT winner)
+  /config@abc123.json  ← Conflict copy with hash suffix
 ```
 
 ## Cache Architecture
@@ -227,78 +317,6 @@ pub struct FileCache {
 - **TTL**: Configurable per-mount (default 60s)
 - **Size limit**: Configurable per-mount (default 100MB)
 - **Invalidation**: On local writes, on sync events
-
-## Sync Integration
-
-When a remote peer syncs new changes:
-
-```
-Remote peer announces new manifest
-        │
-        ▼
-Sync engine downloads and applies manifest
-        │
-        ▼
-MountManager.on_bucket_synced(bucket_id)
-        │
-        ▼
-For each affected mount:
-  - Invalidate cache
-  - Emit SyncEvent::MountInvalidated
-        │
-        ▼
-JaxFs sync listener receives event
-  - Calls cache.invalidate_all()
-  - Next FUSE read sees updated content
-```
-
-## Current Gaps
-
-### Gap 1: No Persistence of Writes
-
-FUSE writes are not persisted to a new manifest:
-
-```
-User writes file → mount.add() → blob stored, entry updated
-                                         ↓
-                              But mount.save() never called!
-                                         ↓
-                              Manifest still points to old state
-                                         ↓
-                              Daemon restart → writes "lost"
-                              (blobs exist but are orphaned)
-```
-
-**Fix needed**: Call `save()` at appropriate times (flush, periodic, unmount).
-
-### Gap 2: Sync Replaces Mount
-
-When sync happens, local unsaved changes are lost:
-
-```
-User writes file → mount has changes in ops_log
-        │
-        ▼
-Sync arrives → on_bucket_synced()
-        │
-        ▼
-*live_mount.mount = peer.mount(bucket_id)  // REPLACE!
-        │
-        ▼
-Old mount dropped → ops_log and entry changes LOST
-```
-
-**Fix needed**: Merge instead of replace when ops_log is non-empty.
-
-### Gap 3: No Conflict Resolution
-
-Even if we fix Gap 2, there's no conflict resolution wired in:
-
-- `mount.merge_from()` exists but is never called
-- `ConflictFile` resolver exists but is never used
-- User could lose data during concurrent edits
-
-**Fix needed**: Wire conflict resolution into the merge path.
 
 ## Configuration
 
@@ -323,4 +341,4 @@ Mount configuration is stored in SQLite (`fuse_mounts` table):
 | macOS | macFUSE | `umount` / `diskutil unmount force` |
 | Linux | FUSE kernel module | `fusermount -u` / `fusermount -uz` |
 
-Mount options vary by platform (see `mount_manager.rs:305-325`).
+Mount options vary by platform (see `mount_manager.rs`).
