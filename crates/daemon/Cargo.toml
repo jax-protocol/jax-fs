@@ -30,7 +30,7 @@ fuser = { version = "0.15", optional = true }
 moka = { version = "0.12", features = ["sync"], optional = true }
 libc = { version = "0.2", optional = true }
 # Workspace crates
-common = { package = "jax-common", version = "^0.1.5", path = "../common" }
+common = { package = "jax-common", version = "^0.1.6", path = "../common" }
 object-store = { package = "jax-object-store", version = "^0.1.0", path = "../object-store" }
 
 # iroh for peer networking
