@@ -7,8 +7,8 @@ use url::Url;
 #[command(name = "cli")]
 #[command(about = "A basic CLI example")]
 pub struct Args {
-    #[arg(long, global = true, default_value = "http://localhost:3000")]
-    pub remote: Url,
+    #[arg(long, global = true)]
+    pub remote: Option<Url>,
 
     /// Path to the jax config directory (defaults to ~/.jax)
     #[arg(long, global = true)]

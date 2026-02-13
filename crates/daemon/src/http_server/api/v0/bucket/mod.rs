@@ -17,12 +17,14 @@ pub mod ping;
 pub mod publish;
 pub mod rename;
 pub mod share;
+pub mod shares;
 pub mod update;
 
 // Re-export for convenience
 pub use create::CreateRequest;
 pub use list::ListRequest;
 pub use share::ShareRequest;
+pub use shares::SharesRequest;
 
 pub fn router(state: ServiceState) -> Router<ServiceState> {
     Router::new()
@@ -38,6 +40,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/cat", post(cat::handler).get(cat::handler_get))
         .route("/ping", post(ping::handler))
         .route("/share", post(share::handler))
+        .route("/shares", post(shares::handler))
         .route("/publish", post(publish::handler))
         .route("/export", post(export::handler))
         .route("/latest-published", post(latest_published::handler))

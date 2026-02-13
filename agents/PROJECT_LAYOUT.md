@@ -13,7 +13,7 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/lib.rs` - Library entry point, re-exports service modules and state
 - `src/main.rs` - Binary entry point, CLI parsing
 - `src/http_server/` - HTTP servers (API + gateway)
-  - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, etc.)
+  - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, shares, etc.)
   - `api/v0/mounts/` - FUSE mount REST API (create, list, get, update, delete, start, stop)
   - `api/client/` - API client for CLI commands and FUSE operations
   - `html/gateway/` - Gateway HTML handlers for published content
@@ -35,8 +35,9 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/cli/` - CLI-specific code (not exported by library)
   - `args.rs` - CLI argument parsing
   - `op.rs` - Op trait and command_enum macro
-  - `ops/` - CLI command implementations (bucket, daemon, init, mount, version)
-    - `mount/` - Mount CLI commands (list, add, remove, start, stop, set)
+  - `ops/` - CLI command implementations (bucket, daemon, health, init, mount, version)
+    - `bucket/shares/` - Share management subcommands (create, ls)
+    - `mount/` - Mount CLI commands (list, add, remove, start, stop, set) — gated behind `fuse` feature
 
 ### `crates/common` - Core Library
 
