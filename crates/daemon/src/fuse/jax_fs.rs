@@ -9,7 +9,7 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use fuser::{
     FileAttr, FileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty,
-    ReplyEntry, ReplyOpen, ReplyWrite, Request,
+    ReplyEntry, ReplyOpen, ReplyWrite, ReplyXattr, Request, TimeOrNow,
 };
 use libc;
 use tokio::runtime::Handle;
@@ -315,6 +315,83 @@ impl JaxFs {
 
         result
     }
+
+    /// Handle truncate operation (size parameter in setattr)
+    fn handle_truncate(&self, path: &str, size: u64, fh: Option<u64>) -> Result<(), libc::c_int> {
+        // Check if this is a directory
+        if let Some(attr) = self.fetch_attr(path) {
+            if attr.is_dir {
+                return Err(libc::EISDIR);
+            }
+        }
+
+        // Check write buffers first if we have a file handle
+        if let Some(fh) = fh {
+            let mut buffers = self.rt.block_on(self.write_buffers.write());
+            if let Some(buffer) = buffers.get_mut(&fh) {
+                buffer.data.resize(size as usize, 0);
+                buffer.dirty = true;
+                return Ok(());
+            }
+        }
+
+        // No active write buffer - need to read-modify-write via Mount
+        let mount = self.mount.clone();
+        let path_str = path.to_string();
+
+        let result: Result<(), libc::c_int> = self.rt.block_on(async move {
+            let path_buf = std::path::PathBuf::from(&path_str);
+
+            if size == 0 {
+                // Truncate to empty: just write empty content
+                let mut mount_guard = mount.write().await;
+                mount_guard
+                    .add(&path_buf, std::io::Cursor::new(Vec::new()))
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to truncate {}: {}", path_str, e);
+                        libc::EIO
+                    })?;
+            } else {
+                // Truncate to non-zero size: read current content, resize, write back
+                let current_data = {
+                    let mount_guard = mount.read().await;
+                    mount_guard.cat(&path_buf).await.unwrap_or_default()
+                };
+
+                let mut new_data = current_data;
+                new_data.resize(size as usize, 0);
+
+                let mut mount_guard = mount.write().await;
+                mount_guard
+                    .add(&path_buf, std::io::Cursor::new(new_data))
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to truncate {}: {}", path_str, e);
+                        libc::EIO
+                    })?;
+            }
+
+            Ok(())
+        });
+        result?;
+
+        // Invalidate cache after successful truncate
+        self.cache.invalidate(path);
+
+        // Request save to persist changes
+        if let Some(ref save_tx) = self.save_tx {
+            let mount_id = self.mount_id;
+            let tx = save_tx.clone();
+            self.rt.spawn(async move {
+                if let Err(e) = tx.send(SaveRequest { mount_id }).await {
+                    tracing::error!("Failed to send save request: {}", e);
+                }
+            });
+        }
+
+        Ok(())
+    }
 }
 
 impl Filesystem for JaxFs {
@@ -396,6 +473,77 @@ impl Filesystem for JaxFs {
             }
         };
 
+        match self.fetch_attr(&path) {
+            Some(attr) => {
+                let file_attr = Self::make_attr(ino, &attr);
+                reply.attr(&Self::ATTR_TTL, &file_attr);
+            }
+            None => {
+                reply.error(libc::ENOENT);
+            }
+        }
+    }
+
+    fn setattr(
+        &mut self,
+        _req: &Request<'_>,
+        ino: u64,
+        _mode: Option<u32>,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+        size: Option<u64>,
+        _atime: Option<TimeOrNow>,
+        mtime: Option<TimeOrNow>,
+        _ctime: Option<std::time::SystemTime>,
+        fh: Option<u64>,
+        _crtime: Option<std::time::SystemTime>,
+        _chgtime: Option<std::time::SystemTime>,
+        _bkuptime: Option<std::time::SystemTime>,
+        _flags: Option<u32>,
+        reply: ReplyAttr,
+    ) {
+        let path = {
+            let inodes = self.rt.block_on(self.inodes.read());
+            match inodes.get_path(ino) {
+                Some(p) => p.to_string(),
+                None => {
+                    reply.error(libc::ENOENT);
+                    return;
+                }
+            }
+        };
+
+        // Handle size change (truncate)
+        if let Some(new_size) = size {
+            if self.read_only {
+                reply.error(libc::EROFS);
+                return;
+            }
+
+            if let Err(e) = self.handle_truncate(&path, new_size, fh) {
+                reply.error(e);
+                return;
+            }
+        }
+
+        // Handle mtime change - update cache only (no persistence for P2P storage)
+        if let Some(mtime_value) = mtime {
+            let new_mtime = match mtime_value {
+                TimeOrNow::SpecificTime(t) => t
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or_else(|_| chrono::Utc::now().timestamp()),
+                TimeOrNow::Now => chrono::Utc::now().timestamp(),
+            };
+
+            // Update cached attributes with new mtime
+            if let Some(mut attr) = self.fetch_attr(&path) {
+                attr.mtime = new_mtime;
+                self.cache.put_attr(&path, attr);
+            }
+        }
+
+        // Return current attributes
         match self.fetch_attr(&path) {
             Some(attr) => {
                 let file_attr = Self::make_attr(ino, &attr);
@@ -1011,5 +1159,38 @@ impl Filesystem for JaxFs {
                 reply.error(libc::EIO);
             }
         }
+    }
+
+    // Extended attribute stubs - macOS queries these but handles ENOTSUP gracefully
+    fn setxattr(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _name: &OsStr,
+        _value: &[u8],
+        _flags: i32,
+        _position: u32,
+        reply: ReplyEmpty,
+    ) {
+        reply.error(libc::ENOTSUP);
+    }
+
+    fn getxattr(
+        &mut self,
+        _req: &Request<'_>,
+        _ino: u64,
+        _name: &OsStr,
+        _size: u32,
+        reply: ReplyXattr,
+    ) {
+        reply.error(libc::ENOTSUP);
+    }
+
+    fn listxattr(&mut self, _req: &Request<'_>, _ino: u64, _size: u32, reply: ReplyXattr) {
+        reply.error(libc::ENOTSUP);
+    }
+
+    fn removexattr(&mut self, _req: &Request<'_>, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
+        reply.error(libc::ENOTSUP);
     }
 }
