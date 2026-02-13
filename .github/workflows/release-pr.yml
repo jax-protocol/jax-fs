@@ -106,42 +106,43 @@ jobs:
           # Create fresh release branch from main
           git checkout -b release-automation
 
-      - name: Run cargo smart-release (NO TAGS)
+      - name: Run cargo smart-release (for existing crates)
         id: smart-release
-        if: steps.check.outputs.needs_release == 'true'
+        if: steps.check.outputs.needs_release == 'true' && steps.check.outputs.reason != 'unpublished_crates'
         run: |
-          # For unpublished crates, force a patch bump to ensure smart-release sees changes
-          if [ "${{ steps.check.outputs.reason }}" = "unpublished_crates" ]; then
-            echo "Forcing patch bump for unpublished crates..."
-            BUMP_FLAG="--bump patch"
-          else
-            BUMP_FLAG=""
-          fi
-
           # Execute release: updates files, creates commits, but NO TAGS
           # Tags will be created by publish workflow after PR is merged
-          # May exit non-zero if no crates actually changed (e.g., only docs/CI changes)
           if cargo smart-release jax-daemon \
             --execute \
             --no-publish \
             --no-tag \
             --allow-dirty \
-            --update-crates-index \
-            $BUMP_FLAG; then
+            --update-crates-index; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "smart-release found no crate changes to release"
             echo "has_changes=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create marker commit (for unpublished crates)
+        id: unpublished
+        if: steps.check.outputs.needs_release == 'true' && steps.check.outputs.reason == 'unpublished_crates'
+        run: |
+          # For unpublished crates, just create a marker commit
+          # The publish workflow will handle the actual publish
+          echo "Initial publish of new crates" > .initial-publish
+          git add .initial-publish
+          git commit -m "chore: initial publish of jax-daemon, jax-object-store, jax-common"
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
       - name: Push release branch
-        if: steps.check.outputs.needs_release == 'true' && steps.smart-release.outputs.has_changes == 'true'
+        if: steps.check.outputs.needs_release == 'true' && (steps.smart-release.outputs.has_changes == 'true' || steps.unpublished.outputs.has_changes == 'true')
         run: |
           # Push branch (no tags to push)
           git push -u origin release-automation --force
 
       - name: Create or update PR
-        if: steps.check.outputs.needs_release == 'true' && steps.smart-release.outputs.has_changes == 'true'
+        if: steps.check.outputs.needs_release == 'true' && (steps.smart-release.outputs.has_changes == 'true' || steps.unpublished.outputs.has_changes == 'true')
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
