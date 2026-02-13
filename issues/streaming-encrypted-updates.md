@@ -56,6 +56,44 @@ The limitation is **Poly1305**, which requires the full ciphertext. By separatin
 └─────────────────────────────────────────────────────────┘
 ```
 
+### Chunking Strategy: Fixed vs Content-Defined
+
+**Fixed-size chunks** (16KB, matches iroh default):
+- Simple, predictable
+- Good for append-only workloads
+- Problem: insert/delete in middle shifts ALL subsequent chunks
+
+**Content-defined chunking (CDC)** using Rabin fingerprinting:
+- Chunk boundaries determined by plaintext content (rolling hash)
+- Insert/delete only affects 1-2 chunks around the edit point
+- Much better for documents, logs, files edited in the middle
+
+```
+Fixed chunks - insert 1 byte at position 1000:
+[chunk0][chunk1][chunk2][chunk3]
+         ^ insert here
+[chunk0'][chunk1'][chunk2'][chunk3']  <- ALL chunks shift, all hashes change
+
+CDC/Rabin - insert 1 byte:
+[chunk0][chunk1][chunk2][chunk3]
+         ^ insert here
+[chunk0][chunk1'][chunk2][chunk3]     <- only affected chunk changes
+```
+
+**CDC Flow**:
+1. Rabin-chunk the **plaintext** (boundaries based on content)
+2. Encrypt each chunk independently with derived key
+3. Build bao tree over encrypted chunks
+4. Store chunk boundaries in metadata (or re-derive on read)
+
+**Crates**: `fastcdc`, `gearhash` (used by restic)
+
+**Tradeoff**: Chunk boundaries leak information about plaintext structure. Two files with identical boundary patterns may have similar content. Acceptable for P2P sync where file sizes are already visible.
+
+**Recommendation**: Support both modes:
+- Fixed chunks for streaming/append workloads (logs, media)
+- CDC for document-like files that get edited in place
+
 ### Operation Costs
 
 | Operation | Current | Proposed |
@@ -151,6 +189,7 @@ The limitation is **Poly1305**, which requires the full ciphertext. By separatin
 
 - `bao-tree` v0.15+ (already present)
 - `chacha20` (need to add standalone, currently only via `chacha20poly1305`)
+- `fastcdc` or `gearhash` (for content-defined chunking)
 - Partial blob support (see partial-blob-support.md)
 
 ## Acceptance Criteria
@@ -171,3 +210,5 @@ The limitation is **Poly1305**, which requires the full ciphertext. By separatin
 2. **Small files**: Below what size threshold should we use atomic encryption (simpler, single blob)?
 3. **Chunk size**: 16KB matches iroh default, but is it optimal for encrypted P2P sync?
 4. **Key derivation**: Per-file key, or derive chunk keys from master + chunk index?
+5. **Fixed vs CDC**: Per-file choice, or global setting? Could use MIME type heuristics (text/* → CDC, video/* → fixed).
+6. **CDC parameters**: Target chunk size, min/max bounds? Typical values: 8KB target, 2KB min, 64KB max.
