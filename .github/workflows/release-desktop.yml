@@ -23,11 +23,11 @@ jobs:
           - name: macOS (Apple Silicon)
             os: macos-latest
             target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --no-default-features --features custom-protocol
+            args: --target aarch64-apple-darwin
           - name: macOS (Intel)
             os: macos-latest
             target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --no-default-features --features custom-protocol
+            args: --target x86_64-apple-darwin
           - name: Linux
             os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
@@ -56,6 +56,11 @@ jobs:
             librsvg2-dev \
             libfuse3-dev \
             patchelf
+
+      - name: Install macFUSE (macOS)
+        if: matrix.platform.os == 'macos-latest'
+        run: |
+          brew install --cask macfuse
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
