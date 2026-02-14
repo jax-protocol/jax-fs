@@ -24,10 +24,7 @@ impl crate::cli::op::Op for SharesRequest {
         lines.push(format!("Shares for bucket {}:", response.bucket_id));
         for share in &response.shares {
             let marker = if share.is_self { " (you)" } else { "" };
-            lines.push(format!(
-                "  {}  {}{marker}",
-                share.public_key, share.role
-            ));
+            lines.push(format!("  {}  {}{marker}", share.public_key, share.role));
         }
         Ok(lines.join("\n"))
     }
