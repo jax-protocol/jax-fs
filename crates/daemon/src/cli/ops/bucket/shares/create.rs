@@ -15,7 +15,6 @@ impl crate::cli::op::Op for ShareRequest {
     type Output = String;
 
     async fn execute(&self, ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
-        // Always use API client
         let mut client = ctx.client.clone();
         let response: ShareResponse = client.call(self.clone()).await?;
 
