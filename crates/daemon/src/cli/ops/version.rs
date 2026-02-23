@@ -1,6 +1,6 @@
 use clap::Args;
 
-use common::build_info;
+use jax_daemon::version::build_info;
 
 #[derive(Args, Debug, Clone)]
 pub struct Version;
@@ -17,6 +17,6 @@ impl crate::cli::op::Op for Version {
     type Output = String;
 
     async fn execute(&self, _ctx: &crate::cli::op::OpContext) -> Result<Self::Output, Self::Error> {
-        Ok(build_info!().to_string())
+        Ok(build_info().to_string())
     }
 }

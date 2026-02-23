@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use common::version::BuildInfo;
 
-use crate::build_info;
 use crate::http_server::api::client::ApiRequest;
+use crate::version::build_info;
 
 /// Request type for the version endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]

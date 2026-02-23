@@ -6,6 +6,7 @@
 
 mod commands;
 mod tray;
+pub mod version;
 
 use std::fmt;
 use std::path::PathBuf;
