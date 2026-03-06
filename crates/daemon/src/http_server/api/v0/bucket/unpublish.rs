@@ -10,14 +10,14 @@ use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, clap::Args)]
-pub struct PublishRequest {
-    /// Bucket ID to publish
+pub struct UnpublishRequest {
+    /// Bucket ID to unpublish
     #[arg(long)]
     pub bucket_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PublishResponse {
+pub struct UnpublishResponse {
     pub bucket_id: Uuid,
     pub published: bool,
     pub new_bucket_link: String,
@@ -25,9 +25,9 @@ pub struct PublishResponse {
 
 pub async fn handler(
     State(state): State<ServiceState>,
-    Json(req): Json<PublishRequest>,
-) -> Result<impl IntoResponse, PublishError> {
-    tracing::info!("PUBLISH API: Publishing bucket {}", req.bucket_id);
+    Json(req): Json<UnpublishRequest>,
+) -> Result<impl IntoResponse, UnpublishError> {
+    tracing::info!("UNPUBLISH API: Unpublishing bucket {}", req.bucket_id);
 
     // Load mount at current head
     let mount = state.peer().mount(req.bucket_id).await?;
@@ -39,32 +39,44 @@ pub async fn handler(
         let our_share = manifest
             .manifest()
             .get_share(&our_key)
-            .ok_or(PublishError::NotOwner)?;
+            .ok_or(UnpublishError::NotOwner)?;
         if *our_share.role() != PrincipalRole::Owner {
-            return Err(PublishError::NotOwner);
+            return Err(UnpublishError::NotOwner);
         }
     }
 
-    // Check if already published
-    if mount.is_published().await {
-        tracing::info!("PUBLISH API: Bucket {} is already published", req.bucket_id);
-        // Still return success, just note it's already published
+    // Check if already unpublished
+    if !mount.is_published().await {
+        tracing::info!(
+            "UNPUBLISH API: Bucket {} is already unpublished",
+            req.bucket_id
+        );
+        let link = mount.link().await;
+        return Ok((
+            http::StatusCode::OK,
+            Json(UnpublishResponse {
+                bucket_id: req.bucket_id,
+                published: false,
+                new_bucket_link: link.hash().to_string(),
+            }),
+        )
+            .into_response());
     }
 
-    // Publish: save with public secret, append to log, notify peers
-    let new_bucket_link = state.peer().save_mount(&mount, Some(true)).await?;
+    // Unpublish the bucket (clears publish state + saves + log + notify)
+    let new_bucket_link = state.peer().save_mount(&mount, Some(false)).await?;
 
     tracing::info!(
-        "PUBLISH API: Bucket {} published, new link: {}",
+        "UNPUBLISH API: Bucket {} unpublished, new link: {}",
         req.bucket_id,
         new_bucket_link.hash()
     );
 
     Ok((
         http::StatusCode::OK,
-        Json(PublishResponse {
+        Json(UnpublishResponse {
             bucket_id: req.bucket_id,
-            published: true,
+            published: false,
             new_bucket_link: new_bucket_link.hash().to_string(),
         }),
     )
@@ -72,36 +84,35 @@ pub async fn handler(
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum PublishError {
+pub enum UnpublishError {
     #[error("Mount error: {0}")]
     Mount(#[from] MountError),
-    #[error("Only the bucket owner can publish")]
+    #[error("Only the bucket owner can unpublish")]
     NotOwner,
 }
 
-impl IntoResponse for PublishError {
+impl IntoResponse for UnpublishError {
     fn into_response(self) -> Response {
         match self {
-            PublishError::Mount(_) => (
+            UnpublishError::Mount(_) => (
                 http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Unexpected error".to_string(),
             )
                 .into_response(),
-            PublishError::NotOwner => (
+            UnpublishError::NotOwner => (
                 http::StatusCode::FORBIDDEN,
-                "Only the bucket owner can publish".to_string(),
+                "Only the bucket owner can unpublish".to_string(),
             )
                 .into_response(),
         }
     }
 }
 
-// Client implementation - builds request for this operation
-impl ApiRequest for PublishRequest {
-    type Response = PublishResponse;
+impl ApiRequest for UnpublishRequest {
+    type Response = UnpublishResponse;
 
     fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
-        let full_url = base_url.join("/api/v0/bucket/publish").unwrap();
+        let full_url = base_url.join("/api/v0/bucket/unpublish").unwrap();
         client.post(full_url).json(&self)
     }
 }

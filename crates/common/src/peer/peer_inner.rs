@@ -355,28 +355,13 @@ impl<L: BucketLogProvider> Peer<L> {
         }
     }
 
-    /// Save a mount and append it to the bucket's log
+    /// Save a mount and append it to the bucket's log.
     ///
-    /// This method:
-    /// 1. Saves the mount to blobs, getting a new link
-    /// 2. Appends the new link to the bucket's log
-    /// 3. Dispatches sync jobs to notify peers
-    ///
-    /// # Arguments
-    ///
-    /// * `mount` - The mount to save
-    /// * `publish` - If true, publish the bucket (expose the secret so mirrors can decrypt)
-    ///
-    /// # Returns
-    ///
-    /// The new link where the mount was saved
-    ///
-    /// # Errors
-    ///
-    /// Returns error if:
-    /// - Failed to save mount to blobs
-    /// - Failed to append to log
-    pub async fn save_mount(&self, mount: &Mount, publish: bool) -> Result<Link, MountError>
+    /// The `publish` parameter controls publish state:
+    /// - `None` — preserve current state
+    /// - `Some(true)` — publish (expose secret so mirrors can decrypt)
+    /// - `Some(false)` — unpublish (revoke mirror access)
+    pub async fn save_mount(&self, mount: &Mount, publish: Option<bool>) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
@@ -429,8 +414,6 @@ impl<L: BucketLogProvider> Peer<L> {
                     bucket_id,
                     peer_key_hex
                 );
-                // Dispatch a ping job for this peer
-                // Ignore errors - if we can't notify a peer, they'll catch up on their next ping
                 if let Err(e) = self
                     .dispatch(SyncJob::PingPeer(PingPeerJob {
                         bucket_id,

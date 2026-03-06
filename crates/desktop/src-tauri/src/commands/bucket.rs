@@ -24,6 +24,7 @@ use jax_daemon::http_server::api::v0::bucket::{
     share::{ShareRequest, ShareRole},
     shares::SharesRequest,
     stat::StatRequest,
+    unpublish::UnpublishRequest,
     unshare::UnshareRequest,
 };
 
@@ -404,6 +405,20 @@ pub async fn publish_bucket(state: State<'_, AppState>, bucket_id: String) -> Re
     let bucket_uuid = parse_bucket_id(&bucket_id)?;
     client
         .call(PublishRequest {
+            bucket_id: bucket_uuid,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Unpublish a bucket
+#[tauri::command]
+pub async fn unpublish_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
+    let mut client = get_client(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+    client
+        .call(UnpublishRequest {
             bucket_id: bucket_uuid,
         })
         .await

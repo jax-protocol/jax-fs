@@ -9,6 +9,7 @@ pub mod list;
 pub mod ls;
 pub mod publish;
 pub mod shares;
+pub mod unpublish;
 
 use crate::cli::op::Op;
 
@@ -21,6 +22,7 @@ crate::command_enum! {
     (Shares, shares::Shares),
     (Clone, clone::Clone),
     (Publish, publish::Publish),
+    (Unpublish, unpublish::Unpublish),
 }
 
 // Rename the generated Command to BucketCommand for clarity

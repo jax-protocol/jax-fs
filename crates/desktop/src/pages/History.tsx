@@ -195,7 +195,7 @@ const History: Component = () => {
                       background: 'var(--muted)',
                       color: 'var(--muted-fg)',
                     }}>
-                      Draft
+                      Private
                     </span>
                   </Show>
                 </div>
