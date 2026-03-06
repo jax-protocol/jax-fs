@@ -49,7 +49,7 @@ pub async fn handler(
     mount.remove_share(peer_public_key).await?;
 
     // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount, false).await?;
+    let new_bucket_link = state.peer().save_mount(&mount).await?;
 
     tracing::info!(
         "UNSHARE API: Peer {} removed from bucket {}, new link: {}",

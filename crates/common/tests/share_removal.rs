@@ -12,7 +12,7 @@ async fn test_owner_can_remove_share() {
     // Add a peer as owner
     let peer_key = SecretKey::generate();
     mount.add_owner(peer_key.public()).await.unwrap();
-    mount.save(&blobs, false).await.unwrap();
+    mount.save(&blobs).await.unwrap();
 
     // Verify the peer is in shares
     let inner = mount.inner().await;
@@ -40,7 +40,7 @@ async fn test_owner_can_remove_mirror() {
     // Add a mirror
     let mirror_key = SecretKey::generate();
     mount.add_mirror(mirror_key.public()).await;
-    mount.save(&blobs, false).await.unwrap();
+    mount.save(&blobs).await.unwrap();
 
     // Verify the mirror is in shares
     let inner = mount.inner().await;
@@ -110,7 +110,7 @@ async fn test_removed_peer_cannot_load_new_version() {
     // Add a peer as owner
     let peer_key = SecretKey::generate();
     mount.add_owner(peer_key.public()).await.unwrap();
-    let (link_before, _, _) = mount.save(&blobs, false).await.unwrap();
+    let (link_before, _, _) = mount.save(&blobs).await.unwrap();
 
     // Verify peer can load the version before removal
     let _peer_mount = ::common::mount::Mount::load(&link_before, &peer_key, &blobs)
@@ -119,7 +119,7 @@ async fn test_removed_peer_cannot_load_new_version() {
 
     // Remove the peer
     mount.remove_share(peer_key.public()).await.unwrap();
-    let (link_after, _, _) = mount.save(&blobs, false).await.unwrap();
+    let (link_after, _, _) = mount.save(&blobs).await.unwrap();
 
     // Peer should NOT be able to load the new version
     let result = ::common::mount::Mount::load(&link_after, &peer_key, &blobs).await;

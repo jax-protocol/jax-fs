@@ -30,8 +30,8 @@ async fn test_single_file_conflict() {
     .unwrap();
 
     // Save both mounts to persist their ops_logs
-    alice.save(&blobs, false).await.unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     // Merge Bob's changes into Alice using the new API
     let resolver = ConflictFile::new();
@@ -142,7 +142,7 @@ async fn test_multi_version_divergence() {
         .await
         .unwrap();
     alice.mkdir(&PathBuf::from("/src")).await.unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     // v2: Alice adds source files
     alice
@@ -159,7 +159,7 @@ async fn test_multi_version_divergence() {
         )
         .await
         .unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     // v3: Alice adds config
     alice
@@ -169,7 +169,7 @@ async fn test_multi_version_divergence() {
         )
         .await
         .unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     // -------------------------------------------------------------------------
     // Bob's chain: 3 versions, diverging from the same v0
@@ -183,7 +183,7 @@ async fn test_multi_version_divergence() {
     .await
     .unwrap();
     bob.mkdir(&PathBuf::from("/src")).await.unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     // v2': Bob adds his source files
     bob.add(
@@ -192,7 +192,7 @@ async fn test_multi_version_divergence() {
     )
     .await
     .unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     // v3': Bob adds config (CONFLICTS with Alice!) and .gitignore
     bob.add(
@@ -207,7 +207,7 @@ async fn test_multi_version_divergence() {
     )
     .await
     .unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     // -------------------------------------------------------------------------
     // Merge: Alice discovers Bob's chain and merges it using new API
@@ -270,7 +270,7 @@ async fn test_multi_version_divergence_low_level() {
         .await
         .unwrap();
     alice.mkdir(&PathBuf::from("/src")).await.unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     alice
         .add(
@@ -286,7 +286,7 @@ async fn test_multi_version_divergence_low_level() {
         )
         .await
         .unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     alice
         .add(
@@ -295,7 +295,7 @@ async fn test_multi_version_divergence_low_level() {
         )
         .await
         .unwrap();
-    alice.save(&blobs, false).await.unwrap();
+    alice.save(&blobs).await.unwrap();
 
     // Bob's chain: 3 versions, diverging from the same v0
     bob.add(
@@ -305,7 +305,7 @@ async fn test_multi_version_divergence_low_level() {
     .await
     .unwrap();
     bob.mkdir(&PathBuf::from("/src")).await.unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     bob.add(
         &PathBuf::from("/src/lib.rs"),
@@ -313,7 +313,7 @@ async fn test_multi_version_divergence_low_level() {
     )
     .await
     .unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     bob.add(
         &PathBuf::from("/config.toml"),
@@ -327,7 +327,7 @@ async fn test_multi_version_divergence_low_level() {
     )
     .await
     .unwrap();
-    bob.save(&blobs, false).await.unwrap();
+    bob.save(&blobs).await.unwrap();
 
     // Collect ops using the new collect_ops_since API
     let alice_ops = alice.collect_ops_since(None, &blobs).await.unwrap();

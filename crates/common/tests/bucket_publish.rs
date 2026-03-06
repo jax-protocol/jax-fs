@@ -67,12 +67,12 @@ async fn test_publish_persists_across_saves() {
         )
         .await
         .unwrap();
-    let (link_saved, _, _) = mount.save(&blobs, false).await.unwrap();
+    let (link_saved, _, _) = mount.save(&blobs).await.unwrap();
 
     // Mirror should still be able to mount
     let mirror_mount2 = Mount::load(&link_saved, &mirror_key, &blobs)
         .await
-        .expect("Mirror should still mount after save(false) on published bucket");
+        .expect("Mirror should still mount after save() on published bucket");
     assert!(mirror_mount2.is_published().await);
 }
 

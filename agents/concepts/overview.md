@@ -118,7 +118,7 @@ fn publish(&mut self, secret: &Secret) {
 
 - **Before publish**: Only owners can decrypt (via their `SecretShare`)
 - **After publish**: Anyone with the manifest can decrypt (via `published_secret`)
-- **Persistent**: Publish status persists across saves — subsequent `save(false)` calls preserve the published state
+- **Persistent**: Publish status persists across saves — subsequent `save()` calls preserve the published state
 - **Revocable**: Owners can explicitly unpublish via `Mount::unpublish()`, which clears the public secret
 
 This enables mirrors to sync encrypted blobs before publication, then decrypt once published.

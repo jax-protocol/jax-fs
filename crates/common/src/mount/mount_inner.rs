@@ -124,16 +124,12 @@ impl Mount {
 
     /// Save the current mount state to the blobs store.
     ///
-    /// The `publish` parameter controls publish state:
-    /// - `true` — publish (store secret in plaintext for mirrors)
-    /// - `false` — preserve current publish state (re-publish if already published)
+    /// Preserves the current publish state. If the bucket is published,
+    /// it remains published with a fresh secret. If unpublished, it stays
+    /// unpublished.
     ///
-    /// To explicitly unpublish, call [`Mount::unpublish`] instead.
-    pub async fn save(
-        &self,
-        blobs: &BlobsStore,
-        publish: bool,
-    ) -> Result<(Link, Link, u64), MountError> {
+    /// To change publish state, use [`Mount::publish`] or [`Mount::unpublish`].
+    pub async fn save(&self, blobs: &BlobsStore) -> Result<(Link, Link, u64), MountError> {
         // Clone data we need before any async operations
         let (
             entry_node,
@@ -190,9 +186,8 @@ impl Mount {
             }
         }
 
-        // Update publish state: if explicitly publishing, or if already published,
-        // re-publish with the new secret. Otherwise keep unpublished.
-        if publish || manifest.is_published() {
+        // Preserve publish state: re-publish with the new secret if currently published
+        if manifest.is_published() {
             manifest.publish(&secret);
         }
         manifest.set_pins(pins_link.clone());
@@ -399,11 +394,18 @@ impl Mount {
         inner.manifest.is_published()
     }
 
-    /// Save and publish this bucket, granting decryption access to all mirrors.
+    /// Publish this bucket, granting decryption access to all mirrors.
     ///
-    /// This is a convenience method equivalent to `save(blobs, true)`.
+    /// Sets the publish flag on the manifest, then saves. The save will
+    /// store the new secret in plaintext so mirrors can decrypt.
     pub async fn publish(&self) -> Result<(Link, Link, u64), MountError> {
-        self.save(&self.1, true).await
+        // Mark as published — save() will see is_published() == true
+        // and store the new secret in plaintext
+        {
+            let mut inner = self.0.lock().await;
+            inner.manifest.publish(&Secret::default());
+        }
+        self.save(&self.1).await
     }
 
     /// Unpublish this bucket, revoking mirror decryption access.
@@ -411,14 +413,11 @@ impl Mount {
     /// Clears the public secret and saves. Mirrors will no longer be able
     /// to decrypt bucket contents until republished.
     pub async fn unpublish(&self) -> Result<(Link, Link, u64), MountError> {
-        // Manually clear publish state before saving
         {
             let mut inner = self.0.lock().await;
             inner.manifest.unpublish();
         }
-        // Save without publish flag; since we cleared publish state above,
-        // the save logic won't re-publish
-        self.save(&self.1, false).await
+        self.save(&self.1).await
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>
@@ -1559,7 +1558,7 @@ impl Mount {
         }
 
         // Save the merged state
-        let (link, _, _) = self.save(blobs, false).await?;
+        let (link, _, _) = self.save(blobs).await?;
 
         Ok((merge_result, link))
     }

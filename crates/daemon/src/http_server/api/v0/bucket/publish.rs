@@ -49,9 +49,8 @@ pub async fn handler(
         // Still return success, just note it's already published
     }
 
-    // Save mount with publish=true (grants decryption to all mirrors)
-    // This saves to blobs, appends to log, and notifies peers
-    let new_bucket_link = state.peer().save_mount(&mount, true).await?;
+    // Publish: save with public secret, append to log, notify peers
+    let new_bucket_link = state.peer().publish_mount(&mount).await?;
 
     tracing::info!(
         "PUBLISH API: Bucket {} published, new link: {}",

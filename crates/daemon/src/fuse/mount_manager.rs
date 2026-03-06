@@ -187,7 +187,7 @@ impl MountManager {
                             );
 
                             // Save the merged result
-                            if let Err(e) = self.peer.save_mount(&mount_guard, false).await {
+                            if let Err(e) = self.peer.save_mount(&mount_guard).await {
                                 tracing::error!("Failed to save merged mount {}: {}", mount_id, e);
                             }
                         }
@@ -586,7 +586,7 @@ impl MountManager {
 
                 // Get the current mount state and save it
                 let mount_guard = mount.read().await;
-                match peer.save_mount(&mount_guard, false).await {
+                match peer.save_mount(&mount_guard).await {
                     Ok(link) => {
                         tracing::info!(
                             "Successfully saved mount {} to {}",
