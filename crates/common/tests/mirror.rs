@@ -36,7 +36,7 @@ async fn test_mirror_cannot_mount_unpublished_bucket() {
     let (mount, blobs, _, mirror_key, _temp) = setup_mount_with_mirror(b"secret data").await;
 
     // Save without publishing
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    let (link, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Mirror should fail to mount unpublished bucket
     let result = Mount::load(&link, &mirror_key, &blobs).await;
@@ -67,7 +67,7 @@ async fn test_owner_can_always_mount() {
     let (mount, blobs, owner_key, _, _temp) = setup_mount_with_mirror(b"owner data").await;
 
     // Save without publishing
-    let (link, _, _) = mount.save(&blobs).await.unwrap();
+    let (link, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Owner can mount regardless of publish state
     let owner_mount = Mount::load(&link, &owner_key, &blobs)
@@ -101,7 +101,7 @@ async fn test_save_preserves_publish_status() {
         )
         .await
         .unwrap();
-    let (link2, _, _) = mount.save(&blobs).await.unwrap();
+    let (link2, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Mirror SHOULD still be able to mount because publish status is preserved
     let mirror_mount2 = Mount::load(&link2, &mirror_key, &blobs)
@@ -179,7 +179,7 @@ async fn test_mirror_can_mount_after_mv_on_published_bucket() {
         .mv(&PathBuf::from(TEST_PATH), &PathBuf::from("/docs/moved.txt"))
         .await
         .unwrap();
-    let (link2, _, _) = mount.save(&blobs).await.unwrap();
+    let (link2, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Mirror should STILL be able to mount because publish status is preserved
     let mirror_mount2 = Mount::load(&link2, &mirror_key, &blobs)
@@ -224,17 +224,17 @@ async fn test_full_fixture_flow() {
         .unwrap();
 
     // Save after adding files
-    let (_, _, _) = mount.save(&blobs).await.unwrap();
+    let (_, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Share with mirror (as owner)
     let mirror_owner_key = SecretKey::generate();
     mount.add_owner(mirror_owner_key.public()).await.unwrap();
-    let (_, _, _) = mount.save(&blobs).await.unwrap();
+    let (_, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Share with mirror
     let mirror_key = SecretKey::generate();
     mount.add_mirror(mirror_key.public()).await;
-    let (_, _, _) = mount.save(&blobs).await.unwrap();
+    let (_, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Publish - this makes the bucket publicly accessible to mirrors
     let (link_published, _, _) = mount.publish().await.unwrap();
@@ -253,7 +253,7 @@ async fn test_full_fixture_flow() {
         )
         .await
         .unwrap();
-    let (link_after_mv, _, _) = mount.save(&blobs).await.unwrap();
+    let (link_after_mv, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Mirror CAN mount HEAD because publish status is preserved
     let mirror_head = Mount::load(&link_after_mv, &mirror_key, &blobs)

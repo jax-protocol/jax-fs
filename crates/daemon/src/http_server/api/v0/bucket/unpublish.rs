@@ -64,7 +64,7 @@ pub async fn handler(
     }
 
     // Unpublish the bucket (clears publish state + saves + log + notify)
-    let new_bucket_link = state.peer().unpublish_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, Some(false)).await?;
 
     tracing::info!(
         "UNPUBLISH API: Bucket {} unpublished, new link: {}",

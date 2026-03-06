@@ -52,7 +52,7 @@ pub async fn handler(
     }
 
     // Publish: save with public secret, append to log, notify peers
-    let new_bucket_link = state.peer().publish_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, Some(true)).await?;
 
     tracing::info!(
         "PUBLISH API: Bucket {} published, new link: {}",

@@ -357,9 +357,11 @@ impl<L: BucketLogProvider> Peer<L> {
 
     /// Save a mount and append it to the bucket's log.
     ///
-    /// Preserves the current publish state. To change publish state,
-    /// use [`Peer::publish_mount`] or [`Peer::unpublish_mount`].
-    pub async fn save_mount(&self, mount: &Mount) -> Result<Link, MountError>
+    /// The `publish` parameter controls publish state:
+    /// - `None` — preserve current state
+    /// - `Some(true)` — publish (expose secret so mirrors can decrypt)
+    /// - `Some(false)` — unpublish (revoke mirror access)
+    pub async fn save_mount(&self, mount: &Mount, publish: Option<bool>) -> Result<Link, MountError>
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
@@ -374,7 +376,7 @@ impl<L: BucketLogProvider> Peer<L> {
         let name = manifest.name().to_string();
 
         // Get shares from the mount manifest
-        let (link, previous_link, height) = mount.save(self.blobs()).await?;
+        let (link, previous_link, height) = mount.save(self.blobs(), publish).await?;
         let inner = mount.inner().await;
         let manifest = inner.manifest();
         let shares = manifest.shares();
@@ -412,8 +414,6 @@ impl<L: BucketLogProvider> Peer<L> {
                     bucket_id,
                     peer_key_hex
                 );
-                // Dispatch a ping job for this peer
-                // Ignore errors - if we can't notify a peer, they'll catch up on their next ping
                 if let Err(e) = self
                     .dispatch(SyncJob::PingPeer(PingPeerJob {
                         bucket_id,
@@ -437,79 +437,6 @@ impl<L: BucketLogProvider> Peer<L> {
             notified_count,
             bucket_id
         );
-
-        Ok(link)
-    }
-
-    /// Publish a mount: set publish state, save, append to log, and notify peers.
-    pub async fn publish_mount(&self, mount: &Mount) -> Result<Link, MountError>
-    where
-        L::Error: std::error::Error + Send + Sync + 'static,
-    {
-        mount.publish().await?;
-        // publish() already saved to its own blobs store, but we need to
-        // re-save through save_mount to get log append + peer notify.
-        // However publish() already incremented height and updated link.
-        // We need to just append to log + notify from current state.
-        self.append_and_notify(mount).await
-    }
-
-    /// Unpublish a mount: clear publish state, save, append to log, and notify peers.
-    pub async fn unpublish_mount(&self, mount: &Mount) -> Result<Link, MountError>
-    where
-        L::Error: std::error::Error + Send + Sync + 'static,
-    {
-        mount.unpublish().await?;
-        self.append_and_notify(mount).await
-    }
-
-    /// Append the mount's current state to the log and notify peers.
-    ///
-    /// Used after publish/unpublish which do their own save.
-    async fn append_and_notify(&self, mount: &Mount) -> Result<Link, MountError>
-    where
-        L::Error: std::error::Error + Send + Sync + 'static,
-    {
-        let our_public_key = self.secret_key.public();
-        let inner = mount.inner().await;
-        let manifest = inner.manifest();
-        let bucket_id = *manifest.id();
-        let name = manifest.name().to_string();
-        let link = mount.link().await;
-        let shares = manifest.shares().clone();
-        let is_published = manifest.is_published();
-        let height = manifest.height();
-        let previous = manifest.previous().clone();
-        drop(inner);
-
-        self.log_provider
-            .append(
-                bucket_id,
-                name,
-                link.clone(),
-                previous,
-                height,
-                is_published,
-            )
-            .await
-            .map_err(|e| MountError::Default(anyhow!("Failed to append to log: {}", e)))?;
-
-        for (peer_key_hex, _share) in shares.iter() {
-            if let Ok(peer_public_key) = PublicKey::from_hex(peer_key_hex) {
-                if peer_public_key == our_public_key {
-                    continue;
-                }
-                if let Err(e) = self
-                    .dispatch(SyncJob::PingPeer(PingPeerJob {
-                        bucket_id,
-                        peer_id: peer_public_key,
-                    }))
-                    .await
-                {
-                    tracing::warn!("Failed to dispatch ping: {}", e);
-                }
-            }
-        }
 
         Ok(link)
     }

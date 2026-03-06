@@ -60,7 +60,7 @@ pub async fn handler(
     tracing::info!("DELETE API: Removed {} from mount", req.path);
 
     // Save mount and update log
-    let new_bucket_link = state.peer().save_mount(&mount).await?;
+    let new_bucket_link = state.peer().save_mount(&mount, None).await?;
 
     tracing::info!(
         "DELETE API: Deleted {} from bucket {}, new link: {}",

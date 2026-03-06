@@ -67,7 +67,7 @@ async fn test_publish_persists_across_saves() {
         )
         .await
         .unwrap();
-    let (link_saved, _, _) = mount.save(&blobs).await.unwrap();
+    let (link_saved, _, _) = mount.save(&blobs, None).await.unwrap();
 
     // Mirror should still be able to mount
     let mirror_mount2 = Mount::load(&link_saved, &mirror_key, &blobs)
