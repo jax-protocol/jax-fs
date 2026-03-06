@@ -15,68 +15,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
-## v0.1.10 (2026-02-20)
+## v0.1.11 (2026-03-06)
 
-### New Features
+### Bug Fixes
 
- - <csr-id-78fc49f5b9e96d4dd7dfe54a1a99ed544f69d33c/> add sidecar daemon support
-   * feat(daemon): add history, is-published endpoints and ls `at` param
+ - <csr-id-dceb2c8c9f8f5e2b6121cf9a118f7773d4da3fd7/> each crate captures its own CARGO_PKG_VERSION
+   Previously, `jax version` reported 0.1.8 (common's version) instead of
+   0.1.10 (daemon's version) because BuildInfo::new() in common captured
+   CARGO_PKG_VERSION at common's compile time.
    
-   Add POST /api/v0/bucket/history for paginated version logs.
-   Add POST /api/v0/bucket/is-published for HEAD publication status.
-   Add `at` parameter to ls endpoint for version-specific listing.
- - <csr-id-f4f23215f7fd92f09ccb7744c86387c1b97828a9/> rich output, consistent bucket resolution, and op system
-   * feat(cli): rich output, consistent bucket resolution, and op system docs
-   
-   Replace plain text CLI output with styled, colored output using owo-colors
-   and comfy-table. Every command now returns a typed output struct with a
-   Display impl that owns all presentation logic (colors, tables, layout).
-   
-   Key changes:
-   - Add owo-colors, comfy-table, indicatif dependencies
-   - Extract resolve_bucket() helper for name-or-UUID resolution
-   - Convert all bucket commands to single positional <BUCKET> arg
-   - Create CLI wrapper structs for publish, shares commands
-   - Add typed output structs with styled Display for all commands
-   - Replace hand-rolled mount list table with comfy-table
-   - Remove mount list --json flag (use HTTP API for machine data)
-   - Add colored error chain formatting at the boundary
-   - Wire MultiProgress into OpContext for future spinners
-   - Update CLI.md with bucket resolution and typed output docs
-   - Reference CLI.md from PROJECT_LAYOUT.md
- - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
-   * feat: make blobs store configurable with separate DB/object paths and max import size
-   
-   - Update ObjectStore::new_local to accept separate db_path and objects_path
-     instead of deriving both from a single data_dir
-   - Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
-     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
-   - Add optional db_path field to BlobStoreConfig::Filesystem variant for
-     separate SQLite metadata DB location
-   - Add max_import_size to AppConfig with serde default for backward compat
-   - Thread max_import_size through setup_blobs_store, Blobs::setup, and
-     ServiceConfig to the actor
-   - Add *_with_max_import_size constructors to BlobsStore and ObjectStore
- - <csr-id-d1166b1dc9359bfabeef9d5c2b6c70b5a5958f37/> add CLI binary releases, install script, and desktop auto-updater
-   * feat: add CLI binary releases, install script, and desktop auto-updater
-   
-   - Add release-cli.yml workflow to build and publish CLI binaries for
-     macOS (arm64, x64) and Linux (x64) on jax-daemon-v* tags
-   - Add install.sh for one-line CLI install/update via curl
-   - Integrate tauri-plugin-updater for in-app desktop update checks
-   - Update release-desktop.yml to generate latest.json update manifest
-     with signing support
-   - Add update check UI to Settings page in desktop app
-   - Update INSTALL.md and README.md with install script documentation
+   Now daemon and desktop each have their own version module that captures
+   the correct version from their own compile environment.
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 4 commits contributed to the release.
+ - 1 commit contributed to the release over the course of 10 calendar days.
+ - 13 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Each crate captures its own CARGO_PKG_VERSION ([`dceb2c8`](https://github.com/jax-protocol/jax-fs/commit/dceb2c8c9f8f5e2b6121cf9a118f7773d4da3fd7))
+</details>
+
+## v0.1.10 (2026-02-20)
+
+### New Features
+
+<csr-id-f4f23215f7fd92f09ccb7744c86387c1b97828a9/>
+<csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/>
+<csr-id-d1166b1dc9359bfabeef9d5c2b6c70b5a5958f37/>
+
+ - <csr-id-78fc49f5b9e96d4dd7dfe54a1a99ed544f69d33c/> add sidecar daemon support
+   * feat(daemon): add history, is-published endpoints and ls `at` param
+* feat(cli): rich output, consistent bucket resolution, and op system docs
+- Add owo-colors, comfy-table, indicatif dependencies
+- Extract resolve_bucket() helper for name-or-UUID resolution
+- Convert all bucket commands to single positional <BUCKET> arg
+- Create CLI wrapper structs for publish, shares commands
+- Add typed output structs with styled Display for all commands
+- Replace hand-rolled mount list table with comfy-table
+- Remove mount list --json flag (use HTTP API for machine data)
+- Add colored error chain formatting at the boundary
+- Wire MultiProgress into OpContext for future spinners
+- Update CLI.md with bucket resolution and typed output docs
+- Reference CLI.md from PROJECT_LAYOUT.md
+* feat: make blobs store configurable with separate DB/object paths and max import size
+- Update ObjectStore::new_local to accept separate db_path and objects_path
+     instead of deriving both from a single data_dir
+- Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
+     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
+- Add optional db_path field to BlobStoreConfig::Filesystem variant for
+     separate SQLite metadata DB location
+- Add max_import_size to AppConfig with serde default for backward compat
+- Thread max_import_size through setup_blobs_store, Blobs::setup, and
+     ServiceConfig to the actor
+- Add *_with_max_import_size constructors to BlobsStore and ObjectStore
+* feat: add CLI binary releases, install script, and desktop auto-updater
+- Add release-cli.yml workflow to build and publish CLI binaries for
+     macOS (arm64, x64) and Linux (x64) on jax-daemon-v* tags
+- Add install.sh for one-line CLI install/update via curl
+- Integrate tauri-plugin-updater for in-app desktop update checks
+- Update release-desktop.yml to generate latest.json update manifest
+     with signing support
+- Add update check UI to Settings page in desktop app
+- Update INSTALL.md and README.md with install script documentation
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 5 commits contributed to the release.
  - 2 days passed between releases.
  - 4 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 4 unique issues were worked on: [#107](https://github.com/jax-protocol/jax-fs/issues/107), [#109](https://github.com/jax-protocol/jax-fs/issues/109), [#110](https://github.com/jax-protocol/jax-fs/issues/110), [#112](https://github.com/jax-protocol/jax-fs/issues/112)
+ - 5 unique issues were worked on: [#107](https://github.com/jax-protocol/jax-fs/issues/107), [#109](https://github.com/jax-protocol/jax-fs/issues/109), [#110](https://github.com/jax-protocol/jax-fs/issues/110), [#112](https://github.com/jax-protocol/jax-fs/issues/112), [#115](https://github.com/jax-protocol/jax-fs/issues/115)
 
 ### Commit Details
 
@@ -92,7 +112,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Make blobs store configurable (separate paths + max import size) ([`c339f04`](https://github.com/jax-protocol/jax-fs/commit/c339f04cd771efb6195c1779d9bd29b7a55027c7))
  * **[#112](https://github.com/jax-protocol/jax-fs/issues/112)**
     - Rich output, consistent bucket resolution, and op system ([`f4f2321`](https://github.com/jax-protocol/jax-fs/commit/f4f23215f7fd92f09ccb7744c86387c1b97828a9))
+ * **[#115](https://github.com/jax-protocol/jax-fs/issues/115)**
+    - Bump jax-object-store v0.1.3, jax-common v0.1.8, jax-daemon v0.1.10 ([`9eb3ccd`](https://github.com/jax-protocol/jax-fs/commit/9eb3ccd4612ed3a88d82f01e7055e30a0bb69c54))
 </details>
+
+<csr-unknown>
+Add POST /api/v0/bucket/history for paginated version logs.Add POST /api/v0/bucket/is-published for HEAD publication status.Add at parameter to ls endpoint for version-specific listing. rich output, consistent bucket resolution, and op systemReplace plain text CLI output with styled, colored output using owo-colorsand comfy-table. Every command now returns a typed output struct with aDisplay impl that owns all presentation logic (colors, tables, layout).Key changes: make blobs store configurable (separate paths + max import size) add CLI binary releases, install script, and desktop auto-updater<csr-unknown/>
 
 ## v0.1.9 (2026-02-17)
 
@@ -104,9 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
    - Add `jax bucket publish --bucket-id <UUID>` subcommand
-- Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
-- Add integration tests for owner publish and publish/unpublish round-trip
-- Update PROJECT_LAYOUT.md and issue ticket
 
 ### Refactor
 
@@ -153,7 +175,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 </details>
 
 <csr-unknown>
- add negative cache and separate TTLs for FUSE performanceAdd a negative cache to avoid repeated lookups for non-existent paths(common with macOS resource forks like ._* files). Separate metadata andcontent TTLs so directory listings expire faster while file content stayscached longer. Add GET /api/v0/mounts/:id/cache-stats endpoint fordebugging cache behavior.<csr-unknown/>
+Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integration tests for owner publish and publish/unpublish round-tripUpdate PROJECT_LAYOUT.md and issue ticket<csr-unknown/>
 
 ## v0.1.8 (2026-02-14)
 
@@ -163,8 +185,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-c63681313cfb66b28eec389c1e7147bdfafad39d/> fix port default, add health/shares commands, gate mount behind fuse
    * feat(cli): fix port default, add health/shares commands, gate mount behind fuse
-   - `shares create` to share a bucket with a peer
-   - `shares ls` to list shares on a bucket
+- `shares create` to share a bucket with a peer
+- `shares ls` to list shares on a bucket
 * feat(fuse): implement setattr and xattr stubs for FUSE compatibility
 - setattr: handles truncate (size) and mtime changes
 - handle_truncate helper: resizes files via write buffers or Mount
@@ -192,9 +214,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#78](https://github.com/jax-protocol/jax-fs/issues/78)**
     - Bump jax-object-store v0.1.1, jax-daemon v0.1.8 ([`4311b03`](https://github.com/jax-protocol/jax-fs/commit/4311b03c6cb012b0e35a018750bbf03e6b574282))
 </details>
-
-<csr-unknown>
-Fix –remote default: derive from config api_port (fallback 5001)instead of hardcoded port 3000Add jax health command: checks config dir, livez, readyz endpointsAdd jax bucket shares subcommand group:shares ls to list shares on a bucket<csr-unknown/>
 
 ## v0.1.7 (2026-02-13)
 
