@@ -56,6 +56,9 @@ Individual tasks within an epic.
 # [Ticket Title]
 
 **Status:** Planned | In Progress | Complete
+**Priority:** High | Medium | Low
+**Category:** Bugs | Features | Refactor | Docs
+**Auto:** true | false
 
 ## Objective
 
