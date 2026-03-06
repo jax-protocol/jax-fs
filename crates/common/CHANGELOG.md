@@ -15,32 +15,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
-## v0.1.8 (2026-02-20)
+## v0.1.9 (2026-03-06)
 
 ### New Features
 
- - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
-   * feat: make blobs store configurable with separate DB/object paths and max import size
+ - <csr-id-e4f511b70d2b419cae83b2acc7d53a42ba58c0b4/> persist publish status across saves, add unpublish
+   * feat(publish): persist publish status across saves, add unpublish
    
-   - Update ObjectStore::new_local to accept separate db_path and objects_path
-     instead of deriving both from a single data_dir
-   - Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
-     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
-   - Add optional db_path field to BlobStoreConfig::Filesystem variant for
-     separate SQLite metadata DB location
-   - Add max_import_size to AppConfig with serde default for backward compat
-   - Thread max_import_size through setup_blobs_store, Blobs::setup, and
-     ServiceConfig to the actor
-   - Add *_with_max_import_size constructors to BlobsStore and ObjectStore
+   Publish status was being cleared on every save(publish=false) call,
+   meaning any bucket operation (add, mv, rename, etc.) would silently
+   unpublish a published bucket. This was a bug — buckets should stay
+   published until explicitly unpublished.
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 1 commit contributed to the release.
+ - 13 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#118](https://github.com/jax-protocol/jax-fs/issues/118)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#118](https://github.com/jax-protocol/jax-fs/issues/118)**
+    - Persist publish status across saves, add unpublish ([`e4f511b`](https://github.com/jax-protocol/jax-fs/commit/e4f511b70d2b419cae83b2acc7d53a42ba58c0b4))
+</details>
+
+## v0.1.8 (2026-02-20)
+
+### New Features
+
+ - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
+   * feat: make blobs store configurable with separate DB/object paths and max import size
+- Update ObjectStore::new_local to accept separate db_path and objects_path
+     instead of deriving both from a single data_dir
+- Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
+     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
+- Add optional db_path field to BlobStoreConfig::Filesystem variant for
+     separate SQLite metadata DB location
+- Add max_import_size to AppConfig with serde default for backward compat
+- Thread max_import_size through setup_blobs_store, Blobs::setup, and
+     ServiceConfig to the actor
+- Add *_with_max_import_size constructors to BlobsStore and ObjectStore
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
  - 2 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#110](https://github.com/jax-protocol/jax-fs/issues/110)
+ - 2 unique issues were worked on: [#110](https://github.com/jax-protocol/jax-fs/issues/110), [#115](https://github.com/jax-protocol/jax-fs/issues/115)
 
 ### Commit Details
 
@@ -50,6 +80,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#110](https://github.com/jax-protocol/jax-fs/issues/110)**
     - Make blobs store configurable (separate paths + max import size) ([`c339f04`](https://github.com/jax-protocol/jax-fs/commit/c339f04cd771efb6195c1779d9bd29b7a55027c7))
+ * **[#115](https://github.com/jax-protocol/jax-fs/issues/115)**
+    - Bump jax-object-store v0.1.3, jax-common v0.1.8, jax-daemon v0.1.10 ([`9eb3ccd`](https://github.com/jax-protocol/jax-fs/commit/9eb3ccd4612ed3a88d82f01e7055e30a0bb69c54))
 </details>
 
 ## v0.1.7 (2026-02-17)
@@ -58,9 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-c3abb856836a0e904cd487170abea4a37cf15a54/> add bucket publish CLI command
    - Add `jax bucket publish --bucket-id <UUID>` subcommand
-- Add owner-only validation to publish endpoint (HTTP 403 for non-owners)
-- Add integration tests for owner publish and publish/unpublish round-trip
-- Update PROJECT_LAYOUT.md and issue ticket
 
 ### Commit Statistics
 
@@ -83,6 +112,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#86](https://github.com/jax-protocol/jax-fs/issues/86)**
     - Add share removal for bucket owners ([`4ec1d14`](https://github.com/jax-protocol/jax-fs/commit/4ec1d14a91b6b7dde5b6945aa9b62b93f8ae5dca))
 </details>
+
+<csr-unknown>
+Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integration tests for owner publish and publish/unpublish round-tripUpdate PROJECT_LAYOUT.md and issue ticket<csr-unknown/>
 
 ## v0.1.6 (2026-02-13)
 
@@ -167,9 +199,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#65](https://github.com/jax-protocol/jax-fs/issues/65)**
     - Bump jax-object-store v0.1.0, jax-common v0.1.6, jax-daemon v0.1.7 ([`f0219f2`](https://github.com/jax-protocol/jax-fs/commit/f0219f2d882d65272b5cbe81a39680a06006a0d3))
 </details>
-
-<csr-unknown>
-Add S3Actor to handle all ~20 proto::Request command variantsAdd S3Store wrapper implementing iroh-blobs Store APIAdd bucket existence check on S3 initialization (fail-fast)Add ensure_bucket to bin/minio for auto-creation in devUpdate e2e skill with sync timing guidance (60s wait)<csr-unknown/>
 
 ## v0.1.5 (2025-11-18)
 
