@@ -34,13 +34,15 @@ pub async fn handler(
 
     // Check that the caller is the bucket owner
     let our_key = state.peer().secret().public();
-    let manifest = mount.inner().await;
-    let our_share = manifest
-        .manifest()
-        .get_share(&our_key)
-        .ok_or(PublishError::NotOwner)?;
-    if *our_share.role() != PrincipalRole::Owner {
-        return Err(PublishError::NotOwner);
+    {
+        let manifest = mount.inner().await;
+        let our_share = manifest
+            .manifest()
+            .get_share(&our_key)
+            .ok_or(PublishError::NotOwner)?;
+        if *our_share.role() != PrincipalRole::Owner {
+            return Err(PublishError::NotOwner);
+        }
     }
 
     // Check if already published
