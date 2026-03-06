@@ -20,6 +20,7 @@ pub mod rename;
 pub mod share;
 pub mod shares;
 pub mod stat;
+pub mod unpublish;
 pub mod unshare;
 pub mod update;
 
@@ -47,6 +48,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/shares", post(shares::handler))
         .route("/unshare", post(unshare::handler))
         .route("/publish", post(publish::handler))
+        .route("/unpublish", post(unpublish::handler))
         .route("/export", post(export::handler))
         .route("/latest-published", post(latest_published::handler))
         .route("/history", post(history::handler))

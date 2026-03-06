@@ -457,4 +457,57 @@ impl<L: BucketLogProvider> Peer<L> {
 
         Ok(link)
     }
+
+    /// Unpublish a mount: clear publish state, save, append to log, and notify peers.
+    pub async fn unpublish_mount(&self, mount: &Mount) -> Result<Link, MountError>
+    where
+        L::Error: std::error::Error + Send + Sync + 'static,
+    {
+        let our_public_key = self.secret_key.public();
+        let inner_mount = mount.inner().await;
+        let manifest = inner_mount.manifest();
+        let bucket_id = *manifest.id();
+        let name = manifest.name().to_string();
+        drop(inner_mount);
+
+        let (link, previous_link, height) = mount.unpublish().await?;
+
+        let inner = mount.inner().await;
+        let manifest = inner.manifest();
+        let shares = manifest.shares();
+        let is_published = manifest.is_published();
+
+        // Append to log
+        self.log_provider
+            .append(
+                bucket_id,
+                name,
+                link.clone(),
+                Some(previous_link),
+                height,
+                is_published,
+            )
+            .await
+            .map_err(|e| MountError::Default(anyhow!("Failed to append to log: {}", e)))?;
+
+        // Dispatch ping jobs for each peer (except ourselves)
+        for (peer_key_hex, _share) in shares.iter() {
+            if let Ok(peer_public_key) = PublicKey::from_hex(peer_key_hex) {
+                if peer_public_key == our_public_key {
+                    continue;
+                }
+                if let Err(e) = self
+                    .dispatch(SyncJob::PingPeer(PingPeerJob {
+                        bucket_id,
+                        peer_id: peer_public_key,
+                    }))
+                    .await
+                {
+                    tracing::warn!("Failed to dispatch ping: {}", e);
+                }
+            }
+        }
+
+        Ok(link)
+    }
 }

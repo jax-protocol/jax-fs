@@ -124,8 +124,11 @@ impl Mount {
 
     /// Save the current mount state to the blobs store.
     ///
-    /// If `publish` is true, the secret will be stored in plaintext, allowing
-    /// mirrors to decrypt the bucket contents.
+    /// The `publish` parameter controls publish state:
+    /// - `true` — publish (store secret in plaintext for mirrors)
+    /// - `false` — preserve current publish state (re-publish if already published)
+    ///
+    /// To explicitly unpublish, call [`Mount::unpublish`] instead.
     pub async fn save(
         &self,
         blobs: &BlobsStore,
@@ -187,13 +190,10 @@ impl Mount {
             }
         }
 
-        // Update publish state: publish with new secret, or clear stale public secret
-        if publish {
+        // Update publish state: if explicitly publishing, or if already published,
+        // re-publish with the new secret. Otherwise keep unpublished.
+        if publish || manifest.is_published() {
             manifest.publish(&secret);
-        } else {
-            // Clear any existing public secret since it would be stale
-            // (encrypted with old secret, not the new one)
-            manifest.unpublish();
         }
         manifest.set_pins(pins_link.clone());
         manifest.set_previous(previous_link.clone());
@@ -404,6 +404,21 @@ impl Mount {
     /// This is a convenience method equivalent to `save(blobs, true)`.
     pub async fn publish(&self) -> Result<(Link, Link, u64), MountError> {
         self.save(&self.1, true).await
+    }
+
+    /// Unpublish this bucket, revoking mirror decryption access.
+    ///
+    /// Clears the public secret and saves. Mirrors will no longer be able
+    /// to decrypt bucket contents until republished.
+    pub async fn unpublish(&self) -> Result<(Link, Link, u64), MountError> {
+        // Manually clear publish state before saving
+        {
+            let mut inner = self.0.lock().await;
+            inner.manifest.unpublish();
+        }
+        // Save without publish flag; since we cleared publish state above,
+        // the save logic won't re-publish
+        self.save(&self.1, false).await
     }
 
     pub async fn add<R>(&mut self, path: &Path, data: R) -> Result<(), MountError>

@@ -95,6 +95,10 @@ export async function publishBucket(bucketId: string): Promise<void> {
   return invoke('publish_bucket', { bucketId });
 }
 
+export async function unpublishBucket(bucketId: string): Promise<void> {
+  return invoke('unpublish_bucket', { bucketId });
+}
+
 export async function pingPeer(bucketId: string, peerPublicKey: string): Promise<string> {
   return invoke('ping_peer', { bucketId, peerPublicKey });
 }

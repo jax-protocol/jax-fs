@@ -129,7 +129,7 @@ node = "owner"
 # Node visibility:
 #   - owner  (API:5002, GW:8081): Owns bucket, sees latest state
 #   - _owner (API:5003, GW:8082): Owner share, sees latest state after sync
-#   - mirror (API:5004, GW:8083): Mirror share, sees latest published state
+#   - mirror (API:5004, GW:8083): Mirror share, sees latest state (publish persists across saves)
 #
 # FUSE mount test (if FUSE available):
 #   - Mounts bucket at /tmp/jax-e2e-mount on owner node

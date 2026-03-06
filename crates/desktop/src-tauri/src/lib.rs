@@ -116,6 +116,7 @@ pub fn run() {
             commands::bucket::share_bucket,
             commands::bucket::is_published,
             commands::bucket::publish_bucket,
+            commands::bucket::unpublish_bucket,
             commands::bucket::ping_peer,
             commands::bucket::upload_native_files,
             commands::bucket::export_file,

@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, For, Show, createMemo } from 'solid-js';
 import { useParams, useSearchParams, useNavigate } from '@solidjs/router';
-import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, addFile, publishBucket, isPublished as checkPublished, exportFile, FileEntry } from '../lib/api';
+import { ls, lsAtVersion, mkdir, deletePath, renamePath, uploadNativeFiles, addFile, publishBucket, unpublishBucket, isPublished as checkPublished, exportFile, FileEntry } from '../lib/api';
 import { pathToBreadcrumbs } from '../lib/utils';
 import Breadcrumb from '../components/Breadcrumb';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -39,8 +39,10 @@ const Explorer: Component = () => {
 
   // Publish state
   const [publishing, setPublishing] = createSignal(false);
+  const [unpublishing, setUnpublishing] = createSignal(false);
   const [isPublished, setIsPublished] = createSignal<boolean | null>(null);
   const [showPublishConfirm, setShowPublishConfirm] = createSignal(false);
+  const [showUnpublishConfirm, setShowUnpublishConfirm] = createSignal(false);
 
   const fetchEntries = async () => {
     try {
@@ -204,6 +206,20 @@ const Explorer: Component = () => {
     }
   };
 
+  const handleUnpublish = async () => {
+    try {
+      setUnpublishing(true);
+      setShowUnpublishConfirm(false);
+      setError(null);
+      await unpublishBucket(params.bucketId);
+      fetchPublishedStatus();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setUnpublishing(false);
+    }
+  };
+
   const breadcrumbs = () => pathToBreadcrumbs(currentPath());
 
   return (
@@ -364,7 +380,7 @@ const Explorer: Component = () => {
           >
             Share
           </button>
-          <Show when={!isPublished()}>
+          <Show when={isPublished()} fallback={
             <button
               onClick={() => setShowPublishConfirm(true)}
               disabled={publishing()}
@@ -381,6 +397,24 @@ const Explorer: Component = () => {
               }}
             >
               {publishing() ? 'Publishing...' : 'Publish'}
+            </button>
+          }>
+            <button
+              onClick={() => setShowUnpublishConfirm(true)}
+              disabled={unpublishing()}
+              style={{
+                padding: '0.5rem 0.75rem',
+                'border-radius': '8px',
+                border: '1px solid var(--accent-red)',
+                background: unpublishing() ? 'var(--muted)' : 'transparent',
+                color: unpublishing() ? 'var(--muted-fg)' : 'var(--accent-red)',
+                cursor: unpublishing() ? 'not-allowed' : 'pointer',
+                'font-size': '0.8125rem',
+                'font-weight': '500',
+                'font-family': 'inherit',
+              }}
+            >
+              {unpublishing() ? 'Unpublishing...' : 'Unpublish'}
             </button>
           </Show>
         </Show>
@@ -737,6 +771,17 @@ const Explorer: Component = () => {
         confirmColor="var(--accent-green)"
         onConfirm={handlePublish}
         onCancel={() => setShowPublishConfirm(false)}
+      />
+
+      {/* Unpublish confirmation dialog */}
+      <ConfirmDialog
+        open={showUnpublishConfirm()}
+        title="Unpublish bucket"
+        message="Unpublishing revokes mirror decryption access. Mirrors will no longer be able to read the bucket contents. Continue?"
+        confirmLabel="Unpublish"
+        confirmColor="var(--accent-red)"
+        onConfirm={handleUnpublish}
+        onCancel={() => setShowUnpublishConfirm(false)}
       />
 
       {/* Share panel */}
