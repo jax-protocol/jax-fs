@@ -1,5 +1,6 @@
-import { Router, Route, A, useLocation } from '@solidjs/router';
-import { Component } from 'solid-js';
+import { Router, Route, A, useLocation, useNavigate } from '@solidjs/router';
+import { Component, onMount, createSignal, Show } from 'solid-js';
+import { check } from '@tauri-apps/plugin-updater';
 import Home from './pages/Home';
 import Buckets from './pages/Buckets';
 import Explorer from './pages/Explorer';
@@ -11,6 +12,22 @@ import Settings from './pages/Settings';
 
 const Layout: Component<{ children?: any }> = (props) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [updateAvailable, setUpdateAvailable] = createSignal(false);
+  const [updateVersion, setUpdateVersion] = createSignal('');
+  const [dismissed, setDismissed] = createSignal(false);
+
+  onMount(async () => {
+    try {
+      const update = await check();
+      if (update?.available) {
+        setUpdateAvailable(true);
+        setUpdateVersion(update.version);
+      }
+    } catch {
+      // Silently ignore update check failures
+    }
+  });
 
   const navLink = (href: string, label: string, icon: string) => {
     const active = () => location.pathname === href || location.pathname.startsWith(href + '/');
@@ -75,6 +92,45 @@ const Layout: Component<{ children?: any }> = (props) => {
       </nav>
 
       <main style={{ flex: 1, padding: '2rem', overflow: 'auto' }}>
+        <Show when={updateAvailable() && !dismissed()}>
+          <div style={{
+            display: 'flex',
+            'align-items': 'center',
+            'justify-content': 'space-between',
+            padding: '0.625rem 1rem',
+            'margin-bottom': '1rem',
+            'border-radius': '8px',
+            background: 'var(--muted)',
+            border: '1px solid var(--border)',
+            'font-size': '0.875rem',
+          }}>
+            <span>
+              Version {updateVersion()} is available.{' '}
+              <a
+                href="#"
+                onClick={(e) => { e.preventDefault(); navigate('/settings'); }}
+                style={{ color: 'var(--accent)', 'text-decoration': 'underline', cursor: 'pointer' }}
+              >
+                Go to Settings
+              </a>{' '}
+              to update.
+            </span>
+            <button
+              onClick={() => setDismissed(true)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--muted-fg)',
+                cursor: 'pointer',
+                padding: '0.25rem',
+                'font-size': '1rem',
+                'line-height': '1',
+              }}
+            >
+              &times;
+            </button>
+          </div>
+        </Show>
         {props.children}
       </main>
     </div>
