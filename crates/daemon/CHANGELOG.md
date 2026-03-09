@@ -15,17 +15,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.12 (2026-03-09)
+
+### New Features
+
+ - <csr-id-fb9c937ff7c5119f3a229fd815fb17d6aeedda55/> add jax bucket stat CLI command
+   Shows bucket name, ID, version hash, height, published status, and
+   peer shares with roles.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 0 issues like '(#ID)' were seen in commit messages
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **Uncategorized**
+    - Add jax bucket stat CLI command ([`fb9c937`](https://github.com/jax-protocol/jax-fs/commit/fb9c937ff7c5119f3a229fd815fb17d6aeedda55))
+</details>
+
 ## v0.1.11 (2026-03-09)
 
 ### New Features
 
  - <csr-id-e4f511b70d2b419cae83b2acc7d53a42ba58c0b4/> persist publish status across saves, add unpublish
    * feat(publish): persist publish status across saves, add unpublish
-   
-   Publish status was being cleared on every save(publish=false) call,
-   meaning any bucket operation (add, mv, rename, etc.) would silently
-   unpublish a published bucket. This was a bug — buckets should stay
-   published until explicitly unpublished.
 
 ### Bug Fixes
 
@@ -41,9 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#118](https://github.com/jax-protocol/jax-fs/issues/118)
+ - 2 unique issues were worked on: [#118](https://github.com/jax-protocol/jax-fs/issues/118), [#122](https://github.com/jax-protocol/jax-fs/issues/122)
 
 ### Commit Details
 
@@ -53,9 +74,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#118](https://github.com/jax-protocol/jax-fs/issues/118)**
     - Persist publish status across saves, add unpublish ([`e4f511b`](https://github.com/jax-protocol/jax-fs/commit/e4f511b70d2b419cae83b2acc7d53a42ba58c0b4))
+ * **[#122](https://github.com/jax-protocol/jax-fs/issues/122)**
+    - Bump jax-common v0.1.9, jax-daemon v0.1.11 ([`3b7f495`](https://github.com/jax-protocol/jax-fs/commit/3b7f4951a2e5c7ad7a232c80bc997b2d7aef3886))
  * **Uncategorized**
     - Each crate captures its own CARGO_PKG_VERSION ([`dceb2c8`](https://github.com/jax-protocol/jax-fs/commit/dceb2c8c9f8f5e2b6121cf9a118f7773d4da3fd7))
 </details>
+
+<csr-unknown>
+Publish status was being cleared on every save(publish=false) call,meaning any bucket operation (add, mv, rename, etc.) would silentlyunpublish a published bucket. This was a bug — buckets should staypublished until explicitly unpublished.<csr-unknown/>
 
 ## v0.1.10 (2026-02-20)
 
@@ -127,9 +153,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bump jax-object-store v0.1.3, jax-common v0.1.8, jax-daemon v0.1.10 ([`9eb3ccd`](https://github.com/jax-protocol/jax-fs/commit/9eb3ccd4612ed3a88d82f01e7055e30a0bb69c54))
 </details>
 
-<csr-unknown>
-Add POST /api/v0/bucket/history for paginated version logs.Add POST /api/v0/bucket/is-published for HEAD publication status.Add at parameter to ls endpoint for version-specific listing. rich output, consistent bucket resolution, and op systemReplace plain text CLI output with styled, colored output using owo-colorsand comfy-table. Every command now returns a typed output struct with aDisplay impl that owns all presentation logic (colors, tables, layout).Key changes: make blobs store configurable (separate paths + max import size) add CLI binary releases, install script, and desktop auto-updater<csr-unknown/>
-
 ## v0.1.9 (2026-02-17)
 
 <csr-id-fc09685fd84e952ffc29ef5fbd150caa29a9395b/>
@@ -185,9 +208,6 @@ Add POST /api/v0/bucket/history for paginated version logs.Add POST /api/v0/buck
     - Add share removal for bucket owners ([`4ec1d14`](https://github.com/jax-protocol/jax-fs/commit/4ec1d14a91b6b7dde5b6945aa9b62b93f8ae5dca))
 </details>
 
-<csr-unknown>
-Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integration tests for owner publish and publish/unpublish round-tripUpdate PROJECT_LAYOUT.md and issue ticket<csr-unknown/>
-
 ## v0.1.8 (2026-02-14)
 
 ### New Features
@@ -196,8 +216,6 @@ Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integ
 
  - <csr-id-c63681313cfb66b28eec389c1e7147bdfafad39d/> fix port default, add health/shares commands, gate mount behind fuse
    * feat(cli): fix port default, add health/shares commands, gate mount behind fuse
-- `shares create` to share a bucket with a peer
-- `shares ls` to list shares on a bucket
 * feat(fuse): implement setattr and xattr stubs for FUSE compatibility
 - setattr: handles truncate (size) and mtime changes
 - handle_truncate helper: resizes files via write buffers or Mount
@@ -225,6 +243,9 @@ Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integ
  * **[#78](https://github.com/jax-protocol/jax-fs/issues/78)**
     - Bump jax-object-store v0.1.1, jax-daemon v0.1.8 ([`4311b03`](https://github.com/jax-protocol/jax-fs/commit/4311b03c6cb012b0e35a018750bbf03e6b574282))
 </details>
+
+<csr-unknown>
+shares create to share a bucket with a peershares ls to list shares on a bucket<csr-unknown/>
 
 ## v0.1.7 (2026-02-13)
 
