@@ -25,7 +25,7 @@ jobs:
             runner: macos-latest
             target: aarch64-apple-darwin
             fuse: false
-            features: "--no-default-features --features custom-protocol"
+            features: "-- --no-default-features --features custom-protocol"
             artifact-suffix: ""
             artifact-name: jax-desktop-macos-aarch64
 
@@ -41,7 +41,7 @@ jobs:
             runner: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             fuse: false
-            features: "--no-default-features --features custom-protocol"
+            features: "-- --no-default-features --features custom-protocol"
             artifact-suffix: ""
             artifact-name: jax-desktop-linux-amd64
 
@@ -101,7 +101,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_FEATURES: ${{ matrix.features }}
           # Tauri updater signing keys — generate with: npx @tauri-apps/cli signer generate -w ~/.tauri/jax.key
           # Then add the private key as TAURI_SIGNING_PRIVATE_KEY repo secret and
           # the public key to crates/desktop/src-tauri/tauri.conf.json plugins.updater.pubkey
