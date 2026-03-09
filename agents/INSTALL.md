@@ -86,7 +86,13 @@ Download pre-built binaries from GitHub releases:
 
 The `_fuse` variant includes FUSE mount support, which lets you mount buckets as local filesystem directories. FUSE mount support is currently only available on macOS Apple Silicon and requires [macFUSE](https://osxfuse.github.io/) to be installed. All other builds work without any FUSE dependencies.
 
-**macOS note:** On first launch, you may need to right-click and select "Open" to bypass Gatekeeper, or go to System Preferences > Security & Privacy to allow the app.
+**macOS Gatekeeper:** The app is not yet Apple-signed, so macOS will block it on first launch with "'Jax' is damaged and can't be opened." To fix this, remove the quarantine attribute after installing:
+
+```bash
+xattr -cr /Applications/Jax.app
+```
+
+Alternatively, you can right-click the app and select "Open", or go to System Settings > Privacy & Security and click "Open Anyway".
 
 #### Building Desktop App from Source
 
@@ -107,6 +113,31 @@ pnpm tauri build
 The built installer will be in `target/release/bundle/`:
 - macOS: `dmg/*.dmg`
 - Linux: `deb/*.deb` or `appimage/*.AppImage`
+
+##### Installing a Local Build to Applications
+
+On macOS, you can copy the built app bundle directly to your Applications folder:
+
+```bash
+# From the jax-fs repo root, after running pnpm tauri build
+cp -r target/release/bundle/macos/Jax.app /Applications/
+
+# Remove quarantine attribute (required for unsigned builds)
+xattr -cr /Applications/Jax.app
+```
+
+On Linux, install the `.deb` directly:
+
+```bash
+sudo dpkg -i target/release/bundle/deb/jax-desktop_*.deb
+```
+
+Or run the AppImage without installing:
+
+```bash
+chmod +x target/release/bundle/appimage/jax-desktop_*.AppImage
+./target/release/bundle/appimage/jax-desktop_*.AppImage
+```
 
 #### Building Without FUSE
 
