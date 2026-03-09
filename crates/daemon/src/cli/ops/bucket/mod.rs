@@ -9,6 +9,7 @@ pub mod list;
 pub mod ls;
 pub mod publish;
 pub mod shares;
+pub mod stat;
 pub mod unpublish;
 
 use crate::cli::op::Op;
@@ -20,6 +21,7 @@ crate::command_enum! {
     (Ls, ls::Ls),
     (Cat, cat::Cat),
     (Shares, shares::Shares),
+    (Stat, stat::Stat),
     (Clone, clone::Clone),
     (Publish, publish::Publish),
     (Unpublish, unpublish::Unpublish),
