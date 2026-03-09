@@ -364,9 +364,9 @@ where
     L: BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
-    tracing::info!("Applying {} manifests to log", manifests.len(),);
+    tracing::info!("Applying {} manifests to log", manifests.len());
 
-    if let Some((_i, (manifest, link))) = manifests.iter().enumerate().next() {
+    for (manifest, link) in manifests.iter() {
         let previous = manifest.previous().clone();
         let height = manifest.height();
         let is_published = manifest.is_published();
@@ -397,12 +397,11 @@ where
             .iter()
             .map(|share| share.1.principal().identity)
             .collect();
-        return peer
-            .dispatch(SyncJob::DownloadPins(DownloadPinsJob {
-                pins_link,
-                peer_ids,
-            }))
-            .await;
+        peer.dispatch(SyncJob::DownloadPins(DownloadPinsJob {
+            pins_link,
+            peer_ids,
+        }))
+        .await?;
     }
 
     tracing::info!("Successfully applied {} manifests to log", manifests.len());
