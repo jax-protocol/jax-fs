@@ -24,11 +24,7 @@ impl fmt::Display for StatOutput {
         writeln!(f, "ID:        {}", r.bucket_id)?;
         writeln!(f, "Version:   {}", r.link.hash())?;
         writeln!(f, "Height:    {}", r.height)?;
-        writeln!(
-            f,
-            "Published: {}",
-            if r.published { "yes" } else { "no" }
-        )?;
+        writeln!(f, "Published: {}", if r.published { "yes" } else { "no" })?;
 
         if !r.peers.is_empty() {
             writeln!(f)?;
