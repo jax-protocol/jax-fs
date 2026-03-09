@@ -115,7 +115,7 @@ jobs:
         if: matrix.artifact-suffix != ''
         run: |
           # Rename DMG files
-          for f in crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg; do
+          for f in target/release/bundle/dmg/*.dmg; do
             [ -f "$f" ] && mv "$f" "${f%.dmg}${{ matrix.artifact-suffix }}.dmg"
           done
 
@@ -124,7 +124,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: crates/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          path: target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
       - name: Upload Linux artifacts
@@ -133,8 +133,8 @@ jobs:
         with:
           name: ${{ matrix.artifact-name }}
           path: |
-            crates/desktop/src-tauri/target/release/bundle/deb/*.deb
-            crates/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            target/release/bundle/deb/*.deb
+            target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
   release:
