@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, Show, For } from 'solid-js';
+import { Component, createSignal, createEffect, Show, For } from 'solid-js';
 import { getBucketShares, shareBucket, pingPeer, removeShare, ShareInfo } from '../lib/api';
 
 interface SharePanelProps {
@@ -39,16 +39,9 @@ const SharePanel: Component<SharePanelProps> = (props) => {
     }
   };
 
-  onMount(() => {
+  createEffect(() => {
     if (props.open) loadShares();
   });
-
-  // Reload when panel opens
-  const prevOpen = { value: props.open };
-  const checkOpen = () => {
-    if (props.open && !prevOpen.value) loadShares();
-    prevOpen.value = props.open;
-  };
 
   const handleShare = async () => {
     const key = peerKey().trim();
@@ -95,9 +88,6 @@ const SharePanel: Component<SharePanelProps> = (props) => {
       setPinging(false);
     }
   };
-
-  // Trigger reload on open change
-  checkOpen();
 
   return (
     <Show when={props.open}>
