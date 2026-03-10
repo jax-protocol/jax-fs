@@ -8,6 +8,7 @@ import Viewer from './pages/Viewer';
 import Editor from './pages/Editor';
 import History from './pages/History';
 import Mounts from './pages/Mounts';
+import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 
 const Layout: Component<{ children?: any }> = (props) => {
@@ -85,6 +86,7 @@ const Layout: Component<{ children?: any }> = (props) => {
         {navLink('/', 'Home', '\u2302')}
         {navLink('/buckets', 'Buckets', '\u2750')}
         {navLink('/mounts', 'Mounts', '\u26C1')}
+        {navLink('/logs', 'Logs', '\u2261')}
 
         <div style={{ 'margin-top': 'auto' }}>
           {navLink('/settings', 'Settings', '\u2699')}
@@ -147,6 +149,7 @@ const App: Component = () => {
       <Route path="/buckets/:bucketId/edit" component={Editor} />
       <Route path="/buckets/:bucketId/history" component={History} />
       <Route path="/mounts" component={Mounts} />
+      <Route path="/logs" component={Logs} />
       <Route path="/settings" component={Settings} />
     </Router>
   );

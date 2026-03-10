@@ -239,3 +239,37 @@ export async function unmountBucket(bucketId: string): Promise<boolean> {
 export async function isBucketMounted(bucketId: string): Promise<MountInfo | null> {
   return invoke('is_bucket_mounted', { bucketId });
 }
+
+// Log types
+export interface LogFileInfo {
+  filename: string;
+  size: number;
+  modified: string;
+}
+
+export interface LogFileContents {
+  lines: string[];
+  total_lines: number;
+  has_more: boolean;
+}
+
+// Log operations
+export async function listLogFiles(): Promise<LogFileInfo[]> {
+  return invoke('list_log_files');
+}
+
+export async function readLogFile(filename: string, offset?: number, limit?: number): Promise<LogFileContents> {
+  return invoke('read_log_file', { filename, offset: offset ?? null, limit: limit ?? null });
+}
+
+export async function tailLogFile(lines?: number): Promise<string[]> {
+  return invoke('tail_log_file', { lines: lines ?? null });
+}
+
+export async function subscribeLogs(): Promise<void> {
+  return invoke('subscribe_logs');
+}
+
+export async function unsubscribeLogs(): Promise<void> {
+  return invoke('unsubscribe_logs');
+}
