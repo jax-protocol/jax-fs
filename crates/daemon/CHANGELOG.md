@@ -15,7 +15,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.13 (2026-03-10)
+
+### New Features
+
+ - <csr-id-e71b5ac6767a27a4f11528368e72af83a13aab32/> shared CLI UI module with consistent formatting and --plain flag
+   * feat: add shared CLI UI module with consistent formatting and --plain flag
+   
+   Add a centralized ui.rs module with status symbols (✓/→/✗/!), color
+   helpers, string truncation, styled table builder, and plain output mode.
+   All CLI commands now use consistent formatting via shared helpers instead
+   of ad-hoc owo_colors calls. Tables use UTF8_FULL_CONDENSED preset with
+   bold headers, truncated IDs/hashes, colored statuses, and colored roles.
+   The --plain global flag disables colors and table borders for scripting.
+
+### Bug Fixes
+
+ - <csr-id-219d4fa9c69fa0c1cd9a4c53bb2edd898577cab5/> persist FUSE mutations (unlink, mkdir, rename, create) via SaveRequest
+   The FUSE filesystem was not sending SaveRequest after unlink, mkdir,
+   rename, and create operations, causing those changes to be lost on
+   remount. Only flush (writes) and setattr (truncate) were persisting.
+   
+   Extract a request_save() helper method and call it from all mutation
+   handlers so every FUSE operation that modifies the mount tree is
+   persisted consistently.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 2 unique issues were worked on: [#127](https://github.com/jax-protocol/jax-fs/issues/127), [#130](https://github.com/jax-protocol/jax-fs/issues/130)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#127](https://github.com/jax-protocol/jax-fs/issues/127)**
+    - Persist FUSE mutations (unlink, mkdir, rename, create) via SaveRequest ([`219d4fa`](https://github.com/jax-protocol/jax-fs/commit/219d4fa9c69fa0c1cd9a4c53bb2edd898577cab5))
+ * **[#130](https://github.com/jax-protocol/jax-fs/issues/130)**
+    - Shared CLI UI module with consistent formatting and --plain flag ([`e71b5ac`](https://github.com/jax-protocol/jax-fs/commit/e71b5ac6767a27a4f11528368e72af83a13aab32))
+</details>
+
 ## v0.1.12 (2026-03-09)
+
+### Other
+
+ - <csr-id-34ad157487cd460460fa8e8435d6946de347e439/> fmt
 
 ### New Features
 
@@ -27,9 +76,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
- - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 0 issues like '(#ID)' were seen in commit messages
+ - 3 commits contributed to the release.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#123](https://github.com/jax-protocol/jax-fs/issues/123)
 
 ### Commit Details
 
@@ -37,7 +86,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <details><summary>view details</summary>
 
+ * **[#123](https://github.com/jax-protocol/jax-fs/issues/123)**
+    - Bump jax-daemon v0.1.12 ([`375af73`](https://github.com/jax-protocol/jax-fs/commit/375af73d5fabe4410889e214113137614bb2c705))
  * **Uncategorized**
+    - Fmt ([`34ad157`](https://github.com/jax-protocol/jax-fs/commit/34ad157487cd460460fa8e8435d6946de347e439))
     - Add jax bucket stat CLI command ([`fb9c937`](https://github.com/jax-protocol/jax-fs/commit/fb9c937ff7c5119f3a229fd815fb17d6aeedda55))
 </details>
 
@@ -79,9 +131,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **Uncategorized**
     - Each crate captures its own CARGO_PKG_VERSION ([`dceb2c8`](https://github.com/jax-protocol/jax-fs/commit/dceb2c8c9f8f5e2b6121cf9a118f7773d4da3fd7))
 </details>
-
-<csr-unknown>
-Publish status was being cleared on every save(publish=false) call,meaning any bucket operation (add, mv, rename, etc.) would silentlyunpublish a published bucket. This was a bug — buckets should staypublished until explicitly unpublished.<csr-unknown/>
 
 ## v0.1.10 (2026-02-20)
 
@@ -243,9 +292,6 @@ Publish status was being cleared on every save(publish=false) call,meaning any b
  * **[#78](https://github.com/jax-protocol/jax-fs/issues/78)**
     - Bump jax-object-store v0.1.1, jax-daemon v0.1.8 ([`4311b03`](https://github.com/jax-protocol/jax-fs/commit/4311b03c6cb012b0e35a018750bbf03e6b574282))
 </details>
-
-<csr-unknown>
-shares create to share a bucket with a peershares ls to list shares on a bucket<csr-unknown/>
 
 ## v0.1.7 (2026-02-13)
 
