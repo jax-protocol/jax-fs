@@ -17,6 +17,7 @@ use crate::fuse::cache::FileCacheConfig;
 use crate::fuse::jax_fs::JaxFs;
 use crate::fuse::sync_events::SyncEvent;
 use crate::fuse::FileCache;
+use crate::http_server::api::client::ApiClient;
 use common::mount::{ConflictFile, Mount};
 use common::peer::Peer;
 
@@ -395,6 +396,8 @@ impl MountManager {
 
         let api_base_url = url::Url::parse(&format!("http://localhost:{}", self.api_port))
             .expect("valid localhost URL");
+        let api_client = ApiClient::new(&api_base_url)
+            .map_err(|e| MountError::SpawnFailed(format!("Failed to create API client: {}", e)))?;
 
         let fs = JaxFs::new(
             tokio::runtime::Handle::current(),
@@ -407,7 +410,7 @@ impl MountManager {
             ),
             *mount_config.read_only,
             Some(sync_rx),
-            api_base_url,
+            api_client,
         );
 
         // Mount options

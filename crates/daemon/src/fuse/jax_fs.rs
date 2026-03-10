@@ -19,6 +19,10 @@ use uuid::Uuid;
 use crate::fuse::cache::{CachedAttr, CachedContent, CachedDirEntry, FileCache, FileCacheConfig};
 use crate::fuse::inode_table::InodeTable;
 use crate::fuse::sync_events::SyncEvent;
+use crate::http_server::api::client::ApiClient;
+use crate::http_server::api::v0::bucket::delete::DeleteRequest;
+use crate::http_server::api::v0::bucket::mkdir::MkdirRequest;
+use crate::http_server::api::v0::bucket::mv::MvRequest;
 use common::mount::Mount;
 
 /// Write buffer for pending writes
@@ -47,10 +51,8 @@ pub struct JaxFs {
     /// Sync event receiver (used when sync listener is spawned)
     #[allow(dead_code)]
     sync_rx: Option<broadcast::Receiver<SyncEvent>>,
-    /// HTTP client for daemon API calls (mutations route through the API for persistence)
-    http_client: reqwest::Client,
-    /// Base URL for the daemon API (e.g., "http://localhost:5001")
-    api_base_url: url::Url,
+    /// API client for daemon mutations (persistence handled by the API)
+    api_client: ApiClient,
     /// Read-only mode
     read_only: bool,
     /// Next file handle
@@ -74,7 +76,7 @@ impl JaxFs {
         cache_config: FileCacheConfig,
         read_only: bool,
         sync_rx: Option<broadcast::Receiver<SyncEvent>>,
-        api_base_url: url::Url,
+        api_client: ApiClient,
     ) -> Self {
         Self {
             rt,
@@ -85,27 +87,23 @@ impl JaxFs {
             write_buffers: RwLock::new(HashMap::new()),
             cache: FileCache::new(cache_config),
             sync_rx,
-            http_client: reqwest::Client::new(),
-            api_base_url,
+            api_client,
             read_only,
             next_fh: std::sync::atomic::AtomicU64::new(1),
         }
     }
 
     /// Persist a file add/write via the daemon API.
-    /// Calls POST /api/v0/bucket/add with multipart form data.
+    /// Uses multipart POST to /api/v0/bucket/add (no ApiRequest trait for multipart).
     fn api_add_file(&self, path: &str, data: Vec<u8>) {
-        let client = self.http_client.clone();
-        let url = self
-            .api_base_url
-            .join("/api/v0/bucket/add")
-            .expect("valid URL");
-        let bucket_id = self.bucket_id.to_string();
+        let client = self.api_client.clone();
         let parent = InodeTable::parent_path(path);
         let filename = InodeTable::filename(path).to_string();
-
+        let bucket_id = self.bucket_id.to_string();
         let mount_id = self.mount_id;
-        self.rt.spawn(async move {
+
+        self.rt.block_on(async move {
+            let url = client.base_url().join("/api/v0/bucket/add").unwrap();
             let form = reqwest::multipart::Form::new()
                 .text("bucket_id", bucket_id)
                 .text("mount_path", parent)
@@ -114,7 +112,8 @@ impl JaxFs {
                     reqwest::multipart::Part::bytes(data).file_name(filename),
                 );
 
-            match client.post(url).multipart(form).send().await {
+            let result = client.http_client().post(url).multipart(form).send().await;
+            match result {
                 Ok(resp) if resp.status().is_success() => {
                     tracing::debug!("FUSE API add persisted for mount {}", mount_id);
                 }
@@ -135,128 +134,65 @@ impl JaxFs {
         });
     }
 
-    /// Persist a delete via the daemon API.
-    /// Calls POST /api/v0/bucket/delete with JSON body.
+    /// Persist a delete via the daemon API using the ApiRequest trait.
     fn api_delete(&self, path: &str) {
-        let client = self.http_client.clone();
-        let url = self
-            .api_base_url
-            .join("/api/v0/bucket/delete")
-            .expect("valid URL");
-        let bucket_id = self.bucket_id;
-        let path = path.to_string();
+        let mut client = self.api_client.clone();
+        let request = DeleteRequest {
+            bucket_id: self.bucket_id,
+            path: path.to_string(),
+        };
         let mount_id = self.mount_id;
 
-        self.rt.spawn(async move {
-            let body = serde_json::json!({
-                "bucket_id": bucket_id,
-                "path": path,
-            });
-
-            match client.post(url).json(&body).send().await {
-                Ok(resp) if resp.status().is_success() => {
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
                     tracing::debug!("FUSE API delete persisted for mount {}", mount_id);
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "FUSE API delete failed for mount {}: {} - {}",
-                        mount_id,
-                        status,
-                        body
-                    );
-                }
                 Err(e) => {
-                    tracing::error!(
-                        "FUSE API delete request failed for mount {}: {}",
-                        mount_id,
-                        e
-                    );
+                    tracing::error!("FUSE API delete failed for mount {}: {}", mount_id, e);
                 }
             }
         });
     }
 
-    /// Persist a mkdir via the daemon API.
-    /// Calls POST /api/v0/bucket/mkdir with JSON body.
+    /// Persist a mkdir via the daemon API using the ApiRequest trait.
     fn api_mkdir(&self, path: &str) {
-        let client = self.http_client.clone();
-        let url = self
-            .api_base_url
-            .join("/api/v0/bucket/mkdir")
-            .expect("valid URL");
-        let bucket_id = self.bucket_id;
-        let path = path.to_string();
+        let mut client = self.api_client.clone();
+        let request = MkdirRequest {
+            bucket_id: self.bucket_id,
+            path: path.to_string(),
+        };
         let mount_id = self.mount_id;
 
-        self.rt.spawn(async move {
-            let body = serde_json::json!({
-                "bucket_id": bucket_id,
-                "path": path,
-            });
-
-            match client.post(url).json(&body).send().await {
-                Ok(resp) if resp.status().is_success() => {
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
                     tracing::debug!("FUSE API mkdir persisted for mount {}", mount_id);
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "FUSE API mkdir failed for mount {}: {} - {}",
-                        mount_id,
-                        status,
-                        body
-                    );
-                }
                 Err(e) => {
-                    tracing::error!(
-                        "FUSE API mkdir request failed for mount {}: {}",
-                        mount_id,
-                        e
-                    );
+                    tracing::error!("FUSE API mkdir failed for mount {}: {}", mount_id, e);
                 }
             }
         });
     }
 
-    /// Persist a rename/move via the daemon API.
-    /// Calls POST /api/v0/bucket/mv with JSON body.
+    /// Persist a rename/move via the daemon API using the ApiRequest trait.
     fn api_mv(&self, source: &str, dest: &str) {
-        let client = self.http_client.clone();
-        let url = self
-            .api_base_url
-            .join("/api/v0/bucket/mv")
-            .expect("valid URL");
-        let bucket_id = self.bucket_id;
-        let source = source.to_string();
-        let dest = dest.to_string();
+        let mut client = self.api_client.clone();
+        let request = MvRequest {
+            bucket_id: self.bucket_id,
+            source_path: source.to_string(),
+            dest_path: dest.to_string(),
+        };
         let mount_id = self.mount_id;
 
-        self.rt.spawn(async move {
-            let body = serde_json::json!({
-                "bucket_id": bucket_id,
-                "source_path": source,
-                "dest_path": dest,
-            });
-
-            match client.post(url).json(&body).send().await {
-                Ok(resp) if resp.status().is_success() => {
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
                     tracing::debug!("FUSE API mv persisted for mount {}", mount_id);
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "FUSE API mv failed for mount {}: {} - {}",
-                        mount_id,
-                        status,
-                        body
-                    );
-                }
                 Err(e) => {
-                    tracing::error!("FUSE API mv request failed for mount {}: {}", mount_id, e);
+                    tracing::error!("FUSE API mv failed for mount {}: {}", mount_id, e);
                 }
             }
         });

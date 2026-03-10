@@ -27,20 +27,20 @@ FUSE (Filesystem in Userspace) allows mounting buckets as local directories. Use
 │  │ path ↔ ino  │  │  LRU + TTL  │  │  fh → pending data      │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 │                                                                 │
-│  save_tx ──────────────────────────────────────────────────────►│
-└─────────────────────────────────┬───────────────────────────────┘
-                                  │ Direct Rust calls
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                          Mount                                  │
-│                                                                 │
-│  In-memory representation of bucket state                       │
-│  - entry: Node (directory tree)                                 │
-│  - ops_log: PathOpLog (CRDT operations)                         │
-│  - manifest: Manifest metadata                                  │
-│                                                                 │
-│  Methods: ls(), cat(), add(), rm(), mkdir(), mv(), merge_from() │
-└─────────────────────────────────┬───────────────────────────────┘
+│  Reads: direct Mount calls   Mutations: daemon HTTP API ───────►│
+└─────────────────────────┬─────────────────────┬─────────────────┘
+                          │ Direct Rust calls   │ HTTP (localhost)
+                          ▼                     ▼
+┌────────────────────────────────┐  ┌─────────────────────────────┐
+│          Mount (reads)         │  │     Daemon API Server       │
+│                                │  │                             │
+│  In-memory bucket state        │  │  POST /api/v0/bucket/add    │
+│  - entry: Node (directory tree)│  │  POST /api/v0/bucket/delete │
+│  - ops_log: PathOpLog (CRDT)   │  │  POST /api/v0/bucket/mkdir  │
+│  - manifest: Manifest metadata │  │  POST /api/v0/bucket/mv     │
+│                                │  │                             │
+│  Methods: ls(), cat()          │  │  Each: load → mutate → save │
+└────────────────────────────────┘  └─────────────────────────────┘
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -60,7 +60,7 @@ FUSE (Filesystem in Userspace) allows mounting buckets as local directories. Use
 | `crates/daemon/src/fuse/mount_manager.rs` | Mount lifecycle management |
 | `crates/daemon/src/fuse/inode_table.rs` | Path ↔ inode mapping |
 | `crates/daemon/src/fuse/cache.rs` | LRU content/attr cache |
-| `crates/daemon/src/fuse/sync_events.rs` | Sync event and save request types |
+| `crates/daemon/src/fuse/sync_events.rs` | Sync event types for cache invalidation |
 
 ## Data Flow
 
@@ -129,13 +129,10 @@ User: echo "hello" > /mnt/bucket/new.txt
 │                                 │
 │  If dirty:                      │
 │    Mount.add(path, buffer_data) │
-│    - Encrypts data              │
-│    - Stores blob                │
-│    - Updates entry tree         │
-│    - Records in ops_log         │
+│    - Updates in-memory state    │
 │    Mark clean                   │
 │    Invalidate cache             │
-│    Send SaveRequest ────────────┼──► MountManager
+│    API call: POST /bucket/add ──┼──► Daemon API (persists)
 └─────────────────────────────────┘
                 │
                 ▼
@@ -145,26 +142,33 @@ User: echo "hello" > /mnt/bucket/new.txt
 └─────────────────────────────────┘
 ```
 
-### Write Persistence
+### Mutation Persistence
 
-After `flush()` succeeds, JaxFs sends a `SaveRequest` via channel to MountManager:
+All FUSE mutations route through the daemon's HTTP API for persistence.
+JaxFs holds an `ApiClient` pointing at `http://localhost:{api_port}` and
+calls the same endpoints that the CLI and desktop app use:
 
 ```
-JaxFs.flush()
+JaxFs mutation (flush, unlink, mkdir, rename)
     │
-    ├── mount.add(path, data)     // Updates in-memory state
+    ├── Mount.{add,rm,mkdir,mv}() // Updates in-memory state (for reads)
     ├── cache.invalidate(path)
-    └── save_tx.send(SaveRequest) // Request persistence
+    └── ApiClient.call(request)   // Persists via daemon API
             │
             ▼
-MountManager.spawn_save_handler()
+    Daemon API handler
     │
+    ├── peer.mount(bucket_id)     // Loads current persisted state
+    ├── mount.{add,rm,mkdir,mv}() // Applies mutation
     └── peer.save_mount(&mount)   // Persists to manifest + notifies peers
             │
             ├── Saves manifest to blobs
             ├── Appends to bucket log
             └── Dispatches PingPeer jobs
 ```
+
+The API calls are synchronous (blocking) from FUSE's perspective, ensuring
+mutations are persisted in order before the next FUSE operation runs.
 
 ### What `Mount.add()` Does
 
@@ -192,6 +196,8 @@ pub struct MountManager {
     peer: Peer<Database>,
     /// Event channel for sync notifications
     sync_tx: broadcast::Sender<SyncEvent>,
+    /// API port for FUSE mutation persistence
+    api_port: u16,
 }
 
 pub struct LiveMount {
@@ -213,9 +219,8 @@ mount start
     │
     ├── Load mount from peer: peer.mount(bucket_id)
     ├── Create FileCache
-    ├── Create save channel (mpsc)
-    ├── Create JaxFs with mount reference + save_tx
-    ├── Spawn save handler task
+    ├── Create ApiClient (http://localhost:{api_port})
+    ├── Create JaxFs with mount reference + api_client
     ├── Spawn fuser::BackgroundSession
     ├── Store in mounts HashMap
     └── Update DB status → Running
