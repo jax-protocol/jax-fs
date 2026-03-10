@@ -90,6 +90,19 @@ impl JaxFs {
         }
     }
 
+    /// Send a save request to persist the current mount state
+    fn request_save(&self) {
+        if let Some(ref save_tx) = self.save_tx {
+            let mount_id = self.mount_id;
+            let tx = save_tx.clone();
+            self.rt.spawn(async move {
+                if let Err(e) = tx.send(SaveRequest { mount_id }).await {
+                    tracing::error!("Failed to send save request: {}", e);
+                }
+            });
+        }
+    }
+
     /// Start the background sync listener
     pub fn spawn_sync_listener(&self, mut rx: broadcast::Receiver<SyncEvent>) {
         let cache = self.cache.clone();
@@ -387,15 +400,7 @@ impl JaxFs {
         self.cache.invalidate(path);
 
         // Request save to persist changes
-        if let Some(ref save_tx) = self.save_tx {
-            let mount_id = self.mount_id;
-            let tx = save_tx.clone();
-            self.rt.spawn(async move {
-                if let Err(e) = tx.send(SaveRequest { mount_id }).await {
-                    tracing::error!("Failed to send save request: {}", e);
-                }
-            });
-        }
+        self.request_save();
 
         Ok(())
     }
@@ -802,15 +807,7 @@ impl Filesystem for JaxFs {
                     self.cache.invalidate(&path);
 
                     // Request save to persist changes
-                    if let Some(ref save_tx) = self.save_tx {
-                        let mount_id = self.mount_id;
-                        let tx = save_tx.clone();
-                        self.rt.spawn(async move {
-                            if let Err(e) = tx.send(SaveRequest { mount_id }).await {
-                                tracing::error!("Failed to send save request: {}", e);
-                            }
-                        });
-                    }
+                    self.request_save();
 
                     reply.ok();
                 }
@@ -920,6 +917,9 @@ impl Filesystem for JaxFs {
                     },
                 );
 
+                // Persist the new file
+                self.request_save();
+
                 reply.created(&Self::ATTR_TTL, &file_attr, 0, fh, flags as u32);
             }
             Err(e) => {
@@ -994,6 +994,9 @@ impl Filesystem for JaxFs {
                 // Invalidate parent directory cache
                 self.cache.invalidate(&parent_path);
 
+                // Persist the new directory
+                self.request_save();
+
                 let file_attr = Self::make_attr(inode, &attr);
                 reply.entry(&Self::ATTR_TTL, &file_attr, 0);
             }
@@ -1053,6 +1056,9 @@ impl Filesystem for JaxFs {
                 // Invalidate caches
                 self.cache.invalidate(&path);
                 self.cache.invalidate(&parent_path);
+
+                // Persist the deletion
+                self.request_save();
 
                 reply.ok();
             }
@@ -1158,6 +1164,9 @@ impl Filesystem for JaxFs {
                 if old_parent_path != new_parent_path {
                     self.cache.invalidate(&new_parent_path);
                 }
+
+                // Persist the rename
+                self.request_save();
 
                 reply.ok();
             }
