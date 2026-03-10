@@ -1,6 +1,6 @@
 # FUSE: route mutations through the daemon API
 
-**Status:** In Review
+**Status:** Done
 **Priority:** High
 **Category:** Bugs
 **Auto:** true

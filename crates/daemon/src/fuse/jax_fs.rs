@@ -20,6 +20,7 @@ use crate::fuse::cache::{CachedAttr, CachedContent, CachedDirEntry, FileCache, F
 use crate::fuse::inode_table::InodeTable;
 use crate::fuse::sync_events::SyncEvent;
 use crate::http_server::api::client::ApiClient;
+use crate::http_server::api::v0::bucket::add::AddFileRequest;
 use crate::http_server::api::v0::bucket::delete::DeleteRequest;
 use crate::http_server::api::v0::bucket::mkdir::MkdirRequest;
 use crate::http_server::api::v0::bucket::mv::MvRequest;
@@ -93,42 +94,24 @@ impl JaxFs {
         }
     }
 
-    /// Persist a file add/write via the daemon API.
-    /// Uses multipart POST to /api/v0/bucket/add (no ApiRequest trait for multipart).
+    /// Persist a file add/write via the daemon API using the ApiRequest trait.
     fn api_add_file(&self, path: &str, data: Vec<u8>) {
-        let client = self.api_client.clone();
-        let parent = InodeTable::parent_path(path);
-        let filename = InodeTable::filename(path).to_string();
-        let bucket_id = self.bucket_id.to_string();
+        let mut client = self.api_client.clone();
+        let request = AddFileRequest {
+            bucket_id: self.bucket_id,
+            mount_path: InodeTable::parent_path(path),
+            filename: InodeTable::filename(path).to_string(),
+            data,
+        };
         let mount_id = self.mount_id;
 
         self.rt.block_on(async move {
-            let url = client.base_url().join("/api/v0/bucket/add").unwrap();
-            let form = reqwest::multipart::Form::new()
-                .text("bucket_id", bucket_id)
-                .text("mount_path", parent)
-                .part(
-                    "file",
-                    reqwest::multipart::Part::bytes(data).file_name(filename),
-                );
-
-            let result = client.http_client().post(url).multipart(form).send().await;
-            match result {
-                Ok(resp) if resp.status().is_success() => {
+            match client.call(request).await {
+                Ok(_) => {
                     tracing::debug!("FUSE API add persisted for mount {}", mount_id);
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::error!(
-                        "FUSE API add failed for mount {}: {} - {}",
-                        mount_id,
-                        status,
-                        body
-                    );
-                }
                 Err(e) => {
-                    tracing::error!("FUSE API add request failed for mount {}: {}", mount_id, e);
+                    tracing::error!("FUSE API add failed for mount {}: {}", mount_id, e);
                 }
             }
         });
