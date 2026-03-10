@@ -50,7 +50,11 @@ impl fmt::Display for AddOutput {
         )?;
         writeln!(f, "{}", ui::label("bucket", &self.bucket_id))?;
         writeln!(f, "{}", ui::label("path", &self.path))?;
-        write!(f, "  status: {}", ui::colored_status(&self.status))
+        write!(
+            f,
+            "{}",
+            ui::label("status", &ui::colored_status(&self.status))
+        )
     }
 }
 

@@ -23,12 +23,14 @@ pub fn is_plain() -> bool {
 
 /// Truncate a string to `max_len` characters, appending "…" if truncated.
 pub fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    let char_count = s.chars().count();
+    if char_count <= max_len {
         s.to_string()
     } else if max_len <= 1 {
         "\u{2026}".to_string()
     } else {
-        format!("{}\u{2026}", &s[..max_len - 1])
+        let truncated: String = s.chars().take(max_len - 1).collect();
+        format!("{truncated}\u{2026}")
     }
 }
 
@@ -57,15 +59,6 @@ pub fn failure(action: &str, subject: &str) -> String {
             action.red().bold(),
             subject.bold()
         )
-    }
-}
-
-/// Format a progress status line: `→ message`
-pub fn progress(message: &str) -> String {
-    if is_plain() {
-        message.to_string()
-    } else {
-        format!("{} {}", PROGRESS.cyan(), message)
     }
 }
 
