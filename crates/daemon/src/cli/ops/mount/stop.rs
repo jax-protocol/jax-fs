@@ -1,10 +1,10 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::ApiError;
 use jax_daemon::http_server::api::v0::mounts::{StopMountRequest, StopMountResponse};
 
@@ -25,16 +25,14 @@ impl fmt::Display for StopOutput {
         if self.stopped {
             write!(
                 f,
-                "{} mount {}",
-                "Stopped".green().bold(),
-                self.mount_id.bold()
+                "{}",
+                ui::success("Stopped", &format!("mount {}", self.mount_id))
             )
         } else {
             write!(
                 f,
-                "{} to stop mount {}",
-                "Failed".red().bold(),
-                self.mount_id.bold()
+                "{}",
+                ui::failure("Failed", &format!("to stop mount {}", self.mount_id))
             )
         }
     }

@@ -1,9 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::unpublish::{UnpublishRequest, UnpublishResponse};
 
@@ -23,11 +23,10 @@ impl fmt::Display for UnpublishOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} bucket {}",
-            "Unpublished".yellow().bold(),
-            self.bucket_id.bold()
+            "{}",
+            ui::warning(&format!("Unpublished bucket {}", self.bucket_id))
         )?;
-        write!(f, "  {} {}", "link:".dimmed(), self.new_link)
+        write!(f, "{}", ui::label("link", &self.new_link))
     }
 }
 

@@ -4,6 +4,7 @@ use base64::Engine;
 use clap::Args;
 use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::cat::{CatRequest, CatResponse};
 
@@ -31,33 +32,47 @@ pub struct CatOutput {
 
 impl fmt::Display for CatOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.content {
-            CatContent::Text(text) => {
-                writeln!(
-                    f,
-                    "{} {}  {} {} bytes",
-                    "File:".dimmed(),
-                    self.path.bold(),
-                    "Size:".dimmed(),
-                    self.size
-                )?;
-                write!(f, "{text}")
+        if ui::is_plain() {
+            match &self.content {
+                CatContent::Text(text) => write!(f, "{text}"),
+                CatContent::Binary(bytes) => {
+                    let hex = bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    write!(f, "{hex}")
+                }
             }
-            CatContent::Binary(bytes) => {
-                writeln!(
-                    f,
-                    "{} {}  {} {} bytes",
-                    "File:".dimmed(),
-                    self.path.bold(),
-                    "Size:".dimmed(),
-                    self.size
-                )?;
-                let hex = bytes
-                    .iter()
-                    .map(|b| format!("{:02x}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                write!(f, "{} {hex}", "Binary content (hex):".dimmed())
+        } else {
+            match &self.content {
+                CatContent::Text(text) => {
+                    writeln!(
+                        f,
+                        "{} {}  {} {} bytes",
+                        "File:".dimmed(),
+                        self.path.bold(),
+                        "Size:".dimmed(),
+                        self.size
+                    )?;
+                    write!(f, "{text}")
+                }
+                CatContent::Binary(bytes) => {
+                    writeln!(
+                        f,
+                        "{} {}  {} {} bytes",
+                        "File:".dimmed(),
+                        self.path.bold(),
+                        "Size:".dimmed(),
+                        self.size
+                    )?;
+                    let hex = bytes
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    write!(f, "{} {hex}", "Binary content (hex):".dimmed())
+                }
             }
         }
     }

@@ -3,8 +3,8 @@ use std::fmt;
 use std::path::PathBuf;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::add::AddResponse;
 use reqwest::multipart;
@@ -34,20 +34,20 @@ impl fmt::Display for AddOutput {
         if self.failed > 0 {
             writeln!(
                 f,
-                "{} {} file(s), {} failed",
-                "Uploaded".green().bold(),
-                self.successful,
-                self.failed.to_string().red()
+                "{}",
+                ui::success(
+                    "Uploaded",
+                    &format!("{} file(s), {} failed", self.successful, self.failed)
+                )
             )?;
         } else {
             writeln!(
                 f,
-                "{} {} file(s)",
-                "Uploaded".green().bold(),
-                self.successful
+                "{}",
+                ui::success("Uploaded", &format!("{} file(s)", self.successful))
             )?;
         }
-        write!(f, "  {} {}", "link:".dimmed(), self.bucket_link)
+        write!(f, "{}", ui::label("link", &self.bucket_link))
     }
 }
 

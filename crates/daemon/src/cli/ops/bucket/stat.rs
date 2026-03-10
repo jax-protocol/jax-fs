@@ -1,8 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use comfy_table::Table;
+use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::stat::{StatRequest, StatResponse};
 
@@ -20,25 +21,53 @@ pub struct StatOutput {
 impl fmt::Display for StatOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = &self.response;
-        writeln!(f, "Bucket:    {}", r.name)?;
-        writeln!(f, "ID:        {}", r.bucket_id)?;
-        writeln!(f, "Version:   {}", r.link.hash())?;
-        writeln!(f, "Height:    {}", r.height)?;
-        writeln!(f, "Published: {}", if r.published { "yes" } else { "no" })?;
+
+        if ui::is_plain() {
+            writeln!(f, "Bucket: {}", r.name)?;
+            writeln!(f, "ID: {}", r.bucket_id)?;
+            writeln!(f, "Version: {}", r.link.hash())?;
+            writeln!(f, "Height: {}", r.height)?;
+            writeln!(f, "Published: {}", if r.published { "yes" } else { "no" })?;
+
+            if !r.peers.is_empty() {
+                writeln!(f)?;
+                let rows: Vec<Vec<String>> = r
+                    .peers
+                    .iter()
+                    .map(|p| {
+                        let marker = if p.is_self { "(you)" } else { "" };
+                        vec![p.public_key.clone(), p.role.clone(), marker.to_string()]
+                    })
+                    .collect();
+                ui::write_plain_rows(f, &rows)?;
+            }
+
+            return Ok(());
+        }
+
+        writeln!(f, "{}", ui::label("Bucket", &r.name))?;
+        writeln!(f, "{}", ui::label("ID", &r.bucket_id))?;
+        writeln!(
+            f,
+            "{}",
+            ui::label("Version", &ui::truncate(&r.link.hash().to_string(), 16))
+        )?;
+        writeln!(f, "{}", ui::label("Height", &r.height))?;
+        writeln!(f, "{}", ui::label("Published", &ui::yes_no(r.published)))?;
 
         if !r.peers.is_empty() {
             writeln!(f)?;
-            let mut table = Table::new();
-            table.set_header(vec!["PEER", "ROLE", ""]);
+            let mut table = ui::styled_table(vec!["PEER", "ROLE", ""]);
             for p in &r.peers {
+                let marker = if p.is_self {
+                    "(you)".dimmed().to_string()
+                } else {
+                    String::new()
+                };
                 table.add_row(vec![
-                    p.public_key.clone(),
-                    p.role.clone(),
-                    if p.is_self {
-                        "(you)".to_string()
-                    } else {
-                        String::new()
-                    },
+                    ui::truncate(&p.public_key, 24),
+                    ui::colored_role(&p.role),
+                    marker,
                 ]);
             }
             write!(f, "{table}")?;

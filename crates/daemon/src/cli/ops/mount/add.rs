@@ -1,10 +1,10 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::mounts::{CreateMountRequest, CreateMountResponse};
 
@@ -45,13 +45,12 @@ impl fmt::Display for AddOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} mount {}",
-            "Created".green().bold(),
-            self.mount_id.bold()
+            "{}",
+            ui::success("Created", &format!("mount {}", self.mount_id))
         )?;
-        writeln!(f, "  {} {}", "bucket:".dimmed(), self.bucket_id)?;
-        writeln!(f, "  {} {}", "path:".dimmed(), self.path)?;
-        write!(f, "  {} {}", "status:".dimmed(), self.status)
+        writeln!(f, "{}", ui::label("bucket", &self.bucket_id))?;
+        writeln!(f, "{}", ui::label("path", &self.path))?;
+        write!(f, "  status: {}", ui::colored_status(&self.status))
     }
 }
 

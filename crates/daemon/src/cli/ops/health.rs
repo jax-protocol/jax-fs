@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Args;
 use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::state::AppState;
 
 #[derive(Args, Debug, Clone)]
@@ -39,6 +40,49 @@ pub struct HealthOutput {
 
 impl fmt::Display for HealthOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let status_str = |s: &EndpointStatus| -> String {
+            if ui::is_plain() {
+                return match s {
+                    EndpointStatus::Ok => "OK".to_string(),
+                    EndpointStatus::Unhealthy(code) => format!("UNHEALTHY ({code})"),
+                    EndpointStatus::NotReachable => "NOT REACHABLE".to_string(),
+                };
+            }
+            match s {
+                EndpointStatus::Ok => format!("{} OK", ui::SUCCESS.green()),
+                EndpointStatus::Unhealthy(code) => {
+                    format!("{} {} ({code})", ui::FAILURE.red(), "UNHEALTHY".red())
+                }
+                EndpointStatus::NotReachable => {
+                    format!("{} {}", ui::FAILURE.red(), "NOT REACHABLE".red())
+                }
+            }
+        };
+
+        if ui::is_plain() {
+            writeln!(f, "Config:")?;
+            match &self.config {
+                Some(info) => {
+                    writeln!(f, "  directory: {}", info.directory.display())?;
+                    writeln!(f, "  config.toml: OK")?;
+                    writeln!(f, "  db.sqlite: OK")?;
+                    writeln!(f, "  key.pem: OK")?;
+                    writeln!(f, "  blobs/: OK")?;
+                    writeln!(f, "  api_port: {}", info.api_port)?;
+                    writeln!(f, "  gateway_port: {}", info.gateway_port)?;
+                }
+                None => {
+                    if let Some(err) = &self.config_error {
+                        writeln!(f, "  error: {err}")?;
+                    }
+                }
+            }
+            writeln!(f)?;
+            writeln!(f, "Daemon ({}):", self.daemon.url)?;
+            writeln!(f, "  livez: {}", status_str(&self.daemon.livez))?;
+            return write!(f, "  readyz: {}", status_str(&self.daemon.readyz));
+        }
+
         writeln!(f, "{}:", "Config".bold())?;
         match &self.config {
             Some(info) => {
@@ -48,30 +92,27 @@ impl fmt::Display for HealthOutput {
                     "directory:".dimmed(),
                     info.directory.display()
                 )?;
-                writeln!(f, "  {} {}", "config.toml:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "db.sqlite:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "key.pem:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "blobs/:".dimmed(), "OK".green())?;
+                writeln!(
+                    f,
+                    "  {} {} OK",
+                    "config.toml:".dimmed(),
+                    ui::SUCCESS.green()
+                )?;
+                writeln!(f, "  {} {} OK", "db.sqlite:".dimmed(), ui::SUCCESS.green())?;
+                writeln!(f, "  {} {} OK", "key.pem:".dimmed(), ui::SUCCESS.green())?;
+                writeln!(f, "  {} {} OK", "blobs/:".dimmed(), ui::SUCCESS.green())?;
                 writeln!(f, "  {} {}", "api_port:".dimmed(), info.api_port)?;
                 writeln!(f, "  {} {}", "gateway_port:".dimmed(), info.gateway_port)?;
             }
             None => {
                 if let Some(err) = &self.config_error {
-                    writeln!(f, "  {} {}", "error:".red(), err)?;
+                    writeln!(f, "  {} {} {err}", ui::FAILURE.red(), "error:".red())?;
                 }
             }
         }
 
         writeln!(f)?;
         writeln!(f, "{} ({}):", "Daemon".bold(), self.daemon.url)?;
-
-        let status_str = |s: &EndpointStatus| -> String {
-            match s {
-                EndpointStatus::Ok => "OK".green().to_string(),
-                EndpointStatus::Unhealthy(code) => format!("{} ({})", "UNHEALTHY".red(), code),
-                EndpointStatus::NotReachable => "NOT REACHABLE".red().to_string(),
-            }
-        };
 
         writeln!(
             f,

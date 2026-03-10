@@ -1,9 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::unshare::{UnshareRequest, UnshareResponse};
 
@@ -28,12 +28,13 @@ impl fmt::Display for ShareRemoveOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} peer {} from bucket {}",
-            "Removed".green().bold(),
-            self.peer_key.bold(),
-            self.bucket_id.bold()
+            "{}",
+            ui::success(
+                "Removed",
+                &format!("peer {} from bucket {}", self.peer_key, self.bucket_id)
+            )
         )?;
-        write!(f, "  {} {}", "link:".dimmed(), self.new_link)
+        write!(f, "{}", ui::label("link", &self.new_link))
     }
 }
 

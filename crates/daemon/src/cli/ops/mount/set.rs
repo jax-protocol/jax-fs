@@ -1,10 +1,10 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::ApiError;
 use jax_daemon::http_server::api::v0::mounts::{
     UpdateMountBody, UpdateMountRequest, UpdateMountResponse,
@@ -55,21 +55,15 @@ impl fmt::Display for SetOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} mount {}",
-            "Updated".green().bold(),
-            self.mount_id.bold()
+            "{}",
+            ui::success("Updated", &format!("mount {}", self.mount_id))
         )?;
-        writeln!(f, "  {} {}", "mount_point:".dimmed(), self.mount_point)?;
-        writeln!(f, "  {} {}", "enabled:".dimmed(), self.enabled)?;
-        writeln!(f, "  {} {}", "auto_mount:".dimmed(), self.auto_mount)?;
-        writeln!(f, "  {} {}", "read_only:".dimmed(), self.read_only)?;
-        writeln!(f, "  {} {}", "cache_size_mb:".dimmed(), self.cache_size_mb)?;
-        write!(
-            f,
-            "  {} {}",
-            "cache_ttl_secs:".dimmed(),
-            self.cache_ttl_secs
-        )
+        writeln!(f, "{}", ui::label("mount_point", &self.mount_point))?;
+        writeln!(f, "{}", ui::label("enabled", &self.enabled))?;
+        writeln!(f, "{}", ui::label("auto_mount", &self.auto_mount))?;
+        writeln!(f, "{}", ui::label("read_only", &self.read_only))?;
+        writeln!(f, "{}", ui::label("cache_size_mb", &self.cache_size_mb))?;
+        write!(f, "{}", ui::label("cache_ttl_secs", &self.cache_ttl_secs))
     }
 }
 
