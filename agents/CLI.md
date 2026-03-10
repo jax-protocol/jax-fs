@@ -227,9 +227,51 @@ async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
 }
 ```
 
+## The `ui` Module
+
+All formatting helpers live in `cli/ui.rs`. Display impls use these instead of calling `owo-colors` directly:
+
+### Status symbols
+
+```rust
+ui::SUCCESS  // ✓
+ui::PROGRESS // →
+ui::FAILURE  // ✗
+ui::WARNING  // !
+```
+
+### Formatting helpers
+
+```rust
+ui::success("Created", "bucket my-bucket")  // ✓ Created bucket my-bucket
+ui::failure("Failed", "to start mount ...")  // ✗ Failed to start mount ...
+ui::warning("Update cancelled")             // ! Update cancelled
+ui::label("id", &bucket_id)                 // (indented)  id: <value>
+ui::truncate(&hash, 16)                     // abcdef01234567…
+ui::colored_status("running")               // green for running, red for stopped
+ui::colored_role("owner")                    // yellow for owner, cyan for writer
+ui::colored_type("dir")                     // blue for dir, white for file
+ui::yes_no(true)                            // green "yes" or dimmed "no"
+ui::format_error(&err)                      // ✗ error: msg \n  caused by: ...
+```
+
+### Tables
+
+```rust
+let mut table = ui::styled_table(vec!["NAME", "ID", "LINK"]);
+table.add_row(vec![name, id, link]);
+write!(f, "{table}")
+```
+
+`styled_table` applies `UTF8_FULL_CONDENSED` preset with bold headers in normal mode, and `NOTHING` preset (borderless) in `--plain` mode. `comfy-table` auto-detects terminal width.
+
+### When to use `owo_colors` directly
+
+Use the `ui::` helpers for all repeated patterns. Direct `owo_colors` calls (`.bold()`, `.dimmed()`) are fine for one-off formatting unique to a single command (e.g., section headers in `health`).
+
 ## Typed Outputs with Styled Display
 
-Every op returns a typed output struct with a `Display` impl. The `Display` impl owns all presentation logic — colors, tables, layout. Example:
+Every op returns a typed output struct with a `Display` impl. The `Display` impl uses `ui::` helpers for consistent formatting. Example:
 
 ```rust
 #[derive(Debug)]
@@ -241,84 +283,40 @@ pub struct CreateOutput {
 
 impl fmt::Display for CreateOutput {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{} bucket {}",
-            "Created".green().bold(),
-            self.name.bold())?;
-        writeln!(f, "  {} {}", "id:".dimmed(), self.bucket_id)?;
-        write!(f, "  {} {}", "at:".dimmed(), self.created_at)
-    }
-}
-
-impl Op for Create {
-    type Output = CreateOutput;
-
-    async fn execute(&self, ctx: &OpContext) -> Result<Self::Output, Self::Error> {
-        let mut client = ctx.client.clone();
-        let request = CreateRequest { name: self.name.clone() };
-        let response = client.call(request).await?;
-        Ok(CreateOutput {
-            name: response.name,
-            bucket_id: response.bucket_id,
-            created_at: response.created_at,
-        })
+        writeln!(f, "{}", ui::success("Created", &format!("bucket {}", self.name)))?;
+        writeln!(f, "{}", ui::label("id", &self.bucket_id))?;
+        write!(f, "{}", ui::label("at", &self.created_at))
     }
 }
 ```
 
-The op just returns the data it already had. Formatting lives in a separate `Display` impl where it can use colors, alignment, and structure without cluttering the business logic.
-
-**Color conventions:**
-- Action words (Created, Uploaded, Cloned, etc.): `.green().bold()`
-- Labels (id:, at:, link:): `.dimmed()`
-- Names/values: `.bold()` for primary identifiers
-- Failure states: `.red()` or `.red().bold()`
-- OK status: `.green()`
-
-### Tables
-
-For list-style output, `Display` builds a `comfy-table::Table`:
-
-```rust
-impl fmt::Display for BucketListOutput {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut table = Table::new();
-        table.set_header(vec!["NAME", "ID", "LINK"]);
-        for b in &self.buckets {
-            table.add_row(vec![&b.name, &b.id.to_string(), &b.link_hash]);
-        }
-        write!(f, "{table}")
-    }
-}
-```
-
-`comfy-table` auto-detects terminal width and adjusts column sizes. No manual padding math.
+The op just returns the data it already had. Formatting lives in a separate `Display` impl using shared helpers without cluttering the business logic.
 
 ### Error Chains
 
-Errors at the boundary get colored chain display:
+Error formatting is handled by `ui::format_error()` at the boundary:
 
 ```rust
 Err(e) => {
-    eprintln!("{} {e}", "error:".red().bold());
-    let mut source = std::error::Error::source(&e);
-    while let Some(cause) = source {
-        eprintln!("  {} {cause}", "caused by:".yellow());
-        source = cause.source();
-    }
+    eprintln!("{}", ui::format_error(&e));
     std::process::exit(1);
 }
 ```
 
 Individual ops keep using `thiserror` — nothing changes about how errors are defined or propagated.
 
-### NO_COLOR and TTY Detection
+### `--plain` Mode and Color Control
 
-`owo-colors` with the `supports-colors` feature respects the `NO_COLOR` env var and terminal capability detection. Colors are automatically suppressed when:
+The global `--plain` flag (defined in `args.rs`) does two things:
+1. Calls `owo_colors::set_override(false)` — strips ANSI codes from all color calls globally
+2. Calls `ui::set_plain(true)` — switches `styled_table` to use borderless preset
+
+Display impls use a single code path. The `ui::` helpers degrade gracefully in plain mode because `owo_colors` color calls become no-ops. No per-command `if is_plain()` branching needed.
+
+Colors are also automatically suppressed when:
 - `NO_COLOR` is set (any value)
 - stdout is not a TTY (piped to another command)
 - `TERM=dumb`
-
-This requires using `if_supports_color()` or the `Stream` parameter on color methods. No special handling in ops — this is purely a `Display` impl concern.
 
 ## No `--json` Flag
 

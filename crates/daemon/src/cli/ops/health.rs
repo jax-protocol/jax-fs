@@ -27,12 +27,12 @@ pub enum EndpointStatus {
 impl fmt::Display for EndpointStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EndpointStatus::Ok => write!(f, "{} {}", ui::SUCCESS.green(), "OK".green()),
+            EndpointStatus::Ok => write!(f, "{}", ui::success(ui::SUCCESS, "OK")),
             EndpointStatus::Unhealthy(code) => {
-                write!(f, "{} {} ({code})", ui::FAILURE.red(), "UNHEALTHY".red())
+                write!(f, "{}", ui::failure("UNHEALTHY", &format!("({code})")))
             }
             EndpointStatus::NotReachable => {
-                write!(f, "{} {}", ui::FAILURE.red(), "NOT REACHABLE".red())
+                write!(f, "{}", ui::failure("NOT REACHABLE", ""))
             }
         }
     }
@@ -58,21 +58,15 @@ impl fmt::Display for HealthOutput {
         match &self.config {
             Some(info) => {
                 writeln!(f, "{}", ui::label("directory", &info.directory.display()))?;
-                writeln!(
-                    f,
-                    "  {} {} OK",
-                    "config.toml:".dimmed(),
-                    ui::SUCCESS.green()
-                )?;
-                writeln!(f, "  {} {} OK", "db.sqlite:".dimmed(), ui::SUCCESS.green())?;
-                writeln!(f, "  {} {} OK", "key.pem:".dimmed(), ui::SUCCESS.green())?;
-                writeln!(f, "  {} {} OK", "blobs/:".dimmed(), ui::SUCCESS.green())?;
+                for name in ["config.toml", "db.sqlite", "key.pem", "blobs/"] {
+                    writeln!(f, "{}", ui::label(name, &"OK".green()))?;
+                }
                 writeln!(f, "{}", ui::label("api_port", &info.api_port))?;
                 writeln!(f, "{}", ui::label("gateway_port", &info.gateway_port))?;
             }
             None => {
                 if let Some(err) = &self.config_error {
-                    writeln!(f, "  {} {} {err}", ui::FAILURE.red(), "error:".red())?;
+                    writeln!(f, "{}", ui::failure("error:", err))?;
                 }
             }
         }
