@@ -1,9 +1,8 @@
 use std::fmt;
 use std::path::PathBuf;
 
+use crate::cli::ui;
 use clap::{Args, ValueEnum};
-use owo_colors::OwoColorize;
-
 use jax_daemon::state::{AppConfig, AppState, BlobStoreConfig};
 
 /// Blob store backend type for CLI selection
@@ -65,22 +64,21 @@ impl fmt::Display for InitOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} jax at {}",
-            "Initialized".green().bold(),
-            self.jax_dir.display().to_string().bold()
+            "{}",
+            ui::success("Initialized", &format!("jax at {}", self.jax_dir.display()))
         )?;
-        writeln!(f, "  {} {}", "Database:".dimmed(), self.db_path.display())?;
-        writeln!(f, "  {} {}", "Key:".dimmed(), self.key_path.display())?;
-        writeln!(f, "  {} {}", "Blobs:".dimmed(), self.blobs_path.display())?;
-        writeln!(f, "  {} {}", "Config:".dimmed(), self.config_path.display())?;
-        writeln!(f, "  {} {}", "API port:".dimmed(), self.api_port)?;
-        writeln!(f, "  {} {}", "Gateway port:".dimmed(), self.gateway_port)?;
+        writeln!(f, "{}", ui::label("Database", &self.db_path.display()))?;
+        writeln!(f, "{}", ui::label("Key", &self.key_path.display()))?;
+        writeln!(f, "{}", ui::label("Blobs", &self.blobs_path.display()))?;
+        writeln!(f, "{}", ui::label("Config", &self.config_path.display()))?;
+        writeln!(f, "{}", ui::label("API port", &self.api_port))?;
+        writeln!(f, "{}", ui::label("Gateway port", &self.gateway_port))?;
         let peer_port_str = match self.peer_port {
             Some(port) => port.to_string(),
             None => "ephemeral (auto-assigned)".to_string(),
         };
-        writeln!(f, "  {} {}", "Peer port:".dimmed(), peer_port_str)?;
-        write!(f, "  {} {}", "Blob store:".dimmed(), self.blob_store)
+        writeln!(f, "{}", ui::label("Peer port", &peer_port_str))?;
+        write!(f, "{}", ui::label("Blob store", &self.blob_store))
     }
 }
 

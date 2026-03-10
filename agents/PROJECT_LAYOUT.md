@@ -36,8 +36,9 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/service_state.rs` - Runtime state (database, peer, mount_manager)
 - `src/state.rs` - App state (jax directory paths, config file)
 - `src/cli/` - CLI-specific code (not exported by library). See `agents/CLI.md` for the Op pattern and formatting boundary.
-  - `args.rs` - CLI argument parsing
+  - `args.rs` - CLI argument parsing (includes `--plain` flag)
   - `op.rs` - Op trait, OpContext, and command_enum macro
+  - `ui.rs` - Shared CLI formatting (status symbols, colors, tables, truncation, `--plain` mode)
   - `ops/` - CLI command implementations (bucket, daemon, health, init, mount, version)
     - `bucket/publish.rs` - Publish bucket subcommand
     - `bucket/unpublish.rs` - Unpublish bucket subcommand

@@ -1,9 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use comfy_table::Table;
 
 use crate::cli::op::{Op, OpContext};
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::ApiError;
 use jax_daemon::http_server::api::v0::mounts::{ListMountsRequest, ListMountsResponse, MountInfo};
 
@@ -21,8 +21,7 @@ impl fmt::Display for ListOutput {
             return write!(f, "No mounts configured");
         }
 
-        let mut table = Table::new();
-        table.set_header(vec![
+        let mut table = ui::styled_table(vec![
             "MOUNT ID",
             "BUCKET ID",
             "PATH",
@@ -32,12 +31,12 @@ impl fmt::Display for ListOutput {
         ]);
         for mount in &self.mounts {
             table.add_row(vec![
-                mount.mount_id.to_string(),
-                mount.bucket_id.to_string(),
+                ui::truncate(&mount.mount_id.to_string(), 16),
+                ui::truncate(&mount.bucket_id.to_string(), 16),
                 mount.mount_point.clone(),
-                mount.status.clone(),
-                if mount.auto_mount { "yes" } else { "no" }.to_string(),
-                if mount.read_only { "yes" } else { "no" }.to_string(),
+                ui::colored_status(&mount.status),
+                ui::yes_no(mount.auto_mount),
+                ui::yes_no(mount.read_only),
             ]);
         }
         write!(f, "{table}")

@@ -4,7 +4,8 @@ use std::process::{Command, Stdio};
 
 use clap::Args;
 use indicatif::ProgressBar;
-use owo_colors::OwoColorize;
+
+use crate::cli::ui;
 
 const GITHUB_REPO: &str = "jax-protocol/jax-fs";
 const INSTALL_SCRIPT_URL: &str =
@@ -68,76 +69,81 @@ impl fmt::Display for UpdateOutput {
             UpdateAction::AlreadyUpToDate => {
                 write!(
                     f,
-                    "{} (v{})",
-                    "Already up to date".green().bold(),
-                    self.current_version
+                    "{}",
+                    ui::success(
+                        "Already up to date",
+                        &format!("(v{})", self.current_version)
+                    )
                 )
             }
             UpdateAction::Updated => {
-                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
-                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
+                writeln!(f, "{}", ui::label("Current", &self.current_version))?;
+                writeln!(f, "{}", ui::label("Latest", &self.latest_version))?;
                 writeln!(
                     f,
-                    "  {} {}",
-                    "Install:".dimmed(),
-                    self.install_method.description()
+                    "{}",
+                    ui::label("Install", &self.install_method.description())
                 )?;
                 writeln!(
                     f,
-                    "  {} {}",
-                    "FUSE:".dimmed(),
-                    if self.fuse_enabled {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
+                    "{}",
+                    ui::label(
+                        "FUSE",
+                        &if self.fuse_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    )
                 )?;
                 writeln!(f)?;
                 write!(
                     f,
-                    "{} jax {} \u{2192} {}",
-                    "Updated".green().bold(),
-                    self.current_version,
-                    self.latest_version
+                    "{}",
+                    ui::success(
+                        "Updated",
+                        &format!(
+                            "jax {} {} {}",
+                            self.current_version,
+                            ui::PROGRESS,
+                            self.latest_version
+                        )
+                    )
                 )
             }
             UpdateAction::Cancelled => {
-                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
-                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
-                writeln!(
-                    f,
-                    "  {} {}",
-                    "Install:".dimmed(),
-                    self.install_method.description()
-                )?;
-                writeln!(
-                    f,
-                    "  {} {}",
-                    "FUSE:".dimmed(),
-                    if self.fuse_enabled {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                )?;
-                writeln!(f)?;
-                write!(f, "{}", "Update cancelled".yellow().bold())
-            }
-            UpdateAction::UnknownMethod => {
-                writeln!(f, "  {} {}", "Current:".dimmed(), self.current_version)?;
-                writeln!(f, "  {} {}", "Latest:".dimmed(), self.latest_version)?;
-                writeln!(
-                    f,
-                    "  {} {}",
-                    "Install:".dimmed(),
-                    self.install_method.description()
-                )?;
-                writeln!(f)?;
+                writeln!(f, "{}", ui::label("Current", &self.current_version))?;
+                writeln!(f, "{}", ui::label("Latest", &self.latest_version))?;
                 writeln!(
                     f,
                     "{}",
-                    "Could not detect installation method".yellow().bold()
+                    ui::label("Install", &self.install_method.description())
                 )?;
+                writeln!(
+                    f,
+                    "{}",
+                    ui::label(
+                        "FUSE",
+                        &if self.fuse_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    )
+                )?;
+                writeln!(f)?;
+                write!(f, "{}", ui::warning("Update cancelled"))
+            }
+            UpdateAction::UnknownMethod => {
+                writeln!(f, "{}", ui::label("Current", &self.current_version))?;
+                writeln!(f, "{}", ui::label("Latest", &self.latest_version))?;
+                writeln!(
+                    f,
+                    "{}",
+                    ui::label("Install", &self.install_method.description())
+                )?;
+                writeln!(f)?;
+                writeln!(f, "{}", ui::warning("Could not detect installation method"))?;
                 writeln!(f)?;
                 writeln!(f, "To install via script (recommended):")?;
                 write!(f, "  curl -fsSL {} | sh", INSTALL_SCRIPT_URL)

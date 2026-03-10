@@ -1,10 +1,10 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::{Op, OpContext};
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::ApiError;
 use jax_daemon::http_server::api::v0::mounts::{DeleteMountRequest, DeleteMountResponse};
 
@@ -29,12 +29,15 @@ impl fmt::Display for RemoveOutput {
         if self.deleted {
             write!(
                 f,
-                "{} mount {}",
-                "Removed".green().bold(),
-                self.mount_id.bold()
+                "{}",
+                ui::success("Removed", &format!("mount {}", self.mount_id))
             )
         } else {
-            write!(f, "Mount {} {}", self.mount_id.bold(), "not found".red())
+            write!(
+                f,
+                "{}",
+                ui::failure("Not found", &format!("mount {}", self.mount_id))
+            )
         }
     }
 }

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Args;
 use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::state::AppState;
 
 #[derive(Args, Debug, Clone)]
@@ -21,6 +22,20 @@ pub enum EndpointStatus {
     Ok,
     Unhealthy(String),
     NotReachable,
+}
+
+impl fmt::Display for EndpointStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EndpointStatus::Ok => write!(f, "{}", ui::success(ui::SUCCESS, "OK")),
+            EndpointStatus::Unhealthy(code) => {
+                write!(f, "{}", ui::failure("UNHEALTHY", &format!("({code})")))
+            }
+            EndpointStatus::NotReachable => {
+                write!(f, "{}", ui::failure("NOT REACHABLE", ""))
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -42,49 +57,24 @@ impl fmt::Display for HealthOutput {
         writeln!(f, "{}:", "Config".bold())?;
         match &self.config {
             Some(info) => {
-                writeln!(
-                    f,
-                    "  {} {}",
-                    "directory:".dimmed(),
-                    info.directory.display()
-                )?;
-                writeln!(f, "  {} {}", "config.toml:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "db.sqlite:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "key.pem:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "blobs/:".dimmed(), "OK".green())?;
-                writeln!(f, "  {} {}", "api_port:".dimmed(), info.api_port)?;
-                writeln!(f, "  {} {}", "gateway_port:".dimmed(), info.gateway_port)?;
+                writeln!(f, "{}", ui::label("directory", &info.directory.display()))?;
+                for name in ["config.toml", "db.sqlite", "key.pem", "blobs/"] {
+                    writeln!(f, "{}", ui::label(name, &"OK".green()))?;
+                }
+                writeln!(f, "{}", ui::label("api_port", &info.api_port))?;
+                writeln!(f, "{}", ui::label("gateway_port", &info.gateway_port))?;
             }
             None => {
                 if let Some(err) = &self.config_error {
-                    writeln!(f, "  {} {}", "error:".red(), err)?;
+                    writeln!(f, "{}", ui::failure("error:", err))?;
                 }
             }
         }
 
         writeln!(f)?;
         writeln!(f, "{} ({}):", "Daemon".bold(), self.daemon.url)?;
-
-        let status_str = |s: &EndpointStatus| -> String {
-            match s {
-                EndpointStatus::Ok => "OK".green().to_string(),
-                EndpointStatus::Unhealthy(code) => format!("{} ({})", "UNHEALTHY".red(), code),
-                EndpointStatus::NotReachable => "NOT REACHABLE".red().to_string(),
-            }
-        };
-
-        writeln!(
-            f,
-            "  {} {}",
-            "livez:".dimmed(),
-            status_str(&self.daemon.livez)
-        )?;
-        write!(
-            f,
-            "  {} {}",
-            "readyz:".dimmed(),
-            status_str(&self.daemon.readyz)
-        )
+        writeln!(f, "{}", ui::label("livez", &self.daemon.livez))?;
+        write!(f, "{}", ui::label("readyz", &self.daemon.readyz))
     }
 }
 

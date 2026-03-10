@@ -1,9 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::share::{ShareRequest, ShareResponse, ShareRole};
 
@@ -32,12 +32,13 @@ impl fmt::Display for ShareCreateOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} bucket {} with {}",
-            "Shared".green().bold(),
-            self.bucket_id.bold(),
-            self.peer_key.bold()
+            "{}",
+            ui::success(
+                "Shared",
+                &format!("bucket {} with {}", self.bucket_id, self.peer_key)
+            )
         )?;
-        write!(f, "  {} {}", "link:".dimmed(), self.new_link)
+        write!(f, "{}", ui::label("link", &self.new_link))
     }
 }
 

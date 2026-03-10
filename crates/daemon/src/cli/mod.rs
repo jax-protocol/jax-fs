@@ -1,6 +1,7 @@
 pub mod args;
 pub mod op;
 pub mod ops;
+pub mod ui;
 
 #[cfg(feature = "fuse")]
 pub use ops::Mount;

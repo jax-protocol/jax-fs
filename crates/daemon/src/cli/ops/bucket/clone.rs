@@ -2,10 +2,10 @@ use std::fmt;
 use std::path::PathBuf;
 
 use clap::Args;
-use owo_colors::OwoColorize;
 use uuid::Uuid;
 
 use crate::cli::op::Op;
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 
 use super::clone_state::{CloneConfig, CloneStateError, CloneStateManager, PathHashMap};
@@ -31,12 +31,13 @@ impl fmt::Display for CloneOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "{} bucket {} to {}",
-            "Cloned".green().bold(),
-            self.name.bold(),
-            self.directory.display().to_string().bold()
+            "{}",
+            ui::success(
+                "Cloned",
+                &format!("bucket {} to {}", self.name, self.directory.display())
+            )
         )?;
-        write!(f, "  {} {}", "files:".dimmed(), self.files_exported)
+        write!(f, "{}", ui::label("files", &self.files_exported))
     }
 }
 

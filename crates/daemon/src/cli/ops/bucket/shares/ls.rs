@@ -1,10 +1,10 @@
 use std::fmt;
 
 use clap::Args;
-use comfy_table::Table;
 use owo_colors::OwoColorize;
 use uuid::Uuid;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::shares::{ShareInfo, SharesRequest, SharesResponse};
 
@@ -26,15 +26,18 @@ impl fmt::Display for SharesLsOutput {
             return write!(f, "No shares for bucket {}", self.bucket_id.bold());
         }
 
-        let mut table = Table::new();
-        table.set_header(vec!["KEY", "ROLE", ""]);
+        let mut table = ui::styled_table(vec!["KEY", "ROLE", ""]);
         for share in &self.shares {
             let marker = if share.is_self {
                 "(you)".dimmed().to_string()
             } else {
                 String::new()
             };
-            table.add_row(vec![share.public_key.clone(), share.role.clone(), marker]);
+            table.add_row(vec![
+                ui::truncate(&share.public_key, 24),
+                ui::colored_role(&share.role),
+                marker,
+            ]);
         }
         write!(f, "{table}")
     }

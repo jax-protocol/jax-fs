@@ -1,8 +1,9 @@
 use std::fmt;
 
 use clap::Args;
-use comfy_table::Table;
+use owo_colors::OwoColorize;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::ApiError;
 use jax_daemon::http_server::api::v0::bucket::list::{BucketInfo, ListRequest, ListResponse};
 
@@ -28,13 +29,12 @@ impl fmt::Display for ListOutput {
             return write!(f, "No buckets found");
         }
 
-        let mut table = Table::new();
-        table.set_header(vec!["NAME", "ID", "LINK"]);
+        let mut table = ui::styled_table(vec!["NAME", "ID", "LINK"]);
         for b in &self.buckets {
             table.add_row(vec![
-                b.name.clone(),
-                b.bucket_id.to_string(),
-                b.link.hash().to_string(),
+                b.name.bold().to_string(),
+                ui::truncate(&b.bucket_id.to_string(), 16),
+                ui::truncate(&b.link.hash().to_string(), 16),
             ]);
         }
         write!(f, "{table}")

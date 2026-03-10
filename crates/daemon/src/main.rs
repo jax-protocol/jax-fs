@@ -2,10 +2,8 @@
 mod cli;
 
 use clap::{Parser, Subcommand};
-use cli::{args::Args, op::Op, Bucket, Daemon, Health, Init, Update, Version};
+use cli::{args::Args, op::Op, ui, Bucket, Daemon, Health, Init, Update, Version};
 use std::io::IsTerminal;
-
-use owo_colors::OwoColorize;
 
 #[cfg(feature = "fuse")]
 use cli::Mount;
@@ -35,19 +33,25 @@ command_enum! {
 async fn main() {
     let args = Args::parse();
 
+    // Configure plain mode (disables colors and table borders)
+    if args.plain {
+        ui::set_plain(true);
+        owo_colors::set_override(false);
+    }
+
     // Resolve remote URL: explicit flag > config api_port > hardcoded 5001
     let remote = cli::op::resolve_remote(args.remote, args.config_path.clone());
 
     // Build context - always has API client initialized
     let mp = indicatif::MultiProgress::new();
-    if !std::io::stdout().is_terminal() {
+    if !std::io::stdout().is_terminal() || args.plain {
         mp.set_draw_target(indicatif::ProgressDrawTarget::hidden());
     }
 
     let ctx = match cli::op::OpContext::new(remote, args.config_path, mp) {
         Ok(ctx) => ctx,
         Err(e) => {
-            print_error(&e);
+            eprintln!("{}", ui::format_error(&e));
             std::process::exit(1);
         }
     };
@@ -58,17 +62,8 @@ async fn main() {
             std::process::exit(0);
         }
         Err(e) => {
-            print_error(&e);
+            eprintln!("{}", ui::format_error(&e));
             std::process::exit(1);
         }
-    }
-}
-
-fn print_error(e: &dyn std::error::Error) {
-    eprintln!("{} {e}", "error:".red().bold());
-    let mut source = e.source();
-    while let Some(cause) = source {
-        eprintln!("  {} {cause}", "caused by:".yellow());
-        source = cause.source();
     }
 }

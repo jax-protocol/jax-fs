@@ -1,8 +1,8 @@
 use std::fmt;
 
 use clap::Args;
-use comfy_table::Table;
 
+use crate::cli::ui;
 use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::ls::{LsRequest, LsResponse, PathInfo};
 
@@ -31,14 +31,13 @@ impl fmt::Display for LsOutput {
             return write!(f, "No items found");
         }
 
-        let mut table = Table::new();
-        table.set_header(vec!["TYPE", "NAME", "HASH"]);
+        let mut table = ui::styled_table(vec!["TYPE", "NAME", "HASH"]);
         for item in &self.items {
             let type_str = if item.is_dir { "dir" } else { "file" };
             table.add_row(vec![
-                type_str.to_string(),
+                ui::colored_type(type_str),
                 item.name.clone(),
-                item.link.hash().to_string(),
+                ui::truncate(&item.link.hash().to_string(), 16),
             ]);
         }
         write!(f, "{table}")
