@@ -14,10 +14,3 @@ pub enum SyncEvent {
     /// A specific mount should invalidate its cache
     MountInvalidated { mount_id: Uuid },
 }
-
-/// Request from FUSE to save mount state
-#[derive(Debug, Clone)]
-pub struct SaveRequest {
-    /// Mount ID that needs saving
-    pub mount_id: Uuid,
-}

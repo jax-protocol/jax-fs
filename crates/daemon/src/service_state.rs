@@ -97,7 +97,14 @@ impl State {
         // Initialize mount manager with fuse feature
         #[cfg(feature = "fuse")]
         {
-            let mount_manager = MountManager::new(database, peer, MountManagerConfig::default());
+            let mount_manager = MountManager::new(
+                database,
+                peer,
+                MountManagerConfig {
+                    api_port: config.api_port,
+                    ..MountManagerConfig::default()
+                },
+            );
             *state.mount_manager.write().await = Some(mount_manager);
         }
 
