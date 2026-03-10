@@ -5,4 +5,5 @@
 
 pub mod bucket;
 pub mod daemon;
+pub mod logs;
 pub mod mount;

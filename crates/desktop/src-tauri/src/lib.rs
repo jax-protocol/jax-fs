@@ -10,6 +10,7 @@ pub mod version;
 
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
@@ -45,6 +46,7 @@ pub struct DaemonInner {
     pub api_port: u16,
     pub gateway_port: u16,
     pub jax_dir: PathBuf,
+    pub log_dir: PathBuf,
     pub mode: DaemonMode,
     /// Build info from the daemon, used to check feature availability.
     pub build_info: Option<BuildInfo>,
@@ -53,12 +55,15 @@ pub struct DaemonInner {
 /// Application state managed by Tauri.
 pub struct AppState {
     pub inner: Arc<RwLock<Option<DaemonInner>>>,
+    /// Whether log streaming is active (controls the background tail task).
+    pub log_streaming: Arc<AtomicBool>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
             inner: Arc::new(RwLock::new(None)),
+            log_streaming: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -66,12 +71,8 @@ impl Default for AppState {
 /// Run the Tauri application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .init();
+    // Tracing is initialized later in connect_or_spawn_daemon once we know jax_dir,
+    // so that logs can also go to a file. Early startup messages use eprintln.
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -146,6 +147,12 @@ pub fn run() {
             commands::mount::mount_bucket,
             commands::mount::unmount_bucket,
             commands::mount::is_bucket_mounted,
+            // Log commands
+            commands::logs::list_log_files,
+            commands::logs::read_log_file,
+            commands::logs::tail_log_file,
+            commands::logs::subscribe_logs,
+            commands::logs::unsubscribe_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -167,6 +174,44 @@ async fn probe_daemon(api_port: u16) -> bool {
     client.call(LivezRequest {}).await.is_ok()
 }
 
+/// Initialize tracing with stdout and file layers.
+/// Must be called before any tracing macros are used.
+fn init_desktop_logging(log_dir: &std::path::Path) {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{EnvFilter, Layer};
+
+    let _ = std::fs::create_dir_all(log_dir);
+
+    let env_filter = || {
+        EnvFilter::builder()
+            .with_default_directive(tracing::level_filters::LevelFilter::WARN.into())
+            .from_env_lossy()
+            .add_directive("jax_daemon=info".parse().unwrap())
+            .add_directive("jax_common=info".parse().unwrap())
+            .add_directive("jax_desktop=info".parse().unwrap())
+    };
+
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_filter(env_filter());
+
+    let file_appender = tracing_appender::rolling::daily(log_dir, "jax-desktop.log");
+    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
+    // Leak the guard so the writer lives for the process lifetime
+    std::mem::forget(_guard);
+
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(file_writer)
+        .with_ansi(false)
+        .with_filter(env_filter());
+
+    tracing_subscriber::registry()
+        .with(stdout_layer)
+        .with(file_layer)
+        .init();
+}
+
 /// Try to connect to an existing sidecar daemon; if none found, spawn an embedded one.
 async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), String> {
     use jax_daemon::state::AppState as JaxAppState;
@@ -178,6 +223,10 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
     let api_port = jax_state.config.api_port;
     let gateway_port = jax_state.config.gateway_port;
     let jax_dir = jax_state.jax_dir.clone();
+    let log_dir = jax_dir.join("logs");
+
+    // Initialize tracing now that we know jax_dir
+    init_desktop_logging(&log_dir);
 
     let state = app_handle.state::<AppState>();
 
@@ -208,6 +257,7 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
             api_port,
             gateway_port,
             jax_dir,
+            log_dir,
             mode: DaemonMode::Sidecar,
             build_info,
         });
@@ -242,7 +292,7 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
         gateway_port,
         sqlite_path: Some(jax_state.db_path),
         log_level: tracing::Level::INFO,
-        log_dir: None,
+        log_dir: Some(log_dir.clone()),
         gateway_url: None,
     };
 
@@ -269,6 +319,7 @@ async fn connect_or_spawn_daemon(app_handle: &tauri::AppHandle) -> Result<(), St
             api_port,
             gateway_port,
             jax_dir: jax_state.jax_dir.clone(),
+            log_dir,
             mode: DaemonMode::Embedded,
             build_info,
         });
