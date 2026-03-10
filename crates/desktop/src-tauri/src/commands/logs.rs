@@ -78,14 +78,14 @@ pub async fn read_log_file(
     offset: Option<usize>,
     limit: Option<usize>,
 ) -> Result<LogFileContents, String> {
-    let inner = state.inner.read().await;
-    let daemon = inner.as_ref().ok_or("Daemon not connected")?;
-    let log_path = daemon.log_dir.join(&filename);
-
     // Prevent path traversal
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
         return Err("Invalid filename".to_string());
     }
+
+    let inner = state.inner.read().await;
+    let daemon = inner.as_ref().ok_or("Daemon not connected")?;
+    let log_path = daemon.log_dir.join(&filename);
 
     if !log_path.exists() {
         return Err(format!("Log file not found: {}", filename));

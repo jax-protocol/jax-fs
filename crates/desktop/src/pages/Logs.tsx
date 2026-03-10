@@ -177,7 +177,8 @@ const Logs: Component = () => {
 
   // Auto-scroll when new lines arrive
   createEffect(() => {
-    const _ = liveLines();
+    // Track liveLines signal to trigger effect on change
+    liveLines();
     if (!paused() && logContainerRef) {
       requestAnimationFrame(() => {
         if (logContainerRef) {
