@@ -1,5 +1,6 @@
 use axum::extract::{Multipart, State};
 use axum::response::{IntoResponse, Response};
+use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::path::PathBuf;
@@ -7,6 +8,7 @@ use uuid::Uuid;
 
 use common::prelude::{Link, MountError};
 
+use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
 #[derive(Debug, Clone, Serialize, Deserialize, clap::Args)]
@@ -249,5 +251,30 @@ impl IntoResponse for AddError {
             )
                 .into_response(),
         }
+    }
+}
+
+/// Client-side request for adding a file via multipart upload.
+/// Wraps file data as a cursor for the ApiRequest trait.
+pub struct AddFileRequest {
+    pub bucket_id: Uuid,
+    pub mount_path: String,
+    pub filename: String,
+    pub data: Vec<u8>,
+}
+
+impl ApiRequest for AddFileRequest {
+    type Response = AddResponse;
+
+    fn build_request(self, base_url: &Url, client: &Client) -> RequestBuilder {
+        let full_url = base_url.join("/api/v0/bucket/add").unwrap();
+        let form = reqwest::multipart::Form::new()
+            .text("bucket_id", self.bucket_id.to_string())
+            .text("mount_path", self.mount_path)
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(self.data).file_name(self.filename),
+            );
+        client.post(full_url).multipart(form)
     }
 }

@@ -18,9 +18,13 @@ use uuid::Uuid;
 
 use crate::fuse::cache::{CachedAttr, CachedContent, CachedDirEntry, FileCache, FileCacheConfig};
 use crate::fuse::inode_table::InodeTable;
-use crate::fuse::sync_events::{SaveRequest, SyncEvent};
+use crate::fuse::sync_events::SyncEvent;
+use crate::http_server::api::client::ApiClient;
+use crate::http_server::api::v0::bucket::add::AddFileRequest;
+use crate::http_server::api::v0::bucket::delete::DeleteRequest;
+use crate::http_server::api::v0::bucket::mkdir::MkdirRequest;
+use crate::http_server::api::v0::bucket::mv::MvRequest;
 use common::mount::Mount;
-use tokio::sync::mpsc;
 
 /// Write buffer for pending writes
 #[derive(Debug)]
@@ -33,7 +37,7 @@ struct WriteBuffer {
 pub struct JaxFs {
     /// Tokio runtime handle for async operations
     rt: Handle,
-    /// Direct mount reference (no HTTP)
+    /// Direct mount reference for reads (ls, cat, getattr)
     mount: Arc<RwLock<Mount>>,
     /// Mount ID
     mount_id: Uuid,
@@ -48,8 +52,8 @@ pub struct JaxFs {
     /// Sync event receiver (used when sync listener is spawned)
     #[allow(dead_code)]
     sync_rx: Option<broadcast::Receiver<SyncEvent>>,
-    /// Save request sender - sends requests to MountManager when flush succeeds
-    save_tx: Option<mpsc::Sender<SaveRequest>>,
+    /// API client for daemon mutations (persistence handled by the API)
+    api_client: ApiClient,
     /// Read-only mode
     read_only: bool,
     /// Next file handle
@@ -73,7 +77,7 @@ impl JaxFs {
         cache_config: FileCacheConfig,
         read_only: bool,
         sync_rx: Option<broadcast::Receiver<SyncEvent>>,
-        save_tx: Option<mpsc::Sender<SaveRequest>>,
+        api_client: ApiClient,
     ) -> Self {
         Self {
             rt,
@@ -84,23 +88,97 @@ impl JaxFs {
             write_buffers: RwLock::new(HashMap::new()),
             cache: FileCache::new(cache_config),
             sync_rx,
-            save_tx,
+            api_client,
             read_only,
             next_fh: std::sync::atomic::AtomicU64::new(1),
         }
     }
 
-    /// Send a save request to persist the current mount state
-    fn request_save(&self) {
-        if let Some(ref save_tx) = self.save_tx {
-            let mount_id = self.mount_id;
-            let tx = save_tx.clone();
-            self.rt.spawn(async move {
-                if let Err(e) = tx.send(SaveRequest { mount_id }).await {
-                    tracing::error!("Failed to send save request: {}", e);
+    /// Persist a file add/write via the daemon API using the ApiRequest trait.
+    fn api_add_file(&self, path: &str, data: Vec<u8>) {
+        let mut client = self.api_client.clone();
+        let request = AddFileRequest {
+            bucket_id: self.bucket_id,
+            mount_path: InodeTable::parent_path(path),
+            filename: InodeTable::filename(path).to_string(),
+            data,
+        };
+        let mount_id = self.mount_id;
+
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
+                    tracing::debug!("FUSE API add persisted for mount {}", mount_id);
                 }
-            });
-        }
+                Err(e) => {
+                    tracing::error!("FUSE API add failed for mount {}: {}", mount_id, e);
+                }
+            }
+        });
+    }
+
+    /// Persist a delete via the daemon API using the ApiRequest trait.
+    fn api_delete(&self, path: &str) {
+        let mut client = self.api_client.clone();
+        let request = DeleteRequest {
+            bucket_id: self.bucket_id,
+            path: path.to_string(),
+        };
+        let mount_id = self.mount_id;
+
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
+                    tracing::debug!("FUSE API delete persisted for mount {}", mount_id);
+                }
+                Err(e) => {
+                    tracing::error!("FUSE API delete failed for mount {}: {}", mount_id, e);
+                }
+            }
+        });
+    }
+
+    /// Persist a mkdir via the daemon API using the ApiRequest trait.
+    fn api_mkdir(&self, path: &str) {
+        let mut client = self.api_client.clone();
+        let request = MkdirRequest {
+            bucket_id: self.bucket_id,
+            path: path.to_string(),
+        };
+        let mount_id = self.mount_id;
+
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
+                    tracing::debug!("FUSE API mkdir persisted for mount {}", mount_id);
+                }
+                Err(e) => {
+                    tracing::error!("FUSE API mkdir failed for mount {}: {}", mount_id, e);
+                }
+            }
+        });
+    }
+
+    /// Persist a rename/move via the daemon API using the ApiRequest trait.
+    fn api_mv(&self, source: &str, dest: &str) {
+        let mut client = self.api_client.clone();
+        let request = MvRequest {
+            bucket_id: self.bucket_id,
+            source_path: source.to_string(),
+            dest_path: dest.to_string(),
+        };
+        let mount_id = self.mount_id;
+
+        self.rt.block_on(async move {
+            match client.call(request).await {
+                Ok(_) => {
+                    tracing::debug!("FUSE API mv persisted for mount {}", mount_id);
+                }
+                Err(e) => {
+                    tracing::error!("FUSE API mv failed for mount {}: {}", mount_id, e);
+                }
+            }
+        });
     }
 
     /// Start the background sync listener
@@ -399,8 +477,15 @@ impl JaxFs {
         // Invalidate cache after successful truncate
         self.cache.invalidate(path);
 
-        // Request save to persist changes
-        self.request_save();
+        // Persist via daemon API
+        let truncated_data = self.rt.block_on(async {
+            let mount_guard = self.mount.read().await;
+            mount_guard
+                .cat(&std::path::PathBuf::from(path))
+                .await
+                .unwrap_or_default()
+        });
+        self.api_add_file(path, truncated_data);
 
         Ok(())
     }
@@ -799,15 +884,20 @@ impl Filesystem for JaxFs {
             match result {
                 Ok(_) => {
                     // Mark as clean
-                    let mut buffers = self.rt.block_on(self.write_buffers.write());
-                    if let Some(buffer) = buffers.get_mut(&fh) {
-                        buffer.dirty = false;
-                    }
+                    let flush_data = {
+                        let mut buffers = self.rt.block_on(self.write_buffers.write());
+                        if let Some(buffer) = buffers.get_mut(&fh) {
+                            buffer.dirty = false;
+                            buffer.data.clone()
+                        } else {
+                            Vec::new()
+                        }
+                    };
                     // Invalidate cache
                     self.cache.invalidate(&path);
 
-                    // Request save to persist changes
-                    self.request_save();
+                    // Persist via daemon API
+                    self.api_add_file(&path, flush_data);
 
                     reply.ok();
                 }
@@ -917,8 +1007,8 @@ impl Filesystem for JaxFs {
                     },
                 );
 
-                // Persist the new file
-                self.request_save();
+                // Persist via daemon API
+                self.api_add_file(&path, Vec::new());
 
                 reply.created(&Self::ATTR_TTL, &file_attr, 0, fh, flags as u32);
             }
@@ -994,8 +1084,8 @@ impl Filesystem for JaxFs {
                 // Invalidate parent directory cache
                 self.cache.invalidate(&parent_path);
 
-                // Persist the new directory
-                self.request_save();
+                // Persist via daemon API
+                self.api_mkdir(&path);
 
                 let file_attr = Self::make_attr(inode, &attr);
                 reply.entry(&Self::ATTR_TTL, &file_attr, 0);
@@ -1057,8 +1147,8 @@ impl Filesystem for JaxFs {
                 self.cache.invalidate(&path);
                 self.cache.invalidate(&parent_path);
 
-                // Persist the deletion
-                self.request_save();
+                // Persist via daemon API
+                self.api_delete(&path);
 
                 reply.ok();
             }
@@ -1165,8 +1255,8 @@ impl Filesystem for JaxFs {
                     self.cache.invalidate(&new_parent_path);
                 }
 
-                // Persist the rename
-                self.request_save();
+                // Persist via daemon API
+                self.api_mv(&old_path, &new_path);
 
                 reply.ok();
             }

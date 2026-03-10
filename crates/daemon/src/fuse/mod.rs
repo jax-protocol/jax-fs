@@ -26,4 +26,4 @@ pub use cache::{CacheStats, FileCache, FileCacheConfig};
 pub use inode_table::InodeTable;
 pub use jax_fs::JaxFs;
 pub use mount_manager::{LiveMount, MountError, MountManager, MountManagerConfig};
-pub use sync_events::{SaveRequest, SyncEvent};
+pub use sync_events::SyncEvent;

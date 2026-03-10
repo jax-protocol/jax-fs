@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::{broadcast, mpsc, oneshot, RwLock};
+use tokio::sync::{broadcast, oneshot, RwLock};
 use uuid::Uuid;
 
 use crate::database::models::FuseMount;
@@ -15,8 +15,9 @@ use crate::database::types::MountStatus;
 use crate::database::Database;
 use crate::fuse::cache::FileCacheConfig;
 use crate::fuse::jax_fs::JaxFs;
-use crate::fuse::sync_events::{SaveRequest, SyncEvent};
+use crate::fuse::sync_events::SyncEvent;
 use crate::fuse::FileCache;
+use crate::http_server::api::client::ApiClient;
 use common::mount::{ConflictFile, Mount};
 use common::peer::Peer;
 
@@ -25,12 +26,15 @@ use common::peer::Peer;
 pub struct MountManagerConfig {
     /// Channel capacity for sync events
     pub sync_event_capacity: usize,
+    /// Port of the daemon API server (used by FUSE to route mutations)
+    pub api_port: u16,
 }
 
 impl Default for MountManagerConfig {
     fn default() -> Self {
         Self {
             sync_event_capacity: 256,
+            api_port: 5001,
         }
     }
 }
@@ -105,6 +109,8 @@ pub struct MountManager {
     peer: Peer<Database>,
     /// Sync event broadcaster
     sync_tx: broadcast::Sender<SyncEvent>,
+    /// Port for the daemon API server (FUSE routes mutations through this)
+    api_port: u16,
 }
 
 impl MountManager {
@@ -117,6 +123,7 @@ impl MountManager {
             db,
             peer,
             sync_tx,
+            api_port: config.api_port,
         }
     }
 
@@ -382,12 +389,15 @@ impl MountManager {
             mount_config.cache_ttl_secs as u32,
         ));
 
-        // Create the FUSE filesystem with direct Mount reference
+        // Create the FUSE filesystem with direct Mount reference for reads
+        // and HTTP API client for mutations (persistence handled by the API)
         let mount_arc = Arc::new(RwLock::new(bucket_mount));
         let sync_rx = self.subscribe_sync_events();
 
-        // Create save channel for persistence requests from FUSE
-        let (save_tx, save_rx) = mpsc::channel::<SaveRequest>(32);
+        let api_base_url = url::Url::parse(&format!("http://localhost:{}", self.api_port))
+            .expect("valid localhost URL");
+        let api_client = ApiClient::new(&api_base_url)
+            .map_err(|e| MountError::SpawnFailed(format!("Failed to create API client: {}", e)))?;
 
         let fs = JaxFs::new(
             tokio::runtime::Handle::current(),
@@ -400,11 +410,8 @@ impl MountManager {
             ),
             *mount_config.read_only,
             Some(sync_rx),
-            Some(save_tx),
+            api_client,
         );
-
-        // Spawn save handler task
-        self.spawn_save_handler(save_rx, mount_arc.clone());
 
         // Mount options
         #[cfg(target_os = "linux")]
@@ -570,38 +577,6 @@ impl MountManager {
     pub async fn get_mount_cache(&self, mount_id: &Uuid) -> Option<FileCache> {
         let mounts = self.mounts.read().await;
         mounts.get(mount_id).map(|m| m.cache.clone())
-    }
-
-    /// Spawn a background task to handle save requests from FUSE
-    fn spawn_save_handler(
-        &self,
-        mut save_rx: mpsc::Receiver<SaveRequest>,
-        mount: Arc<RwLock<Mount>>,
-    ) {
-        let peer = self.peer.clone();
-
-        tokio::spawn(async move {
-            while let Some(request) = save_rx.recv().await {
-                tracing::debug!("Received save request for mount {}", request.mount_id);
-
-                // Get the current mount state and save it
-                let mount_guard = mount.read().await;
-                match peer.save_mount(&mount_guard, None).await {
-                    Ok(link) => {
-                        tracing::info!(
-                            "Successfully saved mount {} to {}",
-                            request.mount_id,
-                            link.hash()
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to save mount {}: {}", request.mount_id, e);
-                    }
-                }
-            }
-
-            tracing::debug!("Save handler shutting down");
-        });
     }
 
     /// Platform-specific unmount
