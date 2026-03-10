@@ -29,21 +29,6 @@ impl fmt::Display for ListOutput {
             return write!(f, "No buckets found");
         }
 
-        if ui::is_plain() {
-            let rows: Vec<Vec<String>> = self
-                .buckets
-                .iter()
-                .map(|b| {
-                    vec![
-                        b.name.clone(),
-                        b.bucket_id.to_string(),
-                        b.link.hash().to_string(),
-                    ]
-                })
-                .collect();
-            return ui::write_plain_rows(f, &rows);
-        }
-
         let mut table = ui::styled_table(vec!["NAME", "ID", "LINK"]);
         for b in &self.buckets {
             table.add_row(vec![

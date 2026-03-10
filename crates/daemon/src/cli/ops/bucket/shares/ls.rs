@@ -23,27 +23,7 @@ pub struct SharesLsOutput {
 impl fmt::Display for SharesLsOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.shares.is_empty() {
-            return if ui::is_plain() {
-                write!(f, "No shares for bucket {}", self.bucket_id)
-            } else {
-                write!(f, "No shares for bucket {}", self.bucket_id.bold())
-            };
-        }
-
-        if ui::is_plain() {
-            let rows: Vec<Vec<String>> = self
-                .shares
-                .iter()
-                .map(|share| {
-                    let marker = if share.is_self { "(you)" } else { "" };
-                    vec![
-                        share.public_key.clone(),
-                        share.role.clone(),
-                        marker.to_string(),
-                    ]
-                })
-                .collect();
-            return ui::write_plain_rows(f, &rows);
+            return write!(f, "No shares for bucket {}", self.bucket_id.bold());
         }
 
         let mut table = ui::styled_table(vec!["KEY", "ROLE", ""]);

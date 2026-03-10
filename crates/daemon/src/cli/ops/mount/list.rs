@@ -21,24 +21,6 @@ impl fmt::Display for ListOutput {
             return write!(f, "No mounts configured");
         }
 
-        if ui::is_plain() {
-            let rows: Vec<Vec<String>> = self
-                .mounts
-                .iter()
-                .map(|mount| {
-                    vec![
-                        mount.mount_id.to_string(),
-                        mount.bucket_id.to_string(),
-                        mount.mount_point.clone(),
-                        mount.status.clone(),
-                        if mount.auto_mount { "yes" } else { "no" }.to_string(),
-                        if mount.read_only { "yes" } else { "no" }.to_string(),
-                    ]
-                })
-                .collect();
-            return ui::write_plain_rows(f, &rows);
-        }
-
         let mut table = ui::styled_table(vec![
             "MOUNT ID",
             "BUCKET ID",

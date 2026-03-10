@@ -24,6 +24,20 @@ pub enum EndpointStatus {
     NotReachable,
 }
 
+impl fmt::Display for EndpointStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EndpointStatus::Ok => write!(f, "{} {}", ui::SUCCESS.green(), "OK".green()),
+            EndpointStatus::Unhealthy(code) => {
+                write!(f, "{} {} ({code})", ui::FAILURE.red(), "UNHEALTHY".red())
+            }
+            EndpointStatus::NotReachable => {
+                write!(f, "{} {}", ui::FAILURE.red(), "NOT REACHABLE".red())
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct DaemonInfo {
     pub url: String,
@@ -40,58 +54,10 @@ pub struct HealthOutput {
 
 impl fmt::Display for HealthOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let status_str = |s: &EndpointStatus| -> String {
-            if ui::is_plain() {
-                return match s {
-                    EndpointStatus::Ok => "OK".to_string(),
-                    EndpointStatus::Unhealthy(code) => format!("UNHEALTHY ({code})"),
-                    EndpointStatus::NotReachable => "NOT REACHABLE".to_string(),
-                };
-            }
-            match s {
-                EndpointStatus::Ok => format!("{} OK", ui::SUCCESS.green()),
-                EndpointStatus::Unhealthy(code) => {
-                    format!("{} {} ({code})", ui::FAILURE.red(), "UNHEALTHY".red())
-                }
-                EndpointStatus::NotReachable => {
-                    format!("{} {}", ui::FAILURE.red(), "NOT REACHABLE".red())
-                }
-            }
-        };
-
-        if ui::is_plain() {
-            writeln!(f, "Config:")?;
-            match &self.config {
-                Some(info) => {
-                    writeln!(f, "  directory: {}", info.directory.display())?;
-                    writeln!(f, "  config.toml: OK")?;
-                    writeln!(f, "  db.sqlite: OK")?;
-                    writeln!(f, "  key.pem: OK")?;
-                    writeln!(f, "  blobs/: OK")?;
-                    writeln!(f, "  api_port: {}", info.api_port)?;
-                    writeln!(f, "  gateway_port: {}", info.gateway_port)?;
-                }
-                None => {
-                    if let Some(err) = &self.config_error {
-                        writeln!(f, "  error: {err}")?;
-                    }
-                }
-            }
-            writeln!(f)?;
-            writeln!(f, "Daemon ({}):", self.daemon.url)?;
-            writeln!(f, "  livez: {}", status_str(&self.daemon.livez))?;
-            return write!(f, "  readyz: {}", status_str(&self.daemon.readyz));
-        }
-
         writeln!(f, "{}:", "Config".bold())?;
         match &self.config {
             Some(info) => {
-                writeln!(
-                    f,
-                    "  {} {}",
-                    "directory:".dimmed(),
-                    info.directory.display()
-                )?;
+                writeln!(f, "{}", ui::label("directory", &info.directory.display()))?;
                 writeln!(
                     f,
                     "  {} {} OK",
@@ -101,8 +67,8 @@ impl fmt::Display for HealthOutput {
                 writeln!(f, "  {} {} OK", "db.sqlite:".dimmed(), ui::SUCCESS.green())?;
                 writeln!(f, "  {} {} OK", "key.pem:".dimmed(), ui::SUCCESS.green())?;
                 writeln!(f, "  {} {} OK", "blobs/:".dimmed(), ui::SUCCESS.green())?;
-                writeln!(f, "  {} {}", "api_port:".dimmed(), info.api_port)?;
-                writeln!(f, "  {} {}", "gateway_port:".dimmed(), info.gateway_port)?;
+                writeln!(f, "{}", ui::label("api_port", &info.api_port))?;
+                writeln!(f, "{}", ui::label("gateway_port", &info.gateway_port))?;
             }
             None => {
                 if let Some(err) = &self.config_error {
@@ -113,19 +79,8 @@ impl fmt::Display for HealthOutput {
 
         writeln!(f)?;
         writeln!(f, "{} ({}):", "Daemon".bold(), self.daemon.url)?;
-
-        writeln!(
-            f,
-            "  {} {}",
-            "livez:".dimmed(),
-            status_str(&self.daemon.livez)
-        )?;
-        write!(
-            f,
-            "  {} {}",
-            "readyz:".dimmed(),
-            status_str(&self.daemon.readyz)
-        )
+        writeln!(f, "{}", ui::label("livez", &self.daemon.livez))?;
+        write!(f, "{}", ui::label("readyz", &self.daemon.readyz))
     }
 }
 

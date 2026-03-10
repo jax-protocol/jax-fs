@@ -31,22 +31,6 @@ impl fmt::Display for LsOutput {
             return write!(f, "No items found");
         }
 
-        if ui::is_plain() {
-            let rows: Vec<Vec<String>> = self
-                .items
-                .iter()
-                .map(|item| {
-                    let type_str = if item.is_dir { "dir" } else { "file" };
-                    vec![
-                        type_str.to_string(),
-                        item.name.clone(),
-                        item.link.hash().to_string(),
-                    ]
-                })
-                .collect();
-            return ui::write_plain_rows(f, &rows);
-        }
-
         let mut table = ui::styled_table(vec!["TYPE", "NAME", "HASH"]);
         for item in &self.items {
             let type_str = if item.is_dir { "dir" } else { "file" };

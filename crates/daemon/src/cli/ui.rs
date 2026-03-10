@@ -36,55 +36,36 @@ pub fn truncate(s: &str, max_len: usize) -> String {
 
 /// Format a success status line: `✓ action subject`
 pub fn success(action: &str, subject: &str) -> String {
-    if is_plain() {
-        format!("{action} {subject}")
-    } else {
-        format!(
-            "{} {} {}",
-            SUCCESS.green(),
-            action.green().bold(),
-            subject.bold()
-        )
-    }
+    format!(
+        "{} {} {}",
+        SUCCESS.green(),
+        action.green().bold(),
+        subject.bold()
+    )
 }
 
 /// Format a failure status line: `✗ action subject`
 pub fn failure(action: &str, subject: &str) -> String {
-    if is_plain() {
-        format!("{action} {subject}")
-    } else {
-        format!(
-            "{} {} {}",
-            FAILURE.red(),
-            action.red().bold(),
-            subject.bold()
-        )
-    }
+    format!(
+        "{} {} {}",
+        FAILURE.red(),
+        action.red().bold(),
+        subject.bold()
+    )
 }
 
 /// Format a warning status line: `! message`
 pub fn warning(message: &str) -> String {
-    if is_plain() {
-        message.to_string()
-    } else {
-        format!("{} {}", WARNING.yellow().bold(), message.yellow())
-    }
+    format!("{} {}", WARNING.yellow().bold(), message.yellow())
 }
 
 /// Format a dimmed label with a value: `  label: value`
 pub fn label(label: &str, value: &impl fmt::Display) -> String {
-    if is_plain() {
-        format!("  {label} {value}")
-    } else {
-        format!("  {} {value}", format!("{label}:").dimmed())
-    }
+    format!("  {} {value}", format!("{label}:").dimmed())
 }
 
 /// Color a mount/daemon status string (green for running/ok, red for stopped/error).
 pub fn colored_status(status: &str) -> String {
-    if is_plain() {
-        return status.to_string();
-    }
     match status.to_lowercase().as_str() {
         "running" | "ok" | "started" | "mounted" => status.green().to_string(),
         "stopped" | "error" | "failed" | "unmounted" => status.red().to_string(),
@@ -94,9 +75,6 @@ pub fn colored_status(status: &str) -> String {
 
 /// Color a share role string.
 pub fn colored_role(role: &str) -> String {
-    if is_plain() {
-        return role.to_string();
-    }
     match role.to_lowercase().as_str() {
         "owner" => role.yellow().bold().to_string(),
         "writer" | "mirror" => role.cyan().to_string(),
@@ -107,9 +85,6 @@ pub fn colored_role(role: &str) -> String {
 
 /// Color a file type string (dir=blue, file=white).
 pub fn colored_type(type_str: &str) -> String {
-    if is_plain() {
-        return type_str.to_string();
-    }
     match type_str {
         "dir" => type_str.blue().bold().to_string(),
         _ => type_str.to_string(),
@@ -117,6 +92,9 @@ pub fn colored_type(type_str: &str) -> String {
 }
 
 /// Create a styled table with consistent formatting.
+///
+/// In plain mode, uses no borders or padding (tab-separated).
+/// In normal mode, uses UTF8_FULL_CONDENSED with bold headers.
 pub fn styled_table(headers: Vec<&str>) -> Table {
     let mut table = Table::new();
     if is_plain() {
@@ -133,9 +111,6 @@ pub fn styled_table(headers: Vec<&str>) -> Table {
 
 /// Format a yes/no boolean as colored text.
 pub fn yes_no(value: bool) -> String {
-    if is_plain() {
-        return if value { "yes" } else { "no" }.to_string();
-    }
     if value {
         "yes".green().to_string()
     } else {
@@ -143,36 +118,17 @@ pub fn yes_no(value: bool) -> String {
     }
 }
 
-/// Write plain output for a list of tab-separated rows.
-pub fn write_plain_rows(f: &mut fmt::Formatter<'_>, rows: &[Vec<String>]) -> fmt::Result {
-    for (i, row) in rows.iter().enumerate() {
-        if i > 0 {
-            writeln!(f)?;
-        }
-        write!(f, "{}", row.join("\t"))?;
-    }
-    Ok(())
-}
-
 /// Format an error with the failure symbol.
+///
+/// Uses `owo_colors` which respects `set_override(false)` in plain mode.
 pub fn format_error(e: &dyn std::error::Error) -> String {
-    if is_plain() {
-        let mut msg = format!("error: {e}");
-        let mut source = e.source();
-        while let Some(cause) = source {
-            msg.push_str(&format!("\n  caused by: {cause}"));
-            source = cause.source();
-        }
-        msg
-    } else {
-        let mut msg = format!("{} {} {e}", FAILURE.red(), "error:".red().bold());
-        let mut source = e.source();
-        while let Some(cause) = source {
-            msg.push_str(&format!("\n  {} {cause}", "caused by:".yellow()));
-            source = cause.source();
-        }
-        msg
+    let mut msg = format!("{} {} {e}", FAILURE.red(), "error:".red().bold());
+    let mut source = e.source();
+    while let Some(cause) = source {
+        msg.push_str(&format!("\n  {} {cause}", "caused by:".yellow()));
+        source = cause.source();
     }
+    msg
 }
 
 #[cfg(test)]

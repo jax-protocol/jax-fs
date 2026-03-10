@@ -22,29 +22,6 @@ impl fmt::Display for StatOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let r = &self.response;
 
-        if ui::is_plain() {
-            writeln!(f, "Bucket: {}", r.name)?;
-            writeln!(f, "ID: {}", r.bucket_id)?;
-            writeln!(f, "Version: {}", r.link.hash())?;
-            writeln!(f, "Height: {}", r.height)?;
-            writeln!(f, "Published: {}", if r.published { "yes" } else { "no" })?;
-
-            if !r.peers.is_empty() {
-                writeln!(f)?;
-                let rows: Vec<Vec<String>> = r
-                    .peers
-                    .iter()
-                    .map(|p| {
-                        let marker = if p.is_self { "(you)" } else { "" };
-                        vec![p.public_key.clone(), p.role.clone(), marker.to_string()]
-                    })
-                    .collect();
-                ui::write_plain_rows(f, &rows)?;
-            }
-
-            return Ok(());
-        }
-
         writeln!(f, "{}", ui::label("Bucket", &r.name))?;
         writeln!(f, "{}", ui::label("ID", &r.bucket_id))?;
         writeln!(
