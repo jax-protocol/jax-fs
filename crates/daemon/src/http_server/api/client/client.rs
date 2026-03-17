@@ -1,4 +1,4 @@
-use reqwest::{header::HeaderMap, header::HeaderValue, Client};
+use reqwest::Client;
 use url::Url;
 use uuid::Uuid;
 
@@ -14,9 +14,7 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(remote: &Url) -> Result<Self, ApiError> {
-        let mut default_headers = HeaderMap::new();
-        default_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-        let client = Client::builder().default_headers(default_headers).build()?;
+        let client = Client::builder().build()?;
 
         Ok(Self {
             remote: remote.clone(),
