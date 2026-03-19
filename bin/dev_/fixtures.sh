@@ -444,13 +444,91 @@ fixture_mount_verify() {
     local test_file="$mount_point/.fuse-test-$$"
     if echo "fuse test" > "$test_file" 2>/dev/null; then
         echo -e "  ${GREEN}File write: OK${NC}"
-        rm -f "$test_file" 2>/dev/null
-        echo -e "  ${GREEN}File delete: OK${NC}"
+
+        # Try to rename the file (create-then-rename, the key regression test)
+        local renamed_file="$mount_point/.fuse-test-renamed-$$"
+        if mv "$test_file" "$renamed_file" 2>/dev/null; then
+            echo -e "  ${GREEN}File rename: OK${NC}"
+            # Verify renamed file exists and original is gone
+            if [[ -f "$renamed_file" ]] && [[ ! -f "$test_file" ]]; then
+                echo -e "  ${GREEN}File rename verify: OK${NC}"
+            else
+                echo -e "  ${RED}File rename verify: FAILED (renamed file missing or original still exists)${NC}"
+                # Clean up whichever exists
+                rm -f "$test_file" "$renamed_file" 2>/dev/null
+                return 1
+            fi
+            # Try overwrite (echo > existing file)
+            if echo "overwritten" > "$renamed_file" 2>/dev/null; then
+                local content
+                content=$(cat "$renamed_file" 2>/dev/null)
+                if [[ "$content" == "overwritten" ]]; then
+                    echo -e "  ${GREEN}File overwrite: OK${NC}"
+                else
+                    echo -e "  ${RED}File overwrite: FAILED (content mismatch)${NC}"
+                    rm -f "$renamed_file" 2>/dev/null
+                    return 1
+                fi
+            else
+                echo -e "  ${YELLOW}File overwrite: SKIPPED${NC}"
+            fi
+            rm -f "$renamed_file" 2>/dev/null
+            echo -e "  ${GREEN}File delete: OK${NC}"
+        else
+            echo -e "  ${RED}File rename: FAILED${NC}"
+            rm -f "$test_file" 2>/dev/null
+            return 1
+        fi
     else
         echo -e "  ${YELLOW}File write: SKIPPED (read-only or permission denied)${NC}"
     fi
 
     echo -e "  ${GREEN}FUSE mount verified${NC}"
+}
+
+# Check if FUSE is available on this machine and daemon supports it
+check_fuse_available() {
+    local node="${1:-owner}"
+    local fuse_device=false
+    local fuse_feature=false
+
+    # Platform check
+    case "$(uname -s)" in
+        Darwin)
+            if [[ -d "/Library/Filesystems/macfuse.fs" ]] || [[ -d "/Library/Filesystems/osxfuse.fs" ]]; then
+                fuse_device=true
+            fi
+            ;;
+        Linux)
+            if [[ -e "/dev/fuse" ]]; then
+                fuse_device=true
+            fi
+            ;;
+    esac
+
+    # Daemon feature check (query _status/version for fuse feature)
+    local api_port
+    api_port=$(get_api_port "$(resolve_node "$node")" 2>/dev/null)
+    if [[ -n "$api_port" ]]; then
+        local version_info
+        version_info=$(curl -s "http://localhost:$api_port/_status/version" 2>/dev/null)
+        if echo "$version_info" | jq -r '.build_features // ""' 2>/dev/null | grep -q 'fuse'; then
+            fuse_feature=true
+        fi
+    fi
+
+    if $fuse_device && $fuse_feature; then
+        echo -e "${GREEN}FUSE available — FUSE tests will run${NC}"
+        return 0
+    else
+        if ! $fuse_device; then
+            echo -e "${YELLOW}FUSE not available — no FUSE device detected on this platform${NC}"
+        elif ! $fuse_feature; then
+            echo -e "${YELLOW}FUSE not available — daemon not built with fuse feature${NC}"
+        fi
+        echo -e "${YELLOW}Skipping FUSE tests${NC}"
+        return 1
+    fi
 }
 
 fixtures_help() {

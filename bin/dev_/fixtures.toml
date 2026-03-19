@@ -102,7 +102,7 @@ bucket = "test"
 mount_point = "/tmp/jax-e2e-mount"
 node = "owner"
 
-# Verify FUSE mount works (list, read, write, delete)
+# Verify FUSE mount works (list, read, write, rename, overwrite, delete)
 [[fixture]]
 type = "mount_verify"
 bucket = "test"
@@ -133,7 +133,8 @@ node = "owner"
 #
 # FUSE mount test (if FUSE available):
 #   - Mounts bucket at /tmp/jax-e2e-mount on owner node
-#   - Verifies: directory listing, file read, file write, file delete
+#   - Verifies: directory listing, file read, file write, file rename,
+#     file overwrite, file delete
 #   - Unmounts after verification
 #
 # Each node runs separate API and gateway servers:

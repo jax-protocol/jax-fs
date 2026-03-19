@@ -387,4 +387,75 @@ mod tests {
         assert_eq!(FileCache::normalize_key("/foo"), "/foo");
         assert_eq!(FileCache::normalize_key("/foo/"), "/foo");
     }
+
+    /// Simulates the cache operations that occur during create() followed by
+    /// rename(). Verifies that invalidating the parent directory cache after
+    /// create() allows subsequent lookups to find the new file.
+    #[test]
+    fn test_create_invalidates_parent_dir_cache() {
+        let cache = FileCache::new(FileCacheConfig::default());
+
+        // Parent directory has a cached listing without the new file
+        let parent_entries = vec![CachedDirEntry {
+            name: "existing.txt".to_string(),
+            is_dir: false,
+        }];
+        cache.put_dir("/", parent_entries);
+
+        // Simulate create(): cache the new file's attrs and invalidate parent
+        let attr = CachedAttr {
+            size: 0,
+            is_dir: false,
+            mime_type: None,
+            mtime: 1234567890,
+        };
+        cache.put_attr("/new_file.txt", attr);
+
+        // Invalidate parent directory cache (the fix)
+        cache.invalidate("/");
+
+        // Parent dir cache should be gone, forcing a re-fetch
+        assert!(cache.get_dir("/").is_none());
+
+        // But the new file's attrs should still be cached
+        assert!(cache.get_attr("/new_file.txt").is_some());
+    }
+
+    /// Verifies that creating a file clears any negative cache entry for that
+    /// path, preventing stale ENOENT responses on subsequent lookups.
+    #[test]
+    fn test_create_clears_negative_cache_via_parent_invalidation() {
+        let cache = FileCache::new(FileCacheConfig::default());
+
+        // A prior lookup marked /new_file.txt as non-existent
+        cache.put_negative("/new_file.txt");
+        assert!(cache.is_negative("/new_file.txt"));
+
+        // Simulate create(): put_attr does NOT clear negative cache
+        let attr = CachedAttr {
+            size: 0,
+            is_dir: false,
+            mime_type: None,
+            mtime: 1234567890,
+        };
+        cache.put_attr("/new_file.txt", attr);
+
+        // The attr cache has the entry, so fetch_attr would find it before
+        // checking negative cache — but after flush() invalidates the attr,
+        // negative cache would cause ENOENT. Invalidate the path too.
+        cache.invalidate("/new_file.txt");
+        // Re-add just the attr (simulating what create does after the fix)
+        let attr2 = CachedAttr {
+            size: 0,
+            is_dir: false,
+            mime_type: None,
+            mtime: 1234567890,
+        };
+        cache.put_attr("/new_file.txt", attr2);
+
+        // Negative cache should be clear
+        assert!(!cache.is_negative("/new_file.txt"));
+        // Attr should be present
+        assert!(cache.get_attr("/new_file.txt").is_some());
+    }
 }

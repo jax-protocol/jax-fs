@@ -994,6 +994,9 @@ impl Filesystem for JaxFs {
                 };
                 self.cache.put_attr(&path, attr.clone());
 
+                // Invalidate parent directory cache so readdir reflects the new file
+                self.cache.invalidate(&parent_path);
+
                 let file_attr = Self::make_attr(inode, &attr);
                 let fh = self.next_handle();
 
