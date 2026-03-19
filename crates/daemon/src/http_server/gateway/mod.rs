@@ -12,6 +12,7 @@ use crate::ServiceState;
 pub mod directory;
 pub mod file;
 pub mod index;
+pub mod version;
 
 /// Bucket metadata passed to sub-handlers.
 pub struct BucketMeta<'a> {

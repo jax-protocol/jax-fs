@@ -349,3 +349,28 @@ Query parameters:
 - `download=true` - Force download with Content-Disposition: attachment
 - `view=true` - Show file in viewer UI instead of rendering HTML/Markdown
 - `deep=true` - Recursively list all files (for directories)
+
+### GET /gw/:bucket_id/version
+
+Returns the latest published version metadata for a bucket as JSON. No authentication required.
+
+```bash
+curl http://localhost:8080/gw/550e8400-e29b-41d4-a716-446655440000/version
+```
+
+Response (200 OK):
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "my-bucket",
+  "height": 42,
+  "link": "bafy2bzace...full_hash",
+  "published": true,
+  "content_url": "/gw/550e8400-e29b-41d4-a716-446655440000/"
+}
+```
+
+Response codes:
+- `200` — success, returns version JSON
+- `404` — bucket not found or no published version exists
+- `503` — bucket is still syncing (with `Retry-After: 5` header)
