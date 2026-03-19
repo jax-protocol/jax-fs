@@ -2,7 +2,7 @@ import { Component, createSignal, onMount, Show } from 'solid-js';
 import { getConfigInfo, ConfigInfo } from '../lib/api';
 
 type ThemeOption = 'system' | 'light' | 'dark';
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'error' | 'up-to-date';
+const RELEASES_URL = 'https://github.com/jax-protocol/jax-fs/releases';
 
 const Settings: Component = () => {
   // Auto-launch state
@@ -16,11 +16,6 @@ const Settings: Component = () => {
   const [configInfo, setConfigInfo] = createSignal<ConfigInfo | null>(null);
   const [configLoading, setConfigLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
-
-  // Update state
-  const [updateStatus, setUpdateStatus] = createSignal<UpdateStatus>('idle');
-  const [updateVersion, setUpdateVersion] = createSignal<string | null>(null);
-  const [updateError, setUpdateError] = createSignal<string | null>(null);
 
   onMount(async () => {
     // Load auto-launch state
@@ -67,39 +62,8 @@ const Settings: Component = () => {
     }
   };
 
-  const checkForUpdate = async () => {
-    setUpdateStatus('checking');
-    setUpdateError(null);
-    try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
-      if (update) {
-        setUpdateVersion(update.version);
-        setUpdateStatus('available');
-      } else {
-        setUpdateStatus('up-to-date');
-      }
-    } catch (e) {
-      setUpdateError(String(e));
-      setUpdateStatus('error');
-    }
-  };
-
-  const installUpdate = async () => {
-    setUpdateStatus('downloading');
-    setUpdateError(null);
-    try {
-      const { check } = await import('@tauri-apps/plugin-updater');
-      const update = await check();
-      if (update) {
-        await update.downloadAndInstall();
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
-      }
-    } catch (e) {
-      setUpdateError(String(e));
-      setUpdateStatus('error');
-    }
+  const openReleases = () => {
+    window.open(RELEASES_URL, '_blank');
   };
 
   const applyTheme = (value: ThemeOption) => {
@@ -160,90 +124,29 @@ const Settings: Component = () => {
       <div style={cardStyle()}>
         <h3 style={sectionHeaderStyle()}>Updates</h3>
 
-        <Show when={updateError()}>
-          <div style={{
-            background: 'hsl(0 84% 60% / 0.08)',
-            border: '1px solid hsl(0 84% 60% / 0.3)',
-            padding: '0.5rem 0.75rem',
-            'border-radius': '6px',
-            'margin-bottom': '0.75rem',
-            color: 'var(--accent-red)',
-            'font-size': '0.8125rem',
-          }}>
-            {updateError()}
-          </div>
-        </Show>
-
         <div style={settingRowStyle()}>
           <div>
-            <Show when={updateStatus() === 'idle' || updateStatus() === 'error'}>
-              <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>Check for updates</div>
-              <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
-                See if a newer version of Jax is available
-              </div>
-            </Show>
-            <Show when={updateStatus() === 'checking'}>
-              <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>Checking...</div>
-            </Show>
-            <Show when={updateStatus() === 'up-to-date'}>
-              <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>Up to date</div>
-              <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
-                You are running the latest version
-              </div>
-            </Show>
-            <Show when={updateStatus() === 'available'}>
-              <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>
-                Update available: v{updateVersion()}
-              </div>
-              <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
-                A new version is ready to install
-              </div>
-            </Show>
-            <Show when={updateStatus() === 'downloading'}>
-              <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>Downloading update...</div>
-              <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
-                The app will restart when ready
-              </div>
-            </Show>
+            <div style={{ 'font-size': '0.875rem', 'font-weight': '500' }}>Check for updates</div>
+            <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
+              Download the latest version from GitHub Releases
+            </div>
           </div>
-
-          <Show when={updateStatus() === 'idle' || updateStatus() === 'up-to-date' || updateStatus() === 'error'}>
-            <button
-              onClick={checkForUpdate}
-              style={{
-                padding: '0.375rem 0.75rem',
-                'border-radius': '6px',
-                border: '1px solid var(--border)',
-                background: 'var(--bg)',
-                color: 'var(--fg)',
-                cursor: 'pointer',
-                'font-size': '0.8125rem',
-                'font-family': 'inherit',
-                'flex-shrink': '0',
-              }}
-            >
-              Check
-            </button>
-          </Show>
-          <Show when={updateStatus() === 'available'}>
-            <button
-              onClick={installUpdate}
-              style={{
-                padding: '0.375rem 0.75rem',
-                'border-radius': '6px',
-                border: '1px solid var(--accent-green)',
-                background: 'var(--accent-green)',
-                color: 'white',
-                cursor: 'pointer',
-                'font-size': '0.8125rem',
-                'font-weight': '600',
-                'font-family': 'inherit',
-                'flex-shrink': '0',
-              }}
-            >
-              Install
-            </button>
-          </Show>
+          <button
+            onClick={openReleases}
+            style={{
+              padding: '0.375rem 0.75rem',
+              'border-radius': '6px',
+              border: '1px solid var(--border)',
+              background: 'var(--bg)',
+              color: 'var(--fg)',
+              cursor: 'pointer',
+              'font-size': '0.8125rem',
+              'font-family': 'inherit',
+              'flex-shrink': '0',
+            }}
+          >
+            View Releases
+          </button>
         </div>
       </div>
 
