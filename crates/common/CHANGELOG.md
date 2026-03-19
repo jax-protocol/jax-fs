@@ -15,17 +15,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
+## v0.1.10 (2026-03-19)
+
+### Bug Fixes
+
+ - <csr-id-56fece5340a6a1dda8afad8c651baa9f41d6591d/> prevent ping job queue saturation from blocking syncs
+   Stale peer pings with ~30s connect timeouts were processed serially,
+   starving sync/download jobs and flooding the bounded queue. This change:
+   
+   - Adds 5s timeout to ping operations (peer unavailability returns Ok)
+   - Spawns ping jobs concurrently (semaphore-capped at 10) instead of
+     blocking the worker loop
+   - Increases periodic ping interval from 60s to 5 minutes
+   - Skips periodic batch if previous is still in flight
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 9 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#141](https://github.com/jax-protocol/jax-fs/issues/141)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#141](https://github.com/jax-protocol/jax-fs/issues/141)**
+    - Prevent ping job queue saturation from blocking syncs ([`56fece5`](https://github.com/jax-protocol/jax-fs/commit/56fece5340a6a1dda8afad8c651baa9f41d6591d))
+</details>
+
 ## v0.1.9 (2026-03-09)
 
 ### New Features
 
  - <csr-id-e4f511b70d2b419cae83b2acc7d53a42ba58c0b4/> persist publish status across saves, add unpublish
    * feat(publish): persist publish status across saves, add unpublish
-   
-   Publish status was being cleared on every save(publish=false) call,
-   meaning any bucket operation (add, mv, rename, etc.) would silently
-   unpublish a published bucket. This was a bug — buckets should stay
-   published until explicitly unpublished.
 
 ### Bug Fixes
 
@@ -42,9 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#118](https://github.com/jax-protocol/jax-fs/issues/118), [#121](https://github.com/jax-protocol/jax-fs/issues/121)
+ - 3 unique issues were worked on: [#118](https://github.com/jax-protocol/jax-fs/issues/118), [#121](https://github.com/jax-protocol/jax-fs/issues/121), [#122](https://github.com/jax-protocol/jax-fs/issues/122)
 
 ### Commit Details
 
@@ -56,7 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Persist publish status across saves, add unpublish ([`e4f511b`](https://github.com/jax-protocol/jax-fs/commit/e4f511b70d2b419cae83b2acc7d53a42ba58c0b4))
  * **[#121](https://github.com/jax-protocol/jax-fs/issues/121)**
     - Apply all manifests in chain instead of only the first ([`258a9ef`](https://github.com/jax-protocol/jax-fs/commit/258a9ef69fe3ec755fd4ed376cf68bd5e09ca8f9))
+ * **[#122](https://github.com/jax-protocol/jax-fs/issues/122)**
+    - Bump jax-common v0.1.9, jax-daemon v0.1.11 ([`3b7f495`](https://github.com/jax-protocol/jax-fs/commit/3b7f4951a2e5c7ad7a232c80bc997b2d7aef3886))
 </details>
+
+<csr-unknown>
+Publish status was being cleared on every save(publish=false) call,meaning any bucket operation (add, mv, rename, etc.) would silentlyunpublish a published bucket. This was a bug — buckets should staypublished until explicitly unpublished.<csr-unknown/>
 
 ## v0.1.8 (2026-02-20)
 
@@ -64,16 +97,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-c339f04cd771efb6195c1779d9bd29b7a55027c7/> make blobs store configurable (separate paths + max import size)
    * feat: make blobs store configurable with separate DB/object paths and max import size
-- Update ObjectStore::new_local to accept separate db_path and objects_path
-     instead of deriving both from a single data_dir
-- Make MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcoded
-     constant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)
-- Add optional db_path field to BlobStoreConfig::Filesystem variant for
-     separate SQLite metadata DB location
-- Add max_import_size to AppConfig with serde default for backward compat
-- Thread max_import_size through setup_blobs_store, Blobs::setup, and
-     ServiceConfig to the actor
-- Add *_with_max_import_size constructors to BlobsStore and ObjectStore
 
 ### Commit Statistics
 
@@ -95,6 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#115](https://github.com/jax-protocol/jax-fs/issues/115)**
     - Bump jax-object-store v0.1.3, jax-common v0.1.8, jax-daemon v0.1.10 ([`9eb3ccd`](https://github.com/jax-protocol/jax-fs/commit/9eb3ccd4612ed3a88d82f01e7055e30a0bb69c54))
 </details>
+
+<csr-unknown>
+Update ObjectStore::new_local to accept separate db_path and objects_pathinstead of deriving both from a single data_dirMake MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcodedconstant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)Add optional db_path field to BlobStoreConfig::Filesystem variant forseparate SQLite metadata DB locationAdd max_import_size to AppConfig with serde default for backward compatThread max_import_size through setup_blobs_store, Blobs::setup, andServiceConfig to the actorAdd *_with_max_import_size constructors to BlobsStore and ObjectStore<csr-unknown/>
 
 ## v0.1.7 (2026-02-17)
 
@@ -124,9 +150,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#86](https://github.com/jax-protocol/jax-fs/issues/86)**
     - Add share removal for bucket owners ([`4ec1d14`](https://github.com/jax-protocol/jax-fs/commit/4ec1d14a91b6b7dde5b6945aa9b62b93f8ae5dca))
 </details>
-
-<csr-unknown>
-Add owner-only validation to publish endpoint (HTTP 403 for non-owners)Add integration tests for owner publish and publish/unpublish round-tripUpdate PROJECT_LAYOUT.md and issue ticket<csr-unknown/>
 
 ## v0.1.6 (2026-02-13)
 
