@@ -1,3 +1,4 @@
 target/
 data/*
 jig.local.toml
+.jig
