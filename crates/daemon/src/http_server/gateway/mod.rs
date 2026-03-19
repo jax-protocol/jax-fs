@@ -210,7 +210,7 @@ pub(super) fn error_response(message: &str) -> Response {
         .into_response()
 }
 
-fn syncing_response() -> Response {
+pub(crate) fn syncing_response() -> Response {
     (
         axum::http::StatusCode::SERVICE_UNAVAILABLE,
         [(axum::http::header::RETRY_AFTER, "5")],

@@ -23,7 +23,7 @@ pub async fn handler(State(state): State<ServiceState>, Path(bucket_id): Path<Uu
         Ok(exists) => exists,
         Err(e) => {
             tracing::error!("Failed to check bucket existence: {}", e);
-            return super::error_response("Internal error");
+            return super::syncing_response();
         }
     };
 
@@ -36,7 +36,7 @@ pub async fn handler(State(state): State<ServiceState>, Path(bucket_id): Path<Uu
         Ok(result) => result,
         Err(e) => {
             tracing::error!("Failed to query latest published version: {}", e);
-            return super::error_response("Internal error");
+            return super::syncing_response();
         }
     };
 

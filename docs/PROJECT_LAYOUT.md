@@ -21,6 +21,7 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
     - `index.rs` - Gateway homepage (lists published buckets)
     - `directory.rs` - Directory listing handler (self-contained)
     - `file.rs` - File serving handler (self-contained)
+    - `version.rs` - Latest published version metadata endpoint (JSON)
 - `src/database/` - SQLite storage and bucket log provider
   - `mount_queries.rs` - FUSE mount persistence (CRUD, status updates)
 - `src/blobs/` - Blob store setup and configuration
