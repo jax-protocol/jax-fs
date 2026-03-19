@@ -16,10 +16,17 @@ impl Database {
             .fetch_optional(&**self)
             .await?;
 
-        Ok(row.map(|r| {
-            let s: String = r.get("status");
-            s.parse().unwrap()
-        }))
+        match row {
+            Some(r) => {
+                let s: String = r.get("status");
+                let status = s.parse().map_err(|e| sqlx::Error::ColumnDecode {
+                    index: "status".to_string(),
+                    source: Box::new(e),
+                })?;
+                Ok(Some(status))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Set the status for a bucket (upsert).

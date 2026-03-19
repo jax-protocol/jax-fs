@@ -26,16 +26,21 @@ impl BucketStatus {
     }
 }
 
+/// Error returned when parsing an unknown bucket status string.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("unknown bucket status: {0}")]
+pub struct ParseBucketStatusError(String);
+
 impl std::str::FromStr for BucketStatus {
-    type Err = std::convert::Infallible;
+    type Err = ParseBucketStatusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
-            "pending" => BucketStatus::Pending,
-            "active" => BucketStatus::Active,
-            "ignored" => BucketStatus::Ignored,
-            _ => BucketStatus::Pending,
-        })
+        match s {
+            "pending" => Ok(BucketStatus::Pending),
+            "active" => Ok(BucketStatus::Active),
+            "ignored" => Ok(BucketStatus::Ignored),
+            _ => Err(ParseBucketStatusError(s.to_string())),
+        }
     }
 }
 
@@ -48,7 +53,7 @@ impl std::fmt::Display for BucketStatus {
 impl Decode<'_, Sqlite> for BucketStatus {
     fn decode(value: SqliteValueRef<'_>) -> Result<Self, BoxDynError> {
         let s = <String as Decode<Sqlite>>::decode(value)?;
-        Ok(s.parse().unwrap())
+        Ok(s.parse()?)
     }
 }
 
@@ -69,5 +74,70 @@ impl Type<Sqlite> for BucketStatus {
 
     fn type_info() -> SqliteTypeInfo {
         <String as Type<Sqlite>>::type_info()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_valid_statuses() {
+        assert_eq!(
+            "pending".parse::<BucketStatus>().unwrap(),
+            BucketStatus::Pending
+        );
+        assert_eq!(
+            "active".parse::<BucketStatus>().unwrap(),
+            BucketStatus::Active
+        );
+        assert_eq!(
+            "ignored".parse::<BucketStatus>().unwrap(),
+            BucketStatus::Ignored
+        );
+    }
+
+    #[test]
+    fn parse_unknown_status_returns_error() {
+        assert!("unknown".parse::<BucketStatus>().is_err());
+        assert!("".parse::<BucketStatus>().is_err());
+        assert!("ACTIVE".parse::<BucketStatus>().is_err());
+    }
+
+    #[test]
+    fn display_roundtrip() {
+        for status in [
+            BucketStatus::Pending,
+            BucketStatus::Active,
+            BucketStatus::Ignored,
+        ] {
+            let s = status.to_string();
+            let parsed: BucketStatus = s.parse().unwrap();
+            assert_eq!(parsed, status);
+        }
+    }
+
+    #[test]
+    fn as_str_matches_display() {
+        for status in [
+            BucketStatus::Pending,
+            BucketStatus::Active,
+            BucketStatus::Ignored,
+        ] {
+            assert_eq!(status.as_str(), status.to_string());
+        }
+    }
+
+    #[test]
+    fn serde_roundtrip() {
+        for status in [
+            BucketStatus::Pending,
+            BucketStatus::Active,
+            BucketStatus::Ignored,
+        ] {
+            let json = serde_json::to_string(&status).unwrap();
+            let parsed: BucketStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, status);
+        }
     }
 }

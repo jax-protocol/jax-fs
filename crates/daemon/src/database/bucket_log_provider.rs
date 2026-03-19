@@ -254,20 +254,21 @@ impl BucketLogProvider for Database {
     async fn list_syncable_buckets(
         &self,
     ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
-        // Get all buckets from the log (explicitly call trait method)
-        let all_buckets = <Self as BucketLogProvider>::list_buckets(self).await?;
+        // Single query: buckets that are explicitly active OR have no status row (backward compat)
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT bl.bucket_id \
+             FROM bucket_log bl \
+             LEFT JOIN bucket_status bs ON bl.bucket_id = bs.bucket_id \
+             WHERE bs.status IS NULL OR bs.status = 'active' \
+             ORDER BY bl.bucket_id",
+        )
+        .fetch_all(&**self)
+        .await
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
 
-        // Filter to only active ones
-        let mut syncable = Vec::new();
-        for id in all_buckets {
-            let status = self
-                .get_effective_bucket_status(&id)
-                .await
-                .map_err(common::bucket_log::BucketLogError::Provider)?;
-            if status == BucketStatus::Active {
-                syncable.push(id);
-            }
-        }
-        Ok(syncable)
+        Ok(rows
+            .into_iter()
+            .map(|r| Uuid::parse_str(&r.0).expect("invalid bucket_id UUID in database"))
+            .collect())
     }
 }
