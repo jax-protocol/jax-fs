@@ -130,6 +130,7 @@ pub async fn run_gateway(
 
     // Gateway routes with their own CORS layer
     let gateway_routes = Router::new()
+        .route("/:bucket_id/version", get(gateway::version::handler))
         .route("/:bucket_id", get(gateway::root_handler))
         .route("/:bucket_id/", get(gateway::root_handler))
         .route("/:bucket_id/*file_path", get(gateway::handler))

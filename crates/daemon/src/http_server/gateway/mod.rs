@@ -12,6 +12,7 @@ use crate::ServiceState;
 pub mod directory;
 pub mod file;
 pub mod index;
+pub mod version;
 
 /// Bucket metadata passed to sub-handlers.
 pub struct BucketMeta<'a> {
@@ -209,7 +210,7 @@ pub(super) fn error_response(message: &str) -> Response {
         .into_response()
 }
 
-fn syncing_response() -> Response {
+pub(crate) fn syncing_response() -> Response {
     (
         axum::http::StatusCode::SERVICE_UNAVAILABLE,
         [(axum::http::header::RETRY_AFTER, "5")],
