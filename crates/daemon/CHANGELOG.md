@@ -15,36 +15,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.15 (2026-03-19)
+
+### Bug Fixes
+
+ - <csr-id-e474643292f567e1148e175932da4cda220dd4d8/> invalidate parent cache on create, extend e2e with FUSE tests
+   * fix(fuse): invalidate parent cache on create, extend e2e with FUSE tests
+   
+   Fix a bug where files created via shell redirect (echo > file.txt)
+   could not immediately be renamed (mv file.txt other.md → ENOENT).
+   The root cause was that create() did not invalidate the parent
+   directory cache after creating a file, while mkdir() already did.
+   
+   Also extends the e2e test system to detect FUSE availability, run
+   filesystem operation tests (including the create-then-rename
+   regression), and report FUSE test results accurately in the test plan.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#154](https://github.com/jax-protocol/jax-fs/issues/154)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#154](https://github.com/jax-protocol/jax-fs/issues/154)**
+    - Invalidate parent cache on create, extend e2e with FUSE tests ([`e474643`](https://github.com/jax-protocol/jax-fs/commit/e474643292f567e1148e175932da4cda220dd4d8))
+</details>
+
 ## v0.1.14 (2026-03-19)
+
+<csr-id-54d05fe698640c1f957764519b690e029dbab700/>
 
 ### New Features
 
+<csr-id-414cd21174e13a0614adab3f0c78757128bf1d94/>
+
  - <csr-id-bcfb790dca89b970bc8091f9a9093274932a57be/> bucket allowlist with approval, removal, and sync filtering
    * feat: add bucket allowlist with approval, removal, and sync filtering
-   
-   Introduces a bucket status model (pending/active/ignored) so peers can
-   approve incoming shares before syncing content, and ignore buckets they
-   don't want. Bucket log entries are preserved as an audit trail.
-   
-   - Add bucket_status table with migration
-   - Extend BucketLogProvider trait with should_sync_content,
+- Add bucket_status table with migration
+- Extend BucketLogProvider trait with should_sync_content,
      on_new_bucket_discovered, and list_syncable_buckets
-   - Gate pin/blob downloads on bucket status in sync_bucket
-   - Filter periodic pings to only active buckets
-   - New POST /api/v0/bucket/approve and /ignore endpoints
-   - Add status field and filter to bucket list API
-   - Auto-set active status on self-created buckets
-   - Unmount FUSE mounts when ignoring a bucket
- - <csr-id-414cd21174e13a0614adab3f0c78757128bf1d94/> add version endpoint for latest published bucket version
-   * feat(gateway): add version endpoint for latest published bucket version
-   
-   Add GET /gw/:bucket_id/version endpoint that returns JSON metadata for
-   the latest published version of a bucket. This provides a machine-friendly
-   way for CI/CD, scripts, and frontends to query version info without the
-   admin API.
-   
-   Returns 404 when bucket or published version not found, 503 when syncing.
-   Route is registered before the wildcard catch-all to avoid conflicts.
+- Gate pin/blob downloads on bucket status in sync_bucket
+- Filter periodic pings to only active buckets
+- New POST /api/v0/bucket/approve and /ignore endpoints
+- Add status field and filter to bucket list API
+- Auto-set active status on self-created buckets
+- Unmount FUSE mounts when ignoring a bucket
+* feat(gateway): add version endpoint for latest published bucket version
 
 ### Bug Fixes
 
@@ -60,10 +84,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    starving sync/download jobs and flooding the bounded queue. This change:
    
    - Adds 5s timeout to ping operations (peer unavailability returns Ok)
-   - Spawns ping jobs concurrently (semaphore-capped at 10) instead of
+- Spawns ping jobs concurrently (semaphore-capped at 10) instead of
      blocking the worker loop
-   - Increases periodic ping interval from 60s to 5 minutes
-   - Skips periodic batch if previous is still in flight
+- Increases periodic ping interval from 60s to 5 minutes
+- Skips periodic batch if previous is still in flight
 
 ### Other
 
@@ -76,9 +100,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 5 commits contributed to the release.
+ - 6 commits contributed to the release.
  - 5 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 4 unique issues were worked on: [#140](https://github.com/jax-protocol/jax-fs/issues/140), [#141](https://github.com/jax-protocol/jax-fs/issues/141), [#142](https://github.com/jax-protocol/jax-fs/issues/142), [#147](https://github.com/jax-protocol/jax-fs/issues/147)
+ - 5 unique issues were worked on: [#140](https://github.com/jax-protocol/jax-fs/issues/140), [#141](https://github.com/jax-protocol/jax-fs/issues/141), [#142](https://github.com/jax-protocol/jax-fs/issues/142), [#147](https://github.com/jax-protocol/jax-fs/issues/147), [#152](https://github.com/jax-protocol/jax-fs/issues/152)
 
 ### Commit Details
 
@@ -94,9 +118,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bucket allowlist with approval, removal, and sync filtering ([`bcfb790`](https://github.com/jax-protocol/jax-fs/commit/bcfb790dca89b970bc8091f9a9093274932a57be))
  * **[#147](https://github.com/jax-protocol/jax-fs/issues/147)**
     - Add version endpoint for latest published bucket version ([`414cd21`](https://github.com/jax-protocol/jax-fs/commit/414cd21174e13a0614adab3f0c78757128bf1d94))
+ * **[#152](https://github.com/jax-protocol/jax-fs/issues/152)**
+    - Bump jax-common v0.1.10, jax-daemon v0.1.14 ([`bfdbca1`](https://github.com/jax-protocol/jax-fs/commit/bfdbca1b53b99e3ad00833c2cf909afe368085a7))
  * **Uncategorized**
     - Add fuse/no-fuse matrix to Rust CI and Linux FUSE release variant ([`54d05fe`](https://github.com/jax-protocol/jax-fs/commit/54d05fe698640c1f957764519b690e029dbab700))
 </details>
+
+<csr-unknown>
+Introduces a bucket status model (pending/active/ignored) so peers canapprove incoming shares before syncing content, and ignore buckets theydon’t want. Bucket log entries are preserved as an audit trail. add version endpoint for latest published bucket versionAdd GET /gw/:bucket_id/version endpoint that returns JSON metadata forthe latest published version of a bucket. This provides a machine-friendlyway for CI/CD, scripts, and frontends to query version info without theadmin API.Returns 404 when bucket or published version not found, 503 when syncing.Route is registered before the wildcard catch-all to avoid conflicts.<csr-unknown/>
 
 ## v0.1.13 (2026-03-19)
 
@@ -163,9 +192,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **Uncategorized**
     - Remove default Content-Type header that broke FUSE multipart uploads ([`9296b51`](https://github.com/jax-protocol/jax-fs/commit/9296b514cd72b81bb27530ffac4995bc7e062d73))
 </details>
-
-<csr-unknown>
-Add a centralized ui.rs module with status symbols (✓/→/✗/!), colorhelpers, string truncation, styled table builder, and plain output mode.All CLI commands now use consistent formatting via shared helpers insteadof ad-hoc owo_colors calls. Tables use UTF8_FULL_CONDENSED preset withbold headers, truncated IDs/hashes, colored statuses, and colored roles.The –plain global flag disables colors and table borders for scripting.<csr-unknown/>
 
 ## v0.1.12 (2026-03-09)
 
