@@ -141,8 +141,20 @@ impl BidirectionalHandler for Ping {
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
+        // Check if this bucket should be synced
+        let should_sync = peer
+            .logs()
+            .should_sync_content(ping.bucket_id)
+            .await
+            .unwrap_or(true);
+
         match &pong.status {
             PingReplyStatus::Behind(our_link, our_height) => {
+                if !should_sync {
+                    tracing::debug!("Skipping sync for bucket {} (not active)", ping.bucket_id);
+                    return Ok(());
+                }
+
                 // We told them we're behind, so we should dispatch a sync job
                 tracing::info!(
                     "We're behind peer for bucket {} (our height: {}, their height: {}), dispatching sync job",
@@ -198,13 +210,13 @@ impl BidirectionalHandler for Ping {
                     "We don't have bucket {} that peer is asking about",
                     ping.bucket_id
                 );
-                // TODO (amiller68): there should probably be a share message instead
-                //  of this
                 // We don't have the bucket locally, so we can't get peer list from our manifest.
                 // Use only the sender for now; once we sync we'll have the full peer list.
                 let peer_ids = vec![*sender_node_id];
 
                 // Dispatch sync job to background worker
+                // The sync_bucket::execute will call on_new_bucket_discovered
+                // to set the bucket to pending status
                 use crate::peer::sync::{SyncBucketJob, SyncJob, SyncTarget};
                 if let Err(e) = peer
                     .dispatch(SyncJob::SyncBucket(SyncBucketJob {

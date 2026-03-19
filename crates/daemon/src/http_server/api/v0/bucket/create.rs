@@ -8,6 +8,7 @@ use uuid::Uuid;
 use common::bucket_log::BucketLogProvider;
 use common::prelude::{Mount, MountError};
 
+use crate::database::types::BucketStatus;
 use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
@@ -89,6 +90,20 @@ pub async fn handler(
         "CREATE BUCKET: Genesis entry appended successfully for bucket {}",
         id
     );
+
+    // Auto-set status to active for self-created buckets
+    state
+        .database()
+        .set_bucket_status(&id, BucketStatus::Active, None)
+        .await
+        .map_err(|e| {
+            tracing::error!(
+                "CREATE BUCKET: Failed to set bucket status for {}: {}",
+                id,
+                e
+            );
+            CreateError::SaveMount(format!("Failed to set bucket status: {}", e))
+        })?;
 
     tracing::info!(
         "CREATE BUCKET: Bucket '{}' created successfully with ID {}",

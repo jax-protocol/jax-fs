@@ -444,6 +444,7 @@ pub async fn mount_bucket(
         .call(ListRequest {
             prefix: None,
             limit: None,
+            status: None,
         })
         .await
         .map_err(|e| e.to_string())?;

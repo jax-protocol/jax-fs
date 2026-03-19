@@ -107,9 +107,12 @@ Request:
 ```json
 {
   "prefix": "optional-filter",
-  "limit": 100
+  "limit": 100,
+  "status": "active"
 }
 ```
+
+All fields are optional. The `status` field filters by bucket status (`pending`, `active`, or `ignored`).
 
 Response:
 ```json
@@ -119,6 +122,7 @@ Response:
       "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
       "name": "my-bucket",
       "link": { "codec": 85, "hash": "..." },
+      "status": "active",
       "created_at": "2024-01-20T12:00:00Z"
     }
   ]
@@ -318,6 +322,56 @@ Initiates sync with a remote peer for a bucket.
 curl -X POST http://localhost:5001/api/v0/bucket/ping \
   -H "Content-Type: application/json" \
   -d '{"bucket_id": "550e8400-...", "node_id": "2gx..."}'
+```
+
+### POST /api/v0/bucket/approve - Approve Bucket
+
+Approves a pending bucket for full sync. Triggers catch-up download of any pins that were skipped while the bucket was pending.
+
+```bash
+curl -X POST http://localhost:5001/api/v0/bucket/approve \
+  -H "Content-Type: application/json" \
+  -d '{"bucket_id": "550e8400-..."}'
+```
+
+Request:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+Response:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "active"
+}
+```
+
+### POST /api/v0/bucket/ignore - Ignore Bucket
+
+Sets a bucket to ignored status. Stops syncing and unmounts any FUSE mounts. Preserves bucket log entries as an audit trail.
+
+```bash
+curl -X POST http://localhost:5001/api/v0/bucket/ignore \
+  -H "Content-Type: application/json" \
+  -d '{"bucket_id": "550e8400-..."}'
+```
+
+Request:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+Response:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "ignored"
+}
 ```
 
 ### POST /api/v0/bucket/export - Export Bucket

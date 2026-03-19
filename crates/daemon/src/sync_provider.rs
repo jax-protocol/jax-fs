@@ -202,8 +202,8 @@ where
     L: common::bucket_log::BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
-    // Get all bucket IDs
-    let bucket_ids = match peer.logs().list_buckets().await {
+    // Get only actively syncable bucket IDs
+    let bucket_ids = match peer.logs().list_syncable_buckets().await {
         Ok(ids) => ids,
         Err(e) => {
             tracing::error!("Failed to list buckets for periodic pings: {}", e);

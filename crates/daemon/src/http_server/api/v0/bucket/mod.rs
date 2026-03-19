@@ -4,11 +4,13 @@ use axum::Router;
 use crate::ServiceState;
 
 pub mod add;
+pub mod approve;
 pub mod cat;
 pub mod create;
 pub mod delete;
 pub mod export;
 pub mod history;
+pub mod ignore;
 pub mod latest_published;
 pub mod list;
 pub mod ls;
@@ -25,7 +27,9 @@ pub mod unshare;
 pub mod update;
 
 // Re-export for convenience
+pub use approve::ApproveRequest;
 pub use create::CreateRequest;
+pub use ignore::IgnoreRequest;
 pub use list::ListRequest;
 pub use share::ShareRequest;
 pub use shares::SharesRequest;
@@ -53,5 +57,7 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/latest-published", post(latest_published::handler))
         .route("/history", post(history::handler))
         .route("/stat", post(stat::handler))
+        .route("/approve", post(approve::handler))
+        .route("/ignore", post(ignore::handler))
         .with_state(state)
 }

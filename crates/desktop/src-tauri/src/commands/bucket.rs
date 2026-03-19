@@ -37,6 +37,7 @@ pub struct BucketInfo {
     pub name: String,
     pub link_hash: String,
     pub height: u64,
+    pub status: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
@@ -99,6 +100,7 @@ pub async fn list_buckets(state: State<'_, AppState>) -> Result<Vec<BucketInfo>,
         .call(ListRequest {
             prefix: None,
             limit: None,
+            status: None,
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -111,6 +113,7 @@ pub async fn list_buckets(state: State<'_, AppState>) -> Result<Vec<BucketInfo>,
             name: b.name,
             link_hash: b.link.to_string(),
             height: 0,
+            status: b.status,
             created_at: b.created_at,
         })
         .collect())
@@ -130,6 +133,7 @@ pub async fn create_bucket(state: State<'_, AppState>, name: String) -> Result<B
         name: resp.name,
         link_hash: String::new(),
         height: 0,
+        status: "active".to_string(),
         created_at: resp.created_at,
     })
 }

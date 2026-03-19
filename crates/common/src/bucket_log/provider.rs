@@ -136,4 +136,25 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
         &self,
         id: Uuid,
     ) -> Result<Option<(Link, u64)>, BucketLogError<Self::Error>>;
+
+    /// Whether content (pins/blobs) should be synced for this bucket.
+    /// Implementations override to support approval workflows.
+    async fn should_sync_content(&self, _id: Uuid) -> Result<bool, BucketLogError<Self::Error>> {
+        Ok(true)
+    }
+
+    /// Called when a new bucket is first discovered from a remote peer.
+    /// Implementations can use this to set initial status (e.g. pending).
+    async fn on_new_bucket_discovered(
+        &self,
+        _id: Uuid,
+        _shared_by: Option<String>,
+    ) -> Result<(), BucketLogError<Self::Error>> {
+        Ok(())
+    }
+
+    /// List only buckets that should be actively synced (for periodic pings).
+    async fn list_syncable_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>> {
+        self.list_buckets().await
+    }
 }

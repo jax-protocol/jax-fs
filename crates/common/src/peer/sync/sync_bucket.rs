@@ -66,6 +66,22 @@ where
 
     let exists: bool = peer.logs().exists(job.bucket_id).await?;
 
+    // Signal new bucket discovery so the daemon can set pending status
+    if !exists {
+        let shared_by = job.target.peer_ids.first().map(|p| p.to_hex());
+        if let Err(e) = peer
+            .logs()
+            .on_new_bucket_discovered(job.bucket_id, shared_by)
+            .await
+        {
+            tracing::warn!(
+                "Failed to signal new bucket discovery for {}: {}",
+                job.bucket_id,
+                e
+            );
+        }
+    }
+
     let common_ancestor = if exists {
         // find a common ancestor between our log and the
         //  link the peer advertised to us
@@ -366,6 +382,13 @@ where
 {
     tracing::info!("Applying {} manifests to log", manifests.len());
 
+    // Check if we should download content for this bucket
+    let should_sync = peer
+        .logs()
+        .should_sync_content(bucket_id)
+        .await
+        .unwrap_or(true);
+
     for (manifest, link) in manifests.iter() {
         let previous = manifest.previous().clone();
         let height = manifest.height();
@@ -391,17 +414,25 @@ where
             .await
             .map_err(|e| anyhow!("Failed to append manifest at height {}: {}", height, e))?;
 
-        let pins_link = manifest.pins().clone();
-        let peer_ids = manifest
-            .shares()
-            .iter()
-            .map(|share| share.1.principal().identity)
-            .collect();
-        peer.dispatch(SyncJob::DownloadPins(DownloadPinsJob {
-            pins_link,
-            peer_ids,
-        }))
-        .await?;
+        // Only download pins/blobs for active buckets
+        if should_sync {
+            let pins_link = manifest.pins().clone();
+            let peer_ids = manifest
+                .shares()
+                .iter()
+                .map(|share| share.1.principal().identity)
+                .collect();
+            peer.dispatch(SyncJob::DownloadPins(DownloadPinsJob {
+                pins_link,
+                peer_ids,
+            }))
+            .await?;
+        } else {
+            tracing::info!(
+                "Skipping pin download for bucket {} (not active)",
+                bucket_id
+            );
+        }
     }
 
     tracing::info!("Successfully applied {} manifests to log", manifests.len());

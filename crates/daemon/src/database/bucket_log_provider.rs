@@ -4,6 +4,7 @@ use uuid::Uuid;
 use common::bucket_log::BucketLogProvider;
 use common::linked_data::Link;
 
+use crate::database::types::BucketStatus;
 use crate::database::{types::DCid, Database};
 
 #[async_trait]
@@ -227,5 +228,47 @@ impl BucketLogProvider for Database {
         .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         Ok(result.map(|r| (r.current_link.into(), r.height as u64)))
+    }
+
+    async fn should_sync_content(
+        &self,
+        id: Uuid,
+    ) -> Result<bool, common::bucket_log::BucketLogError<Self::Error>> {
+        let status = self
+            .get_effective_bucket_status(&id)
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)?;
+        Ok(status == BucketStatus::Active)
+    }
+
+    async fn on_new_bucket_discovered(
+        &self,
+        id: Uuid,
+        shared_by: Option<String>,
+    ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
+        self.set_bucket_status(&id, BucketStatus::Pending, shared_by.as_deref())
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)
+    }
+
+    async fn list_syncable_buckets(
+        &self,
+    ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
+        // Single query: buckets that are explicitly active OR have no status row (backward compat)
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT DISTINCT bl.bucket_id \
+             FROM bucket_log bl \
+             LEFT JOIN bucket_status bs ON bl.bucket_id = bs.bucket_id \
+             WHERE bs.status IS NULL OR bs.status = 'active' \
+             ORDER BY bl.bucket_id",
+        )
+        .fetch_all(&**self)
+        .await
+        .map_err(common::bucket_log::BucketLogError::Provider)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| Uuid::parse_str(&r.0).expect("invalid bucket_id UUID in database"))
+            .collect())
     }
 }
