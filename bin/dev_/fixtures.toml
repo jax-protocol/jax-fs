@@ -4,12 +4,22 @@
 # Run manually with: ./bin/dev fixtures
 #
 # Fixtures are applied in order. Each fixture type:
-#   bucket  - Create a bucket
-#   file    - Upload a file to a bucket
-#   dir     - Create a directory in a bucket
-#   share   - Share a bucket with a peer (role: owner/mirror)
-#   publish - Publish a bucket (grant decryption to mirrors)
-#   mv      - Move/rename a file or directory
+#   bucket    - Create a bucket
+#   file      - Upload a file to a bucket
+#   dir       - Create a directory in a bucket
+#   share     - Share a bucket with a peer (role: owner/mirror)
+#   publish   - Publish a bucket (grant decryption to mirrors)
+#   mv        - Move/rename a file or directory
+#   mount     - Mount a bucket via FUSE
+#   mount_verify - Verify FUSE mount is accessible
+#   unmount   - Unmount a FUSE-mounted bucket
+#   fuse_ls   - List a directory on a FUSE mount
+#   fuse_read - Read a file on a FUSE mount (optionally verify content)
+#   fuse_write - Write a file on a FUSE mount
+#   fuse_mv   - Move/rename a file within a FUSE mount
+#   fuse_mv_in  - Move a file from outside into a FUSE mount
+#   fuse_mv_out - Move a file from a FUSE mount to outside
+#   fuse_rm   - Delete a file on a FUSE mount
 
 # =============================================================================
 # OWNER NODE: Create and set up test bucket
@@ -102,12 +112,85 @@ bucket = "test"
 mount_point = "/tmp/jax-e2e-mount"
 node = "owner"
 
-# Verify FUSE mount works (list, read, write, delete)
+# Verify mount is accessible
 [[fixture]]
 type = "mount_verify"
 bucket = "test"
 mount_point = "/tmp/jax-e2e-mount"
 node = "owner"
+
+# List root directory
+[[fixture]]
+type = "fuse_ls"
+mount_point = "/tmp/jax-e2e-mount"
+path = "docs"
+
+# Read an existing file
+[[fixture]]
+type = "fuse_read"
+mount_point = "/tmp/jax-e2e-mount"
+path = "docs/hello.txt"
+
+# Write a new file
+[[fixture]]
+type = "fuse_write"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test.txt"
+content = "hello from fuse"
+
+# --- Move within mount (regression test: create-then-rename must not ENOENT) ---
+[[fixture]]
+type = "fuse_mv"
+mount_point = "/tmp/jax-e2e-mount"
+from = ".fuse-test.txt"
+to = ".fuse-test-renamed.txt"
+
+# Verify renamed file has correct content
+[[fixture]]
+type = "fuse_read"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-renamed.txt"
+content = "hello from fuse"
+
+# --- Move into mount (external file -> FUSE mount) ---
+[[fixture]]
+type = "fuse_mv_in"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-from-outside.txt"
+content = "moved in from outside"
+
+# Verify the file arrived
+[[fixture]]
+type = "fuse_read"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-from-outside.txt"
+content = "moved in from outside"
+
+# --- Move out of mount (FUSE mount -> external path) ---
+[[fixture]]
+type = "fuse_mv_out"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-from-outside.txt"
+
+# Overwrite the renamed file
+[[fixture]]
+type = "fuse_write"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-renamed.txt"
+content = "overwritten"
+
+# Verify overwrite
+[[fixture]]
+type = "fuse_read"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-renamed.txt"
+content = "overwritten"
+
+# Clean up
+[[fixture]]
+type = "fuse_rm"
+mount_point = "/tmp/jax-e2e-mount"
+path = ".fuse-test-renamed.txt"
 
 # Unmount when done
 [[fixture]]
@@ -133,7 +216,9 @@ node = "owner"
 #
 # FUSE mount test (if FUSE available):
 #   - Mounts bucket at /tmp/jax-e2e-mount on owner node
-#   - Verifies: directory listing, file read, file write, file delete
+#   - Runs declarative FUSE operations: ls, read, write,
+#     mv (within), mv_in (external→mount), mv_out (mount→external),
+#     write (overwrite), read (verify), rm
 #   - Unmounts after verification
 #
 # Each node runs separate API and gateway servers:
