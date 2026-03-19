@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "Running Rust tests..."
-cargo test --workspace --exclude jax-desktop --all-features
+cargo test --workspace --exclude jax-desktop ${CARGO_FEATURES:---all-features}
 
 echo ""
 echo "All tests passed! ✅"

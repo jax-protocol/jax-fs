@@ -65,6 +65,7 @@ pub fn label(label: &str, value: &impl fmt::Display) -> String {
 }
 
 /// Color a mount/daemon status string (green for running/ok, red for stopped/error).
+#[cfg(feature = "fuse")]
 pub fn colored_status(status: &str) -> String {
     match status.to_lowercase().as_str() {
         "running" | "ok" | "started" | "mounted" => status.green().to_string(),

@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "Building Rust project..."
-cargo build --workspace --exclude jax-desktop --all-features --release
+cargo build --workspace --exclude jax-desktop ${CARGO_FEATURES:---all-features} --release
 
 echo ""
 echo "Build complete! ✅"

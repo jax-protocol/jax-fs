@@ -12,11 +12,11 @@ cargo fmt --all -- --check
 
 echo ""
 echo "==> Running clippy..."
-cargo clippy --workspace --exclude jax-desktop --all-targets --all-features -- -D warnings
+cargo clippy --workspace --exclude jax-desktop --all-targets ${CARGO_FEATURES:---all-features} -- -D warnings
 
 echo ""
 echo "==> Type checking with cargo check..."
-cargo check --workspace --exclude jax-desktop --all-targets --all-features
+cargo check --workspace --exclude jax-desktop --all-targets ${CARGO_FEATURES:---all-features}
 
 echo ""
 echo "All quality checks passed! ✅"
