@@ -11,6 +11,7 @@ import {
   MountInfo,
   BucketInfo,
 } from '../lib/api';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const Mounts: Component = () => {
   const [mounts, setMounts] = createSignal<MountInfo[]>([]);
@@ -18,6 +19,9 @@ const Mounts: Component = () => {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal<string | null>(null);
   const [fuseAvailable, setFuseAvailable] = createSignal(false);
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = createSignal<string | null>(null);
 
   // Add mount dialog
   const [showAddDialog, setShowAddDialog] = createSignal(false);
@@ -87,10 +91,10 @@ const Mounts: Component = () => {
     }
   };
 
-  const handleDelete = async (mountId: string) => {
-    if (!confirm('Are you sure you want to delete this mount?')) {
-      return;
-    }
+  const handleDelete = async () => {
+    const mountId = deleteTarget();
+    if (!mountId) return;
+    setDeleteTarget(null);
     try {
       setError(null);
       await deleteMount(mountId);
@@ -249,7 +253,7 @@ const Mounts: Component = () => {
                         {mount.status === 'running' ? 'Stop' : 'Start'}
                       </button>
                       <button
-                        onClick={() => handleDelete(mount.mount_id)}
+                        onClick={() => setDeleteTarget(mount.mount_id)}
                         style={smallDangerButtonStyle()}
                       >
                         Delete
@@ -262,6 +266,14 @@ const Mounts: Component = () => {
           </div>
         </Show>
       </Show>
+
+      <ConfirmDialog
+        open={!!deleteTarget()}
+        title="Delete mount"
+        message="Are you sure you want to delete this mount?"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Add Mount Dialog */}
       <Show when={showAddDialog()}>

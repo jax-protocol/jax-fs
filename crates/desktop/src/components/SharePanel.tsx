@@ -1,5 +1,6 @@
 import { Component, createSignal, createEffect, Show, For } from 'solid-js';
 import { getBucketShares, shareBucket, pingPeer, removeShare, ShareInfo } from '../lib/api';
+import ConfirmDialog from './ConfirmDialog';
 
 interface SharePanelProps {
   bucketId: string;
@@ -19,6 +20,7 @@ const SharePanel: Component<SharePanelProps> = (props) => {
   const [shareSuccess, setShareSuccess] = createSignal<string | null>(null);
 
   // Remove
+  const [removeTarget, setRemoveTarget] = createSignal<string | null>(null);
   const [removingKey, setRemovingKey] = createSignal<string | null>(null);
 
   // Ping
@@ -61,8 +63,10 @@ const SharePanel: Component<SharePanelProps> = (props) => {
     }
   };
 
-  const handleRemove = async (publicKey: string) => {
-    if (!confirm(`Remove peer ${publicKey.substring(0, 16)}... from this bucket?`)) return;
+  const handleRemove = async () => {
+    const publicKey = removeTarget();
+    if (!publicKey) return;
+    setRemoveTarget(null);
     setRemovingKey(publicKey);
     setError(null);
     try {
@@ -236,7 +240,7 @@ const SharePanel: Component<SharePanelProps> = (props) => {
                         {pinging() && pingKey() === share.public_key ? '...' : 'Ping'}
                       </button>
                       <button
-                        onClick={() => handleRemove(share.public_key)}
+                        onClick={() => setRemoveTarget(share.public_key)}
                         disabled={removingKey() === share.public_key}
                         style={{
                           background: 'none',
@@ -327,6 +331,15 @@ const SharePanel: Component<SharePanelProps> = (props) => {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!removeTarget()}
+        title="Remove peer"
+        message={`Remove peer ${removeTarget()?.substring(0, 16)}... from this bucket?`}
+        confirmLabel="Remove"
+        onConfirm={handleRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </Show>
   );
 };
