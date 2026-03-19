@@ -3684,7 +3684,7 @@ dependencies = [
 
 [[package]]
 name = "jax-common"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -3729,7 +3729,7 @@ dependencies = [
 
 [[package]]
 name = "jax-daemon"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "anyhow",
  "askama",
