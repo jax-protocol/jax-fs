@@ -24,7 +24,7 @@ use crate::http_server::api::v0::bucket::add::AddFileRequest;
 use crate::http_server::api::v0::bucket::delete::DeleteRequest;
 use crate::http_server::api::v0::bucket::mkdir::MkdirRequest;
 use crate::http_server::api::v0::bucket::mv::MvRequest;
-use common::mount::Mount;
+use common::mount::{Mount, MountError};
 
 /// Write buffer for pending writes
 #[derive(Debug)]
@@ -1261,13 +1261,25 @@ impl Filesystem for JaxFs {
                 reply.ok();
             }
             Err(e) => {
+                let errno = match &e {
+                    MountError::PathNotFound(_) => libc::ENOENT,
+                    MountError::PathAlreadyExists(_) => libc::EEXIST,
+                    MountError::MoveIntoSelf { .. } => libc::EINVAL,
+                    _ => libc::EIO,
+                };
                 tracing::error!("Failed to rename {} to {}: {}", old_path, new_path, e);
-                reply.error(libc::EIO);
+                reply.error(errno);
             }
         }
     }
 
-    // Extended attribute stubs - macOS queries these but handles ENOTSUP gracefully
+    // Extended attribute stubs
+    //
+    // setxattr silently succeeds (discards the value). macOS `mv` and `cp -p`
+    // attempt to preserve xattrs after a cross-filesystem copy; returning
+    // ENOTSUP here causes those tools to treat the move as failed. Since jax
+    // doesn't use extended attributes, accepting and discarding them is safe
+    // and unblocks the common `mv file mount/` workflow.
     fn setxattr(
         &mut self,
         _req: &Request<'_>,
@@ -1278,7 +1290,7 @@ impl Filesystem for JaxFs {
         _position: u32,
         reply: ReplyEmpty,
     ) {
-        reply.error(libc::ENOTSUP);
+        reply.ok();
     }
 
     fn getxattr(
@@ -1297,6 +1309,7 @@ impl Filesystem for JaxFs {
     }
 
     fn removexattr(&mut self, _req: &Request<'_>, _ino: u64, _name: &OsStr, reply: ReplyEmpty) {
-        reply.error(libc::ENOTSUP);
+        // Silently succeed — we don't store xattrs, so there's nothing to remove.
+        reply.ok();
     }
 }
