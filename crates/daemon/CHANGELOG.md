@@ -15,19 +15,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.14 (2026-03-19)
+
+### Bug Fixes
+
+ - <csr-id-56fece5340a6a1dda8afad8c651baa9f41d6591d/> prevent ping job queue saturation from blocking syncs
+   Stale peer pings with ~30s connect timeouts were processed serially,
+   starving sync/download jobs and flooding the bounded queue. This change:
+   
+   - Adds 5s timeout to ping operations (peer unavailability returns Ok)
+   - Spawns ping jobs concurrently (semaphore-capped at 10) instead of
+     blocking the worker loop
+   - Increases periodic ping interval from 60s to 5 minutes
+   - Skips periodic batch if previous is still in flight
+
+### Other
+
+ - <csr-id-54d05fe698640c1f957764519b690e029dbab700/> add fuse/no-fuse matrix to Rust CI and Linux FUSE release variant
+   CI now tests both --all-features (FUSE) and --no-default-features (no FUSE)
+   across quality, test, and build jobs. Release CLI gains a Linux x86_64 FUSE
+   build. Build scripts accept CARGO_FEATURES env var to support the matrix.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#141](https://github.com/jax-protocol/jax-fs/issues/141)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#141](https://github.com/jax-protocol/jax-fs/issues/141)**
+    - Prevent ping job queue saturation from blocking syncs ([`56fece5`](https://github.com/jax-protocol/jax-fs/commit/56fece5340a6a1dda8afad8c651baa9f41d6591d))
+ * **Uncategorized**
+    - Add fuse/no-fuse matrix to Rust CI and Linux FUSE release variant ([`54d05fe`](https://github.com/jax-protocol/jax-fs/commit/54d05fe698640c1f957764519b690e029dbab700))
+</details>
+
 ## v0.1.13 (2026-03-19)
+
+<csr-id-ceb5cc9e512472c20cd60143467cbccc6a08ecd6/>
 
 ### New Features
 
  - <csr-id-e71b5ac6767a27a4f11528368e72af83a13aab32/> shared CLI UI module with consistent formatting and --plain flag
    * feat: add shared CLI UI module with consistent formatting and --plain flag
-   
-   Add a centralized ui.rs module with status symbols (✓/→/✗/!), color
-   helpers, string truncation, styled table builder, and plain output mode.
-   All CLI commands now use consistent formatting via shared helpers instead
-   of ad-hoc owo_colors calls. Tables use UTF8_FULL_CONDENSED preset with
-   bold headers, truncated IDs/hashes, colored statuses, and colored roles.
-   The --plain global flag disables colors and table borders for scripting.
 
 ### Bug Fixes
 
@@ -63,10 +99,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 4 commits contributed to the release over the course of 8 calendar days.
+ - 5 commits contributed to the release over the course of 8 calendar days.
  - 9 days passed between releases.
  - 4 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 3 unique issues were worked on: [#127](https://github.com/jax-protocol/jax-fs/issues/127), [#130](https://github.com/jax-protocol/jax-fs/issues/130), [#131](https://github.com/jax-protocol/jax-fs/issues/131)
+ - 4 unique issues were worked on: [#127](https://github.com/jax-protocol/jax-fs/issues/127), [#130](https://github.com/jax-protocol/jax-fs/issues/130), [#131](https://github.com/jax-protocol/jax-fs/issues/131), [#143](https://github.com/jax-protocol/jax-fs/issues/143)
 
 ### Commit Details
 
@@ -80,11 +116,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Shared CLI UI module with consistent formatting and --plain flag ([`e71b5ac`](https://github.com/jax-protocol/jax-fs/commit/e71b5ac6767a27a4f11528368e72af83a13aab32))
  * **[#131](https://github.com/jax-protocol/jax-fs/issues/131)**
     - Route FUSE mutations through daemon HTTP API ([`ceb5cc9`](https://github.com/jax-protocol/jax-fs/commit/ceb5cc9e512472c20cd60143467cbccc6a08ecd6))
+ * **[#143](https://github.com/jax-protocol/jax-fs/issues/143)**
+    - Bump jax-daemon v0.1.13 ([`9e534d4`](https://github.com/jax-protocol/jax-fs/commit/9e534d459f89c225e886a9c618647bc3896be2d2))
  * **Uncategorized**
     - Remove default Content-Type header that broke FUSE multipart uploads ([`9296b51`](https://github.com/jax-protocol/jax-fs/commit/9296b514cd72b81bb27530ffac4995bc7e062d73))
 </details>
 
+<csr-unknown>
+Add a centralized ui.rs module with status symbols (✓/→/✗/!), colorhelpers, string truncation, styled table builder, and plain output mode.All CLI commands now use consistent formatting via shared helpers insteadof ad-hoc owo_colors calls. Tables use UTF8_FULL_CONDENSED preset withbold headers, truncated IDs/hashes, colored statuses, and colored roles.The –plain global flag disables colors and table borders for scripting.<csr-unknown/>
+
 ## v0.1.12 (2026-03-09)
+
+<csr-id-34ad157487cd460460fa8e8435d6946de347e439/>
 
 ### Other
 
