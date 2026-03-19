@@ -2,6 +2,8 @@
 //!
 //! This module contains the logic for pinging peers to check sync status.
 
+use std::time::Duration;
+
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -10,6 +12,10 @@ use crate::crypto::PublicKey;
 use crate::peer::protocol::bidirectional::BidirectionalHandler;
 use crate::peer::protocol::{Ping, PingMessage};
 use crate::peer::Peer;
+
+/// Timeout for ping operations. Pings are lightweight status checks — if a peer
+/// doesn't respond within this window it's likely offline.
+const PING_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Ping peer job definition
 #[derive(Debug, Clone)]
@@ -54,10 +60,10 @@ where
         height: our_height,
     };
 
-    // Send ping
+    // Send ping with timeout — peer unavailability is expected, not an error
     tracing::info!("Sending ping to peer {}", job.peer_id.to_hex());
-    match Ping::send::<L>(peer, &job.peer_id, ping).await {
-        Ok(pong) => {
+    match tokio::time::timeout(PING_TIMEOUT, Ping::send::<L>(peer, &job.peer_id, ping)).await {
+        Ok(Ok(pong)) => {
             tracing::info!(
                 "Received pong from peer {} for bucket {} | {:?}",
                 job.peer_id.to_hex(),
@@ -66,19 +72,23 @@ where
             );
             Ok(())
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::debug!(
                 "Failed to ping peer {} for bucket {}: {}",
                 job.peer_id.to_hex(),
                 job.bucket_id,
                 e
             );
-            Err(anyhow::anyhow!(
-                "Ping job failed for bucket {} to peer {}: {}",
-                job.bucket_id,
+            Ok(())
+        }
+        Err(_) => {
+            tracing::debug!(
+                "Ping to peer {} for bucket {} timed out after {}s",
                 job.peer_id.to_hex(),
-                e
-            ))
+                job.bucket_id,
+                PING_TIMEOUT.as_secs()
+            );
+            Ok(())
         }
     }
 }
