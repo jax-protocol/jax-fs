@@ -42,6 +42,7 @@ impl ApiClient {
         let request = ListRequest {
             prefix: Some(name.to_string()),
             limit: Some(100),
+            status: None,
         };
 
         let response: ListResponse = self.call(request).await?;

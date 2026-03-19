@@ -29,11 +29,12 @@ impl fmt::Display for ListOutput {
             return write!(f, "No buckets found");
         }
 
-        let mut table = ui::styled_table(vec!["NAME", "ID", "LINK"]);
+        let mut table = ui::styled_table(vec!["NAME", "ID", "STATUS", "LINK"]);
         for b in &self.buckets {
             table.add_row(vec![
                 b.name.bold().to_string(),
                 ui::truncate(&b.bucket_id.to_string(), 16),
+                b.status.clone(),
                 ui::truncate(&b.link.hash().to_string(), 16),
             ]);
         }
@@ -57,6 +58,7 @@ impl crate::cli::op::Op for List {
         let request = ListRequest {
             prefix: self.prefix.clone(),
             limit: self.limit,
+            status: None,
         };
         let response: ListResponse = client.call(request).await?;
 

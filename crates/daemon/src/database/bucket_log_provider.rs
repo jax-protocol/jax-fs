@@ -4,6 +4,7 @@ use uuid::Uuid;
 use common::bucket_log::BucketLogProvider;
 use common::linked_data::Link;
 
+use crate::database::types::BucketStatus;
 use crate::database::{types::DCid, Database};
 
 #[async_trait]
@@ -227,5 +228,46 @@ impl BucketLogProvider for Database {
         .map_err(common::bucket_log::BucketLogError::Provider)?;
 
         Ok(result.map(|r| (r.current_link.into(), r.height as u64)))
+    }
+
+    async fn should_sync_content(
+        &self,
+        id: Uuid,
+    ) -> Result<bool, common::bucket_log::BucketLogError<Self::Error>> {
+        let status = self
+            .get_effective_bucket_status(&id)
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)?;
+        Ok(status == BucketStatus::Active)
+    }
+
+    async fn on_new_bucket_discovered(
+        &self,
+        id: Uuid,
+        shared_by: Option<String>,
+    ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
+        self.set_bucket_status(&id, BucketStatus::Pending, shared_by.as_deref())
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)
+    }
+
+    async fn list_syncable_buckets(
+        &self,
+    ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
+        // Get all buckets from the log (explicitly call trait method)
+        let all_buckets = <Self as BucketLogProvider>::list_buckets(self).await?;
+
+        // Filter to only active ones
+        let mut syncable = Vec::new();
+        for id in all_buckets {
+            let status = self
+                .get_effective_bucket_status(&id)
+                .await
+                .map_err(common::bucket_log::BucketLogError::Provider)?;
+            if status == BucketStatus::Active {
+                syncable.push(id);
+            }
+        }
+        Ok(syncable)
     }
 }

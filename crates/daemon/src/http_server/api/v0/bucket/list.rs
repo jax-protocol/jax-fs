@@ -21,6 +21,11 @@ pub struct ListRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[arg(long)]
     pub limit: Option<u32>,
+
+    /// Optional status filter (pending, active, ignored)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[arg(long)]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +38,7 @@ pub struct BucketInfo {
     pub bucket_id: Uuid,
     pub name: String,
     pub link: Link,
+    pub status: String,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
@@ -48,16 +54,35 @@ pub async fn handler(
         .await
         .map_err(|e| ListError::Database(e.to_string()))?;
 
-    // Convert to response format
-    let bucket_infos = buckets
-        .into_iter()
-        .map(|b| BucketInfo {
+    // Parse optional status filter
+    let status_filter = req.status.as_deref();
+
+    // Convert to response format, adding status from bucket_status table
+    let mut bucket_infos = Vec::new();
+    for b in buckets {
+        let status = state
+            .database()
+            .get_effective_bucket_status(&b.id)
+            .await
+            .map_err(|e| ListError::Database(e.to_string()))?;
+
+        let status_str = status.as_str();
+
+        // Apply status filter if provided
+        if let Some(filter) = status_filter {
+            if status_str != filter {
+                continue;
+            }
+        }
+
+        bucket_infos.push(BucketInfo {
             bucket_id: b.id,
             name: b.name,
             link: b.link,
+            status: status_str.to_string(),
             created_at: b.created_at,
-        })
-        .collect();
+        });
+    }
 
     Ok((
         http::StatusCode::OK,
