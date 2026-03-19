@@ -1,11 +1,9 @@
 ---
-description: Discover and manage file-based work items. Use to explore tasks before spawning workers or to track project progress.
+description: Discover and manage work items. Use to explore tasks before spawning workers or to track project progress.
 allowed-tools:
+  - Bash(jig:*)
   - Bash(ls:*)
-  - Bash(find:*)
-  - Bash(grep:*)
   - Bash(mkdir:*)
-  - Bash(cp:*)
   - Read
   - Write
   - Edit
@@ -13,79 +11,89 @@ allowed-tools:
   - Grep
 ---
 
-Discover and manage work items in `issues/`.
+Discover and manage work items via `jig issues`. This is the first-class way to understand what work exists, what's in progress, and what to do next.
 
-## Directory Structure
+Issues are tracked in **Linear**. Use `jig issues` to query Linear tickets directly — no need to open the Linear UI. The CLI handles filtering, dependency resolution, and status transitions.
 
-```
-issues/
-├── _templates/           # Issue templates
-├── epics/                # Multi-ticket features (directories)
-│   └── feature-name/
-│       ├── index.md      # Epic overview
-│       └── 0-task.md     # Tickets (0-indexed)
-├── features/             # Single-ticket features
-├── bugs/                 # Bug fixes
-└── chores/               # Maintenance tasks
+## Discovery workflow
+
+Start here when picking up work or building context:
+
+```bash
+# See all active issues for the repo
+jig issues
+
+# High-priority items needing attention
+jig issues --priority high
+jig issues --priority urgent
+
+# What's planned and ready to start (dependencies satisfied)
+jig issues --unblocked --status planned
+
+# What's currently blocked
+jig issues --blocked
+
+# Auto-spawn candidates (planned + labeled + deps satisfied)
+jig issues --auto
+
+# IDs only (for scripting / piping to spawn)
+jig issues --ids --status planned
 ```
 
 ## Actions
 
-### List issues
-
-Scan `issues/` and show all work items:
-
-```bash
-# All issues
-find issues -name "*.md" -not -path "*/_templates/*" -not -name "README.md"
-
-# By status
-grep -r "Status.*Planned" issues/
-```
-
-Display with status indicators:
-- `[ ]` Planned
-- `[~]` In Progress
-- `[x]` Complete
-- `[!]` Blocked
-
 ### Show issue
 
-Read and display a specific issue file.
-
-### Create standalone issue
-
 ```bash
-cp issues/_templates/standalone.md issues/features/my-feature.md
-# or issues/bugs/, issues/chores/
+jig issues <id>
+# e.g. jig issues AUT-5044
 ```
 
-### Create epic
+### Filter by category, label, status
 
 ```bash
-mkdir issues/epics/my-epic
-cp issues/_templates/epic-index.md issues/epics/my-epic/index.md
-cp issues/_templates/ticket.md issues/epics/my-epic/0-first-task.md
+# By project/category
+jig issues --category Engineering
+
+# By label (all must match)
+jig issues --label backend --label auto
+
+# Combine filters
+jig issues --status planned --priority high --label auto
 ```
-
-### Create ticket in epic
-
-```bash
-cp issues/_templates/ticket.md issues/epics/my-epic/1-next-task.md
-```
-
-Update the epic's `index.md` ticket table.
 
 ### Update status
 
-Change the `**Status:**` field:
-- `Planned` → `In Progress` → `Complete`
-- Or `Blocked` if waiting on something
+```bash
+jig issues status <id> --status in-progress
+jig issues status <id> --status blocked
+```
+
+### Complete issue
+
+```bash
+jig issues complete <id>
+```
+
+### Stats
+
+```bash
+jig issues stats
+jig issues stats -g   # across all tracked repos
+```
+
+### Global scope
+
+```bash
+# Any command works across all repos with -g
+jig issues -g
+jig issues -g --status in-progress
+```
+
+## Dependencies
+
+Issues can depend on other issues via Linear's `is_blocked_by` relations. Dependencies must be `Complete` before the dependent issue is spawnable.
 
 ## Convention
 
-See `issues/README.md` for full documentation.
-
-## External Trackers
-
-For Linear, Jira, or GitHub Issues, use their MCP tools or CLI instead of file scanning.
+Typically for straightforward and well-defined tasks, we prefer setting the `auto` label such that said tasks are picked up and spawned by the jig daemon.
