@@ -1,106 +1,135 @@
 # Success Criteria
 
-Checks that must pass before code can be merged. This is the CI gate.
+This document defines what "done" means for agent work. All criteria must be met before creating a PR.
 
-**Golden Rule: You are not allowed to finish in a state where CI is failing.**
+## Golden Rule
 
-## Quick Check
+**You are not allowed to finish in a state where CI is failing.**
+
+---
+
+## Required Checks
+
+Before considering work complete, run from the project root:
 
 ```bash
-cargo build && cargo test && cargo clippy -- -D warnings && cargo fmt -- --check
+cargo build      # Must compile without errors
+cargo test       # All tests must pass
+cargo clippy     # No warnings
+cargo fmt --check  # Code must be formatted
 ```
 
-Or use Make targets:
+---
+
+## CI Pipeline
+
+GitHub Actions CI runs automatically on every push and PR.
+
+### Checks That Run
+
+| Check | Command | What It Verifies |
+|-------|---------|------------------|
+| Build | `cargo build` | Code compiles |
+| Tests | `cargo test` | All tests pass |
+| Clippy | `cargo clippy` | No lint warnings |
+| Format | `cargo fmt --check` | Code is formatted |
+
+**All checks must pass before merging.**
+
+---
+
+## Testing Your Changes
+
+### Unit Tests
+
+Unit tests live alongside the code in `#[cfg(test)]` modules:
 
 ```bash
-make build && make test && make lint && make fmt-check
-```
-
-## Individual Checks
-
-### Build
-
-```bash
-cargo build
-# or: make build (runs cargo build --all)
-```
-
-### Tests
-
-```bash
+# Run all tests
 cargo test
-# or: make test (runs cargo test --all)
 
-# Per-crate:
+# Run tests for specific crate
 cargo test -p jax-common
 cargo test -p jax-daemon
 
-# Specific test:
+# Run specific test
 cargo test test_mirror_cannot_mount
-
-# With output:
-cargo test -- --nocapture
 ```
 
-### Linting
+### Integration Tests
+
+Integration tests live in `crates/*/tests/`:
 
 ```bash
-cargo clippy -- -D warnings
-# or: make lint (runs cargo clippy --all -- -D warnings)
-
-# Auto-fix some issues:
-cargo clippy --fix
+# Run integration tests for common crate
+cargo test -p jax-common --test mount_tests
 ```
 
-### Formatting
-
-```bash
-cargo fmt -- --check    # Check
-cargo fmt               # Fix
-# or: make fmt-check / make fmt
-```
-
-### Type Checking
-
-Handled by the Rust compiler via `cargo build` and `cargo check`.
+---
 
 ## Fixing Common Issues
 
-### Formatting Failures
+### Compile Errors
 
 ```bash
-cargo fmt
+cargo build 2>&1 | head -50  # See first errors
+# Fix errors, then rebuild
 ```
 
-### Lint Warnings
+### Clippy Warnings
 
 ```bash
-cargo clippy --fix              # Auto-fix what's possible
-cargo clippy -- -D warnings     # See remaining issues
+cargo clippy                 # See warnings
+cargo clippy --fix           # Auto-fix some issues
 # Fix remaining warnings manually
+```
+
+### Format Issues
+
+```bash
+cargo fmt                    # Auto-fix formatting
+git add .
+git commit -m "chore: fix formatting"
 ```
 
 ### Test Failures
 
 ```bash
-cargo test -- --nocapture       # See test output
-cargo test test_name            # Run specific test
-RUST_LOG=debug cargo test       # With debug logging
+cargo test -- --nocapture    # See test output
+cargo test test_name         # Run specific test
+# Fix tests, then rerun
 ```
 
-### Compile Errors
+---
 
-```bash
-cargo build 2>&1 | head -50    # See first errors
-```
+## Documentation Requirements
+
+Agents are responsible for keeping documentation up to date. If your changes affect any of the following, update the relevant docs:
+
+**Update `docs/` when:**
+- Adding new patterns or conventions
+- Changing project structure
+- Adding new crates
+
+**Update inline documentation when:**
+- Adding new public functions or types
+- Changing function signatures or behavior
+
+**Documentation locations:**
+- `docs/` - Agent and developer guidance
+- Rustdoc comments - Public API documentation
+- `issues/` - Feature planning and tracking
+
+---
 
 ## Pre-Commit Checklist
 
 - [ ] `cargo build` succeeds
 - [ ] `cargo test` passes
-- [ ] `cargo clippy -- -D warnings` has no warnings
-- [ ] `cargo fmt -- --check` passes
+- [ ] `cargo clippy` has no warnings
+- [ ] `cargo fmt --check` passes
 - [ ] Tests written for new functionality
-- [ ] No debug code left behind (`println!`, `dbg!`)
 - [ ] Documentation updated if patterns/structure changed
-- [ ] Changes committed with descriptive conventional commit messages
+- [ ] No debug code left behind (println!, dbg!)
+- [ ] Changes are committed with descriptive messages
+- [ ] Branch is pushed to remote

@@ -26,16 +26,19 @@ make dev
 | [CONTRIBUTING.md](./CONTRIBUTING.md) | How to contribute (agents + humans) |
 | [SUCCESS_CRITERIA.md](./SUCCESS_CRITERIA.md) | CI checks that must pass |
 
-### Detailed Guides (agents/)
+### Detailed Guides
 
 | Document | Purpose |
 |----------|---------|
-| `agents/PROJECT_LAYOUT.md` | Crate structure, modules, key files |
-| `agents/RUST_PATTERNS.md` | Error handling, async, serialization, module org |
-| `agents/CLI.md` | Op pattern, formatting boundary, command_enum! |
-| `agents/CONTRIBUTING.md` | Test readability, commit conventions, review checklist |
-| `agents/DEVELOPMENT.md` | Dev environment, tmux setup, debugging |
-| `agents/API.md` | HTTP API reference |
+| [PROJECT_LAYOUT.md](./PROJECT_LAYOUT.md) | Crate structure, modules, key files |
+| [CLI.md](./CLI.md) | Op pattern, formatting boundary, command_enum! |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | Dev environment, tmux setup, debugging |
+| [DEBUG.md](./DEBUG.md) | Debugging workflow, log inspection, API testing |
+| [API.md](./API.md) | HTTP API reference |
+| [INSTALL.md](./INSTALL.md) | Installation and setup guide |
+| [RELEASE.md](./RELEASE.md) | Release process and automation |
+| [ISSUES.md](./ISSUES.md) | Issue and ticket conventions |
+| [concepts/](./concepts/) | Architecture: overview, data model, crypto, sync, security |
 
 ## For AI Agents
 
@@ -46,7 +49,7 @@ You are an autonomous coding agent working on a focused task.
 1. **Understand** — Read the task description and relevant docs
 2. **Explore** — Search the codebase to understand context
 3. **Plan** — Break down work into small steps
-4. **Implement** — Follow existing patterns in `PATTERNS.md` and `agents/RUST_PATTERNS.md`
+4. **Implement** — Follow existing patterns in [PATTERNS.md](./PATTERNS.md)
 5. **Verify** — Run checks from `SUCCESS_CRITERIA.md`
 6. **Commit** — Clear, atomic commits using conventional commit format
 

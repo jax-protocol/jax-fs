@@ -19,7 +19,7 @@ cargo run --bin jax -- --help # Run the CLI
 ```
 crates/
 ├── daemon/       # CLI binary + daemon library (jax-daemon)
-│   ├── src/cli/  # CLI commands using the Op pattern (see agents/CLI.md)
+│   ├── src/cli/  # CLI commands using the Op pattern (see docs/CLI.md)
 │   ├── src/http_server/ # Axum REST API + gateway
 │   ├── src/fuse/  # FUSE filesystem (feature-gated)
 │   └── src/database/ # SQLite persistence
@@ -30,24 +30,26 @@ crates/
 ├── object-store/ # Blob storage backend (SQLite + S3/MinIO/local)
 └── desktop/      # Tauri 2.0 desktop app (SolidJS frontend)
 
-agents/           # Detailed architecture docs (read these first)
+docs/             # All project documentation (read these first)
 bin/              # Dev scripts (dev, check, db, minio)
 issues/           # File-based issue tracking
 ```
 
 ## Documentation
 
-- `agents/CONCEPTS.md` — High-level architecture and key concepts
-- `agents/PROJECT_LAYOUT.md` — Crate structure and module map
-- `agents/RUST_PATTERNS.md` — Error handling, async, serialization, module org
-- `agents/CLI.md` — Op pattern, formatting boundary, command_enum! macro
-- `agents/CONTRIBUTING.md` — Contribution workflow, commit conventions, test readability
-- `agents/DEVELOPMENT.md` — Dev environment setup, 2-node tmux workflow
-- `agents/API.md` — HTTP API reference
 - `docs/index.md` — Documentation hub and agent instructions
-- `docs/PATTERNS.md` — Coding conventions
-- `docs/SUCCESS_CRITERIA.md` — CI checks
-- `docs/CONTRIBUTING.md` — Contribution guide
+- `docs/concepts/` — Architecture: overview, data model, cryptography, sync, security
+- `docs/PROJECT_LAYOUT.md` — Crate structure and module map
+- `docs/PATTERNS.md` — Error handling, async, serialization, module org
+- `docs/CLI.md` — Op pattern, formatting boundary, command_enum! macro
+- `docs/CONTRIBUTING.md` — Contribution workflow, commit conventions, test readability
+- `docs/DEVELOPMENT.md` — Dev environment setup, 2-node tmux workflow
+- `docs/DEBUG.md` — Debugging workflow, log inspection, API testing
+- `docs/API.md` — HTTP API reference
+- `docs/INSTALL.md` — Installation and setup guide
+- `docs/RELEASE.md` — Release process and automation
+- `docs/SUCCESS_CRITERIA.md` — CI checks that must pass
+- `docs/ISSUES.md` — Issue and ticket conventions
 
 ## Issues
 
@@ -60,10 +62,10 @@ Track work items in `issues/`. See `issues/README.md` for the convention.
    - `cargo test` — all tests pass
    - `cargo clippy -- -D warnings` — no warnings
    - `cargo fmt -- --check` — code formatted
-2. **Follow existing patterns** — match style of existing code (see `agents/RUST_PATTERNS.md`)
+2. **Follow existing patterns** — match style of existing code (see `docs/PATTERNS.md`)
 3. **Write tests** — unit tests in `#[cfg(test)]` modules, integration tests in `tests/`
 4. **Tests must read like stories** — named actors (Alice, Bob), scenario-based names, clear section comments
-5. **Update docs** — keep `agents/` in sync with code changes
+5. **Update docs** — keep `docs/` in sync with code changes
 6. **Op pattern for CLI** — commands return typed data, never print; formatting in Display impls
 7. **Module per responsibility** — split files > 200 lines with distinct sections
 

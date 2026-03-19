@@ -18,9 +18,9 @@ Review the current branch's changes against jax-bucket conventions before merge.
 
 Read project conventions:
 - `CLAUDE.md` — project guide and constraints
-- `agents/RUST_PATTERNS.md` — error handling, module org, method ordering, naming
-- `agents/CLI.md` — Op pattern, formatting boundary, ui module
-- `agents/CONTRIBUTING.md` — test readability, commit conventions, review checklist
+- `docs/PATTERNS.md` — error handling, module org, method ordering, naming
+- `docs/CLI.md` — Op pattern, formatting boundary, ui module
+- `docs/CONTRIBUTING.md` — test readability, commit conventions, review checklist
 
 ### 2. Collect Changes
 
@@ -56,8 +56,8 @@ Review the diff for:
 
 ### 5. Documentation Check
 
-- `agents/PROJECT_LAYOUT.md` — new files/modules added?
-- `agents/RUST_PATTERNS.md` — new patterns introduced?
+- `docs/PROJECT_LAYOUT.md` — new files/modules added?
+- `docs/PATTERNS.md` — new patterns introduced?
 - `CLAUDE.md` — project structure or constraints changed?
 - Issue tickets — status updates needed?
 
