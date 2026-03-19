@@ -402,7 +402,7 @@ fixture_unmount() {
     fi
 }
 
-# Verify FUSE mount by checking filesystem operations
+# Verify FUSE mount is accessible
 fixture_mount_verify() {
     local bucket="$1"
     local mount_point="$2"
@@ -424,66 +424,126 @@ fixture_mount_verify() {
 
     # Try to list directory
     if ls "$mount_point" >/dev/null 2>&1; then
-        echo -e "  ${GREEN}Directory listing: OK${NC}"
+        echo -e "  ${GREEN}Mount accessible: OK${NC}"
     else
-        echo -e "  ${RED}Directory listing: FAILED${NC}"
+        echo -e "  ${RED}Mount accessible: FAILED${NC}"
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: list directory
+fixture_fuse_ls() {
+    local mount_point="$1"
+    local path="$2"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local full_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_ls: $path${NC}"
+    if ls "$full_path" >/dev/null 2>&1; then
+        echo -e "  ${GREEN}OK${NC}"
+    else
+        echo -e "  ${RED}FAILED: could not list $full_path${NC}"
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: read file (optionally verify content)
+fixture_fuse_read() {
+    local mount_point="$1"
+    local path="$2"
+    local expected_content="$3"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local full_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_read: $path${NC}"
+    if [[ ! -f "$full_path" ]]; then
+        echo -e "  ${RED}FAILED: file not found $full_path${NC}"
         return 1
     fi
 
-    # Try to read a file if docs/readme.md exists
-    if [[ -f "$mount_point/docs/readme.md" ]]; then
-        if head -1 "$mount_point/docs/readme.md" >/dev/null 2>&1; then
-            echo -e "  ${GREEN}File read: OK${NC}"
-        else
-            echo -e "  ${RED}File read: FAILED${NC}"
-            return 1
-        fi
+    local actual
+    actual=$(cat "$full_path" 2>/dev/null)
+    if [[ $? -ne 0 ]]; then
+        echo -e "  ${RED}FAILED: could not read $full_path${NC}"
+        return 1
     fi
 
-    # Try to create a test file
-    local test_file="$mount_point/.fuse-test-$$"
-    if echo "fuse test" > "$test_file" 2>/dev/null; then
-        echo -e "  ${GREEN}File write: OK${NC}"
-
-        # Try to rename the file (create-then-rename, the key regression test)
-        local renamed_file="$mount_point/.fuse-test-renamed-$$"
-        if mv "$test_file" "$renamed_file" 2>/dev/null; then
-            echo -e "  ${GREEN}File rename: OK${NC}"
-            # Verify renamed file exists and original is gone
-            if [[ -f "$renamed_file" ]] && [[ ! -f "$test_file" ]]; then
-                echo -e "  ${GREEN}File rename verify: OK${NC}"
-            else
-                echo -e "  ${RED}File rename verify: FAILED (renamed file missing or original still exists)${NC}"
-                # Clean up whichever exists
-                rm -f "$test_file" "$renamed_file" 2>/dev/null
-                return 1
-            fi
-            # Try overwrite (echo > existing file)
-            if echo "overwritten" > "$renamed_file" 2>/dev/null; then
-                local content
-                content=$(cat "$renamed_file" 2>/dev/null)
-                if [[ "$content" == "overwritten" ]]; then
-                    echo -e "  ${GREEN}File overwrite: OK${NC}"
-                else
-                    echo -e "  ${RED}File overwrite: FAILED (content mismatch)${NC}"
-                    rm -f "$renamed_file" 2>/dev/null
-                    return 1
-                fi
-            else
-                echo -e "  ${YELLOW}File overwrite: SKIPPED${NC}"
-            fi
-            rm -f "$renamed_file" 2>/dev/null
-            echo -e "  ${GREEN}File delete: OK${NC}"
+    if [[ -n "$expected_content" ]]; then
+        # Compare with interpreted escape sequences
+        local expected
+        expected=$(echo -e "$expected_content")
+        if [[ "$actual" == "$expected" ]]; then
+            echo -e "  ${GREEN}OK (content verified)${NC}"
         else
-            echo -e "  ${RED}File rename: FAILED${NC}"
-            rm -f "$test_file" 2>/dev/null
+            echo -e "  ${RED}FAILED: content mismatch${NC}"
+            echo -e "  ${RED}  expected: $(echo -e "$expected_content" | head -1)...${NC}"
+            echo -e "  ${RED}  actual:   $(echo "$actual" | head -1)...${NC}"
             return 1
         fi
     else
-        echo -e "  ${YELLOW}File write: SKIPPED (read-only or permission denied)${NC}"
+        echo -e "  ${GREEN}OK${NC}"
     fi
+}
 
-    echo -e "  ${GREEN}FUSE mount verified${NC}"
+# FUSE filesystem operation: write file
+fixture_fuse_write() {
+    local mount_point="$1"
+    local path="$2"
+    local content="$3"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local full_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_write: $path${NC}"
+    if echo -e "$content" > "$full_path" 2>/dev/null; then
+        echo -e "  ${GREEN}OK${NC}"
+    else
+        echo -e "  ${RED}FAILED: could not write $full_path${NC}"
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: move/rename
+fixture_fuse_mv() {
+    local mount_point="$1"
+    local from="$2"
+    local to="$3"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local from_path="$mount_point/$from"
+    local to_path="$mount_point/$to"
+
+    echo -e "${BLUE}fuse_mv: $from -> $to${NC}"
+    if mv "$from_path" "$to_path" 2>/dev/null; then
+        echo -e "  ${GREEN}OK${NC}"
+    else
+        echo -e "  ${RED}FAILED: could not move $from_path -> $to_path${NC}"
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: delete file
+fixture_fuse_rm() {
+    local mount_point="$1"
+    local path="$2"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local full_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_rm: $path${NC}"
+    if rm -f "$full_path" 2>/dev/null; then
+        if [[ ! -e "$full_path" ]]; then
+            echo -e "  ${GREEN}OK${NC}"
+        else
+            echo -e "  ${RED}FAILED: file still exists after rm${NC}"
+            return 1
+        fi
+    else
+        echo -e "  ${RED}FAILED: could not delete $full_path${NC}"
+        return 1
+    fi
 }
 
 # Check if FUSE is available on this machine and daemon supports it
@@ -553,8 +613,13 @@ fixtures_help() {
     echo "  publish       - Publish a bucket (grant decryption to mirrors)"
     echo "  mv            - Move/rename a file or directory"
     echo "  mount         - Mount a bucket via FUSE"
-    echo "  mount_verify  - Verify FUSE mount filesystem operations"
+    echo "  mount_verify  - Verify FUSE mount is accessible"
     echo "  unmount       - Unmount a FUSE-mounted bucket"
+    echo "  fuse_ls       - List a directory on FUSE mount"
+    echo "  fuse_read     - Read a file on FUSE mount (optionally verify content)"
+    echo "  fuse_write    - Write a file on FUSE mount"
+    echo "  fuse_mv       - Move/rename a file on FUSE mount"
+    echo "  fuse_rm       - Delete a file on FUSE mount"
     echo ""
     echo "All nodes run both API and gateway servers."
 }
@@ -574,6 +639,11 @@ fixtures_list() {
             mount)        echo "  [mount]        bucket=$bucket mount_point=$mount_point node=$node" ;;
             mount_verify) echo "  [mount_verify] bucket=$bucket mount_point=$mount_point node=$node" ;;
             unmount)      echo "  [unmount]      bucket=$bucket node=$node" ;;
+            fuse_ls)      echo "  [fuse_ls]      mount_point=$mount_point path=$path" ;;
+            fuse_read)    echo "  [fuse_read]    mount_point=$mount_point path=$path" ;;
+            fuse_write)   echo "  [fuse_write]   mount_point=$mount_point path=$path" ;;
+            fuse_mv)      echo "  [fuse_mv]      mount_point=$mount_point from=$from to=$to" ;;
+            fuse_rm)      echo "  [fuse_rm]      mount_point=$mount_point path=$path" ;;
         esac
     done
 }
@@ -602,6 +672,11 @@ fixtures_apply() {
             mount)        fixture_mount "$bucket" "$mount_point" "$node" || ((errors++)) ;;
             mount_verify) fixture_mount_verify "$bucket" "$mount_point" "$node" || ((errors++)) ;;
             unmount)      fixture_unmount "$bucket" "$node" || ((errors++)) ;;
+            fuse_ls)      fixture_fuse_ls "$mount_point" "$path" || ((errors++)) ;;
+            fuse_read)    fixture_fuse_read "$mount_point" "$path" "$content" || ((errors++)) ;;
+            fuse_write)   fixture_fuse_write "$mount_point" "$path" "$content" || ((errors++)) ;;
+            fuse_mv)      fixture_fuse_mv "$mount_point" "$from" "$to" || ((errors++)) ;;
+            fuse_rm)      fixture_fuse_rm "$mount_point" "$path" || ((errors++)) ;;
         esac
     done
 

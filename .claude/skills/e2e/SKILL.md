@@ -54,13 +54,14 @@ FUSE tests run automatically as part of the fixture system (mount → mount_veri
 - If FUSE **is available** but tests fail, this **IS a failure** and must be reported
 - The test plan in the PR must explicitly state whether FUSE tests ran or were skipped
 
-The `mount_verify` fixture tests these filesystem operations:
-- Directory listing (ls)
-- File read (head)
-- File write (echo > file)
-- File rename/mv (create → rename → verify)
-- File overwrite (echo > existing_file)
-- File delete (rm)
+FUSE operations are expressed as declarative fixture types in `fixtures.toml`:
+- `fuse_ls` — list a directory
+- `fuse_read` — read a file (optionally verify content)
+- `fuse_write` — write a file (create or overwrite)
+- `fuse_mv` — move/rename a file
+- `fuse_rm` — delete a file
+
+Each is a separate `[[fixture]]` entry, making it easy to add new test cases.
 
 ## Report Format
 
