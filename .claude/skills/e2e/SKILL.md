@@ -58,7 +58,9 @@ FUSE operations are expressed as declarative fixture types in `fixtures.toml`:
 - `fuse_ls` — list a directory
 - `fuse_read` — read a file (optionally verify content)
 - `fuse_write` — write a file (create or overwrite)
-- `fuse_mv` — move/rename a file
+- `fuse_mv` — move/rename a file within mount
+- `fuse_mv_in` — move a file from outside into mount
+- `fuse_mv_out` — move a file from mount to outside
 - `fuse_rm` — delete a file
 
 Each is a separate `[[fixture]]` entry, making it easy to add new test cases.

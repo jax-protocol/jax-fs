@@ -505,7 +505,7 @@ fixture_fuse_write() {
     fi
 }
 
-# FUSE filesystem operation: move/rename
+# FUSE filesystem operation: move/rename within mount
 fixture_fuse_mv() {
     local mount_point="$1"
     local from="$2"
@@ -520,6 +520,60 @@ fixture_fuse_mv() {
         echo -e "  ${GREEN}OK${NC}"
     else
         echo -e "  ${RED}FAILED: could not move $from_path -> $to_path${NC}"
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: move a file from outside into the mount
+fixture_fuse_mv_in() {
+    local mount_point="$1"
+    local path="$2"
+    local content="$3"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local dest_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_mv_in: (tmpfile) -> $path${NC}"
+
+    # Create a temp file outside the mount
+    local tmp_file
+    tmp_file=$(mktemp)
+    echo -e "$content" > "$tmp_file"
+
+    if mv "$tmp_file" "$dest_path" 2>/dev/null; then
+        echo -e "  ${GREEN}OK${NC}"
+    else
+        echo -e "  ${RED}FAILED: could not move $tmp_file -> $dest_path${NC}"
+        rm -f "$tmp_file" 2>/dev/null
+        return 1
+    fi
+}
+
+# FUSE filesystem operation: move a file from the mount to outside
+fixture_fuse_mv_out() {
+    local mount_point="$1"
+    local path="$2"
+
+    mount_point="${mount_point/#\~/$HOME}"
+    local src_path="$mount_point/$path"
+
+    echo -e "${BLUE}fuse_mv_out: $path -> (tmpfile)${NC}"
+
+    local tmp_file
+    tmp_file=$(mktemp)
+    rm -f "$tmp_file"  # remove so mv can use the name
+
+    if mv "$src_path" "$tmp_file" 2>/dev/null; then
+        if [[ -f "$tmp_file" ]] && [[ ! -e "$src_path" ]]; then
+            echo -e "  ${GREEN}OK${NC}"
+            rm -f "$tmp_file" 2>/dev/null
+        else
+            echo -e "  ${RED}FAILED: file not moved correctly${NC}"
+            rm -f "$tmp_file" 2>/dev/null
+            return 1
+        fi
+    else
+        echo -e "  ${RED}FAILED: could not move $src_path -> $tmp_file${NC}"
         return 1
     fi
 }
@@ -618,7 +672,9 @@ fixtures_help() {
     echo "  fuse_ls       - List a directory on FUSE mount"
     echo "  fuse_read     - Read a file on FUSE mount (optionally verify content)"
     echo "  fuse_write    - Write a file on FUSE mount"
-    echo "  fuse_mv       - Move/rename a file on FUSE mount"
+    echo "  fuse_mv       - Move/rename a file within FUSE mount"
+    echo "  fuse_mv_in    - Move a file from outside into FUSE mount"
+    echo "  fuse_mv_out   - Move a file from FUSE mount to outside"
     echo "  fuse_rm       - Delete a file on FUSE mount"
     echo ""
     echo "All nodes run both API and gateway servers."
@@ -643,6 +699,8 @@ fixtures_list() {
             fuse_read)    echo "  [fuse_read]    mount_point=$mount_point path=$path" ;;
             fuse_write)   echo "  [fuse_write]   mount_point=$mount_point path=$path" ;;
             fuse_mv)      echo "  [fuse_mv]      mount_point=$mount_point from=$from to=$to" ;;
+            fuse_mv_in)   echo "  [fuse_mv_in]   mount_point=$mount_point path=$path" ;;
+            fuse_mv_out)  echo "  [fuse_mv_out]  mount_point=$mount_point path=$path" ;;
             fuse_rm)      echo "  [fuse_rm]      mount_point=$mount_point path=$path" ;;
         esac
     done
@@ -676,6 +734,8 @@ fixtures_apply() {
             fuse_read)    fixture_fuse_read "$mount_point" "$path" "$content" || ((errors++)) ;;
             fuse_write)   fixture_fuse_write "$mount_point" "$path" "$content" || ((errors++)) ;;
             fuse_mv)      fixture_fuse_mv "$mount_point" "$from" "$to" || ((errors++)) ;;
+            fuse_mv_in)   fixture_fuse_mv_in "$mount_point" "$path" "$content" || ((errors++)) ;;
+            fuse_mv_out)  fixture_fuse_mv_out "$mount_point" "$path" || ((errors++)) ;;
             fuse_rm)      fixture_fuse_rm "$mount_point" "$path" || ((errors++)) ;;
         esac
     done
