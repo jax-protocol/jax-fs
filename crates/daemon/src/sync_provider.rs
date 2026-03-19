@@ -3,6 +3,9 @@
 //! This module provides the app-specific implementation of `SyncProvider` using
 //! a flume channel-based job queue with a background worker.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -90,6 +93,12 @@ impl JobReceiver {
     }
 }
 
+/// Maximum number of concurrent ping tasks
+const MAX_CONCURRENT_PINGS: usize = 10;
+
+/// Interval between periodic ping batches (5 minutes)
+const PERIODIC_PING_INTERVAL_SECS: u64 = 300;
+
 /// Run the background worker for queued sync jobs
 ///
 /// This function processes jobs from the queue and also runs periodic ping scheduling.
@@ -115,29 +124,62 @@ pub async fn run_worker<L>(
     L: common::bucket_log::BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
+    use common::peer::sync::{execute_job, ping_peer};
     use futures::StreamExt;
     use tokio::time::{interval, Duration};
 
     tracing::info!("Starting background job worker for peer {}", peer.id());
 
-    // Create interval timer for periodic pings (every 5 seconds)
-    let mut ping_interval = interval(Duration::from_secs(60));
+    // Create interval timer for periodic pings (every 5 minutes)
+    let mut ping_interval = interval(Duration::from_secs(PERIODIC_PING_INTERVAL_SECS));
     ping_interval.tick().await; // Skip first immediate tick
+
+    // Semaphore to cap concurrent ping tasks
+    let ping_semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_PINGS));
+
+    // Guard to skip periodic batch if previous is still running
+    let pings_in_flight = Arc::new(AtomicBool::new(false));
 
     loop {
         tokio::select! {
             // Process incoming jobs from the queue
             Some(job) = job_stream.next() => {
-                use common::peer::sync::execute_job;
-                if let Err(e) = execute_job(&peer, job).await {
-                    tracing::error!("Job execution failed: {}", e);
+                match job {
+                    // Spawn ping jobs concurrently so they don't block sync/download
+                    SyncJob::PingPeer(ping_job) => {
+                        let peer = peer.clone();
+                        let semaphore = ping_semaphore.clone();
+                        tokio::spawn(async move {
+                            let _permit = semaphore.acquire().await;
+                            if let Err(e) = ping_peer::execute(&peer, ping_job).await {
+                                tracing::error!("Ping job failed: {}", e);
+                            }
+                        });
+                    }
+                    // Execute sync and download jobs inline (serial)
+                    job => {
+                        if let Err(e) = execute_job(&peer, job).await {
+                            tracing::error!("Job execution failed: {}", e);
+                        }
+                    }
                 }
             }
 
             // Periodic ping scheduler
             _ = ping_interval.tick() => {
+                if pings_in_flight.load(Ordering::Relaxed) {
+                    tracing::debug!("Skipping periodic pings — previous batch still running");
+                    continue;
+                }
+
                 tracing::info!("Running periodic ping scheduler");
-                schedule_periodic_pings(&peer).await;
+                let peer = peer.clone();
+                let flag = pings_in_flight.clone();
+                flag.store(true, Ordering::Relaxed);
+                tokio::spawn(async move {
+                    schedule_periodic_pings(&peer).await;
+                    flag.store(false, Ordering::Relaxed);
+                });
             }
 
             // Stream closed (all senders dropped)
