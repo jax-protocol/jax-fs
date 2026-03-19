@@ -101,11 +101,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Tauri updater signing keys — generate with: npx @tauri-apps/cli signer generate -w ~/.tauri/jax.key
-          # Then add the private key as TAURI_SIGNING_PRIVATE_KEY repo secret and
-          # the public key to crates/desktop/src-tauri/tauri.conf.json plugins.updater.pubkey
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/desktop
           tauriScript: pnpm tauri
@@ -165,55 +160,6 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
-      - name: Generate update manifest
-        id: manifest
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
-          BASE_URL="https://github.com/jax-protocol/jax-fs/releases/download/${TAG}"
-          NOTES="Jax Desktop v${VERSION}"
-
-          # Collect signatures if available
-          DARWIN_SIG=""
-          LINUX_SIG=""
-          for sigfile in $(find artifacts -name '*.sig' 2>/dev/null); do
-            SIG=$(cat "$sigfile")
-            case "$sigfile" in
-              *aarch64*|*x64*darwin*|*macos*)
-                DARWIN_SIG="$SIG"
-                ;;
-              *linux*|*amd64*)
-                LINUX_SIG="$SIG"
-                ;;
-            esac
-          done
-
-          # Find artifact filenames
-          DMG_AARCH64=$(find artifacts/jax-desktop-macos-aarch64 -name '*.dmg' -not -name '*fuse*' | head -1 | xargs basename 2>/dev/null || echo "")
-          APPIMAGE=$(find artifacts/jax-desktop-linux-amd64 -name '*.AppImage' | head -1 | xargs basename 2>/dev/null || echo "")
-
-          # Build latest.json for Tauri updater
-          cat > latest.json << MANIFEST
-          {
-            "version": "v${VERSION}",
-            "notes": "${NOTES}",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "signature": "${DARWIN_SIG}",
-                "url": "${BASE_URL}/${DMG_AARCH64}"
-              },
-              "linux-x86_64": {
-                "signature": "${LINUX_SIG}",
-                "url": "${BASE_URL}/${APPIMAGE}"
-              }
-            }
-          }
-          MANIFEST
-
-          echo "Generated latest.json:"
-          cat latest.json
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -225,7 +171,6 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.deb
             artifacts/**/*.AppImage
-            latest.json
           body: |
             ## Jax Desktop v${{ steps.version.outputs.version }}
 
