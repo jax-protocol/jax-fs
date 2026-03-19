@@ -1,0 +1,13 @@
+# Worktree configuration
+[worktree]
+base = "origin/main"
+
+# Spawn configuration
+[spawn]
+auto_spawn = true
+max_concurrent_workers = 3
+auto_spawn_interval = 30
+
+# Agent configuration
+[agent]
+type = "claude"
