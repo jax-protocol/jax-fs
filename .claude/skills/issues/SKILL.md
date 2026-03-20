@@ -62,6 +62,22 @@ jig issues --label backend --label auto
 jig issues --status planned --priority high --label auto
 ```
 
+### Create issue
+
+```bash
+# Basic
+jig issues create "Issue title"
+
+# With priority, labels, and body
+jig issues create -p high -l auto -b "Description body in markdown" "Issue title"
+
+# Read body from stdin
+echo "body" | jig issues create -b - "Issue title"
+
+# With project/category
+jig issues create -c Engineering "Issue title"
+```
+
 ### Update status
 
 ```bash
