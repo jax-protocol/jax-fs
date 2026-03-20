@@ -6,7 +6,6 @@ pub mod transform;
 use std::path::Path;
 
 use bytes::Bytes;
-use tokio::sync::mpsc;
 
 use actor::{CacheActor, CacheHint};
 use database::{CacheDatabase, InsertEntry};
@@ -44,7 +43,7 @@ impl Default for CacheConfig {
 pub struct GatewayCache {
     db: CacheDatabase,
     store: CacheStore,
-    hints_tx: mpsc::Sender<CacheHint>,
+    hints_tx: flume::Sender<CacheHint>,
 }
 
 impl GatewayCache {
@@ -62,7 +61,7 @@ impl GatewayCache {
             .await
             .map_err(GatewayCacheError::Store)?;
 
-        let (hints_tx, hints_rx) = mpsc::channel(64);
+        let (hints_tx, hints_rx) = flume::bounded(64);
 
         // Spawn the background eviction actor
         let actor = CacheActor::new(db.clone(), store.clone(), config, hints_rx);
@@ -82,7 +81,7 @@ impl GatewayCache {
             .map_err(GatewayCacheError::Database)?;
         let store = CacheStore::new_memory();
 
-        let (hints_tx, hints_rx) = mpsc::channel(64);
+        let (hints_tx, hints_rx) = flume::bounded(64);
 
         let actor = CacheActor::new(db.clone(), store.clone(), config, hints_rx);
         tokio::spawn(actor.run());
