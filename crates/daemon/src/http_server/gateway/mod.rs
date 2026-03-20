@@ -204,8 +204,16 @@ pub async fn handler(
             q: query.q,
         };
 
-        // Determine cache key components
-        let gw_cache = state.gateway_cache();
+        // Skip cache for historical version requests (?at=) since the height
+        // from the mount may not match the historical version's actual position
+        // in the log, which could cause cache key collisions.
+        let use_cache = query.at.is_none();
+        let gw_cache = if use_cache {
+            state.gateway_cache()
+        } else {
+            None
+        };
+
         let height = inner.height() as i64;
         let transform_params_key =
             cache::transform::TransformParams::from_query(query.w, query.h, query.q)
@@ -239,19 +247,17 @@ pub async fn handler(
         .await;
 
         // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
-        if let Some(gw_cache) = gw_cache {
-            if let Some(ref cacheable) = response_data.cacheable {
-                gw_cache
-                    .put(
-                        &bucket_id_str,
-                        height,
-                        &absolute_path,
-                        &transform_params_key,
-                        &cacheable.data,
-                        &cacheable.mime_type,
-                    )
-                    .await;
-            }
+        if let (Some(gw_cache), Some(ref cacheable)) = (gw_cache, &response_data.cacheable) {
+            gw_cache
+                .put(
+                    &bucket_id_str,
+                    height,
+                    &absolute_path,
+                    &transform_params_key,
+                    &cacheable.data,
+                    &cacheable.mime_type,
+                )
+                .await;
         }
 
         response_data.response

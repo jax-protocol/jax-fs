@@ -150,8 +150,8 @@ impl State {
         &self.database
     }
 
-    pub fn gateway_cache(&self) -> &Option<GatewayCache> {
-        &self.gateway_cache
+    pub fn gateway_cache(&self) -> Option<&GatewayCache> {
+        self.gateway_cache.as_ref()
     }
 
     /// Get the mount manager (only available with fuse feature)

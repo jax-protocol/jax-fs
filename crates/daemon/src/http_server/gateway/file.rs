@@ -173,7 +173,7 @@ pub async fn handler(
                         &format!("attachment; filename=\"{}\"", filename),
                     ),
                 ],
-                file_data.clone(),
+                file_data,
             )
                 .into_response(),
             cacheable: None,

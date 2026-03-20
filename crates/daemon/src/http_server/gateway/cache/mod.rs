@@ -190,11 +190,19 @@ pub enum GatewayCacheError {
 mod tests {
     use super::*;
 
+    /// Test config with eviction disabled so tests don't race with the actor.
+    fn test_config() -> CacheConfig {
+        CacheConfig {
+            max_versions: 100,
+            max_cache_size_bytes: None,
+            max_entry_age_secs: None,
+            eviction_interval_secs: 86400, // 24h — effectively disabled in tests
+        }
+    }
+
     #[tokio::test]
     async fn test_full_cache_flow() {
-        let cache = GatewayCache::new_memory(CacheConfig::default())
-            .await
-            .unwrap();
+        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
 
         // Miss
         let result = cache.get("bucket-1", 1, "/photo.jpg", "").await;
@@ -214,9 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_transform_params_cache_separately() {
-        let cache = GatewayCache::new_memory(CacheConfig::default())
-            .await
-            .unwrap();
+        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
 
         cache
             .put("b1", 1, "/photo.jpg", "", b"original", "image/jpeg")
@@ -234,9 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_content_dedup_across_paths() {
-        let cache = GatewayCache::new_memory(CacheConfig::default())
-            .await
-            .unwrap();
+        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
         let data = b"same content at different paths";
 
         cache.put("b1", 1, "/a.txt", "", data, "text/plain").await;
@@ -249,9 +253,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_different_heights() {
-        let cache = GatewayCache::new_memory(CacheConfig::default())
-            .await
-            .unwrap();
+        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
 
         cache
             .put("b1", 1, "/file.txt", "", b"version 1", "text/plain")
