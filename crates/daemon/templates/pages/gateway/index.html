@@ -104,6 +104,28 @@
                     <span class="param-desc">Recursive directory listing</span>
                 </div>
             </div>
+
+            <h4 class="text-md font-semibold mt-6 mb-3">Image Transform</h4>
+            <p class="text-sm text-muted-foreground mb-3">Resize and adjust quality for image files (JPEG, PNG, WebP, GIF)</p>
+            <div class="space-y-2">
+                <div class="param-row">
+                    <code class="param-name">?w=400</code>
+                    <span class="param-desc">Resize to width (maintains aspect ratio)</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?w=400&amp;h=300</code>
+                    <span class="param-desc">Resize to exact dimensions</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?q=75</code>
+                    <span class="param-desc">Output quality 1-100 (JPEG/WebP, default: 80)</span>
+                </div>
+                <div class="param-row">
+                    <code class="param-name">?w=400&amp;q=75</code>
+                    <span class="param-desc">Combine resize with quality</span>
+                </div>
+            </div>
+            <p class="text-xs text-muted-foreground mt-2">Max dimension: 4096px. Non-image files ignore transform params. Responses are cached.</p>
         </div>
     </div>
 </div>

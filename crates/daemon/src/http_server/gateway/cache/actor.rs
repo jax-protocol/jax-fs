@@ -1,0 +1,149 @@
+use std::time::Duration;
+
+use tokio::sync::mpsc;
+
+use super::database::CacheDatabase;
+use super::store::CacheStore;
+use super::CacheConfig;
+
+/// Hints the request path can send to the cache actor.
+pub enum CacheHint {
+    /// A bucket advanced to a new height — old entries may be evictable.
+    BucketAdvanced { bucket_id: String, new_height: i64 },
+}
+
+/// Background actor that owns eviction and cleanup.
+///
+/// The gateway writes to the cache inline (populate on miss) but never
+/// blocks on cleanup — all eviction work happens here.
+pub struct CacheActor {
+    db: CacheDatabase,
+    store: CacheStore,
+    config: CacheConfig,
+    hints_rx: mpsc::Receiver<CacheHint>,
+}
+
+impl CacheActor {
+    pub fn new(
+        db: CacheDatabase,
+        store: CacheStore,
+        config: CacheConfig,
+        hints_rx: mpsc::Receiver<CacheHint>,
+    ) -> Self {
+        Self {
+            db,
+            store,
+            config,
+            hints_rx,
+        }
+    }
+
+    /// Run the actor loop. Exits when the hints channel is closed.
+    pub async fn run(mut self) {
+        let mut interval =
+            tokio::time::interval(Duration::from_secs(self.config.eviction_interval_secs));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    self.run_eviction().await;
+                }
+                hint = self.hints_rx.recv() => {
+                    match hint {
+                        Some(CacheHint::BucketAdvanced { .. }) => {
+                            // Run eviction when a bucket advances
+                            self.run_eviction().await;
+                        }
+                        None => {
+                            tracing::debug!("Cache actor shutting down — hints channel closed");
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn run_eviction(&self) {
+        // 1. Evict old height entries
+        match self.db.evict_old_heights(self.config.max_versions).await {
+            Ok(removed) if removed > 0 => {
+                tracing::info!(removed, "cache: evicted old height entries");
+            }
+            Err(e) => {
+                tracing::warn!("cache: failed to evict old heights: {}", e);
+            }
+            _ => {}
+        }
+
+        // 2. Evict expired entries
+        if let Some(max_age) = self.config.max_entry_age_secs {
+            match self.db.evict_expired(max_age as i64).await {
+                Ok(hashes) if !hashes.is_empty() => {
+                    tracing::info!(count = hashes.len(), "cache: evicted expired entries");
+                }
+                Err(e) => {
+                    tracing::warn!("cache: failed to evict expired entries: {}", e);
+                }
+                _ => {}
+            }
+        }
+
+        // 3. Enforce size limit via LRU eviction
+        if let Some(max_size) = self.config.max_cache_size_bytes {
+            match self.db.evict_lru(max_size as i64).await {
+                Ok(hashes) if !hashes.is_empty() => {
+                    tracing::info!(
+                        count = hashes.len(),
+                        "cache: LRU-evicted entries for size limit"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("cache: failed to LRU-evict: {}", e);
+                }
+                _ => {}
+            }
+        }
+
+        // 4. Sweep unreferenced blobs from the content store
+        self.sweep_unreferenced().await;
+    }
+
+    /// Remove blobs from the content store that are not referenced by any index entry.
+    async fn sweep_unreferenced(&self) {
+        let referenced = match self.db.referenced_hashes().await {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::warn!("cache: failed to get referenced hashes: {}", e);
+                return;
+            }
+        };
+
+        let stored = match self.store.list_hashes().await {
+            Ok(h) => h,
+            Err(e) => {
+                tracing::warn!("cache: failed to list stored hashes: {}", e);
+                return;
+            }
+        };
+
+        let referenced_set: std::collections::HashSet<&str> =
+            referenced.iter().map(|s| s.as_str()).collect();
+
+        let mut removed = 0u64;
+        for hash in &stored {
+            if !referenced_set.contains(hash.as_str()) {
+                if let Err(e) = self.store.delete(hash).await {
+                    tracing::warn!(hash, "cache: failed to delete unreferenced blob: {}", e);
+                } else {
+                    removed += 1;
+                }
+            }
+        }
+
+        if removed > 0 {
+            tracing::info!(removed, "cache: swept unreferenced blobs");
+        }
+    }
+}

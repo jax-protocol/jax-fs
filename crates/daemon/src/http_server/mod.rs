@@ -15,7 +15,7 @@ use tower_http::LatencyUnit;
 
 pub mod api;
 mod config;
-mod gateway;
+pub(crate) mod gateway;
 mod handlers;
 
 pub use config::Config;

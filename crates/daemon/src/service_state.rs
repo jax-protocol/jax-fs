@@ -9,6 +9,7 @@ use crate::blobs::{Blobs, BlobsSetupError};
 use crate::database::{Database, DatabaseSetupError};
 #[cfg(feature = "fuse")]
 use crate::fuse::{MountManager, MountManagerConfig};
+use crate::http_server::gateway::cache::GatewayCache;
 use crate::service_config::Config;
 use crate::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
 
@@ -20,6 +21,7 @@ use common::peer::{Peer, PeerBuilder};
 pub struct State {
     database: Database,
     peer: Peer<Database>,
+    gateway_cache: Option<GatewayCache>,
     #[cfg(feature = "fuse")]
     mount_manager: Arc<RwLock<Option<MountManager>>>,
 }
@@ -86,10 +88,34 @@ impl State {
             crate::sync_provider::run_worker(peer_for_worker, job_stream).await;
         });
 
+        // Initialize gateway cache
+        let gateway_cache = match GatewayCache::new(
+            &config.jax_dir,
+            crate::http_server::gateway::cache::CacheConfig::default(),
+        )
+        .await
+        {
+            Ok(cache) => {
+                tracing::info!(
+                    "Gateway cache initialized at {:?}",
+                    config.jax_dir.join("gateway-cache")
+                );
+                Some(cache)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to initialize gateway cache, continuing without: {}",
+                    e
+                );
+                None
+            }
+        };
+
         // Create the initial state
         let state = Self {
             database: database.clone(),
             peer: peer.clone(),
+            gateway_cache,
             #[cfg(feature = "fuse")]
             mount_manager: Arc::new(RwLock::new(None)),
         };
@@ -122,6 +148,10 @@ impl State {
 
     pub fn database(&self) -> &Database {
         &self.database
+    }
+
+    pub fn gateway_cache(&self) -> &Option<GatewayCache> {
+        &self.gateway_cache
     }
 
     /// Get the mount manager (only available with fuse feature)

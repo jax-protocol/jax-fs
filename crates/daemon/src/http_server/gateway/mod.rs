@@ -9,6 +9,7 @@ use common::mount::NodeLink;
 
 use crate::ServiceState;
 
+pub mod cache;
 pub mod directory;
 pub mod file;
 pub mod index;
@@ -48,6 +49,15 @@ pub struct GatewayQuery {
     /// If true, use the HTML viewer UI instead of raw JSON/binary responses.
     #[serde(default)]
     pub viewer: Option<bool>,
+    /// Target width in pixels for image transforms (maintains aspect ratio if h omitted).
+    #[serde(default)]
+    pub w: Option<u32>,
+    /// Target height in pixels for image transforms (optional).
+    #[serde(default)]
+    pub h: Option<u32>,
+    /// Output quality 1-100 for JPEG/WebP (default: 80).
+    #[serde(default)]
+    pub q: Option<u8>,
 }
 
 /// Handler for bucket root requests (no file path).
@@ -189,8 +199,36 @@ pub async fn handler(
         let file_query = file::FileQuery {
             download: query.download,
             viewer: query.viewer,
+            w: query.w,
+            h: query.h,
+            q: query.q,
         };
-        file::handler(
+
+        // Determine cache key components
+        let gw_cache = state.gateway_cache();
+        let height = inner.height() as i64;
+        let transform_params_key =
+            cache::transform::TransformParams::from_query(query.w, query.h, query.q)
+                .map(|p| p.to_cache_key())
+                .unwrap_or_default();
+
+        // Check cache before traversal/decrypt
+        if let Some(gw_cache) = gw_cache {
+            if let Some((cached_bytes, cached_mime)) = gw_cache
+                .get(
+                    &bucket_id_str,
+                    height,
+                    &absolute_path,
+                    &transform_params_key,
+                )
+                .await
+            {
+                tracing::debug!(path = %absolute_path, "gateway cache hit");
+                return file::serve_cached(cached_bytes, &cached_mime, &absolute_path);
+            }
+        }
+
+        let response_data = file::handler(
             &mount,
             &path_buf,
             &absolute_path,
@@ -198,7 +236,25 @@ pub async fn handler(
             &meta,
             node_link.unwrap(),
         )
-        .await
+        .await;
+
+        // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
+        if let Some(gw_cache) = gw_cache {
+            if let Some(ref cacheable) = response_data.cacheable {
+                gw_cache
+                    .put(
+                        &bucket_id_str,
+                        height,
+                        &absolute_path,
+                        &transform_params_key,
+                        &cacheable.data,
+                        &cacheable.mime_type,
+                    )
+                    .await;
+            }
+        }
+
+        response_data.response
     }
 }
 

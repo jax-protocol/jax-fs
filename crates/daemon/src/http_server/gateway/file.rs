@@ -1,7 +1,10 @@
 use askama::Template;
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
 use common::mount::{Mount, NodeLink};
 use serde::Deserialize;
+
+use super::cache::transform::{TransformError, TransformParams};
 
 /// Query parameters for file requests.
 #[derive(Debug, Deserialize)]
@@ -12,6 +15,15 @@ pub struct FileQuery {
     /// If true, use the HTML viewer UI instead of serving raw file
     #[serde(default)]
     pub viewer: Option<bool>,
+    /// Target width in pixels for image transforms.
+    #[serde(default)]
+    pub w: Option<u32>,
+    /// Target height in pixels for image transforms.
+    #[serde(default)]
+    pub h: Option<u32>,
+    /// Output quality 1-100 for JPEG/WebP.
+    #[serde(default)]
+    pub q: Option<u8>,
 }
 
 /// Template for file viewer.
@@ -31,6 +43,46 @@ pub struct GatewayViewerTemplate {
     pub back_url: String,
 }
 
+/// Data that can be cached by the gateway layer.
+pub struct CacheableData {
+    pub data: Vec<u8>,
+    pub mime_type: String,
+}
+
+/// Response from the file handler, with optional cacheable data.
+pub struct FileResponse {
+    pub response: Response,
+    pub cacheable: Option<CacheableData>,
+}
+
+/// Cache-Control header for cached/transformed responses.
+const CACHE_CONTROL_IMMUTABLE: &str = "public, max-age=31536000, immutable";
+
+/// Serve cached content directly, bypassing all mount traversal and decryption.
+pub fn serve_cached(data: Bytes, mime_type: &str, absolute_path: &str) -> Response {
+    let filename = std::path::Path::new(absolute_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file");
+
+    (
+        axum::http::StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, mime_type.to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("inline; filename=\"{}\"", filename),
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                CACHE_CONTROL_IMMUTABLE.to_string(),
+            ),
+        ],
+        data,
+    )
+        .into_response()
+}
+
 // TODO: Query param behavior is documented in templates/pages/gateway/index.html - keep in sync
 pub async fn handler(
     mount: &Mount,
@@ -39,7 +91,7 @@ pub async fn handler(
     query: &FileQuery,
     meta: &super::BucketMeta<'_>,
     node_link: NodeLink,
-) -> Response {
+) -> FileResponse {
     let file_metadata_data = match &node_link {
         NodeLink::Data(_, _, metadata) => metadata.clone(),
         _ => unreachable!("Already checked is_directory"),
@@ -59,31 +111,73 @@ pub async fn handler(
     let wants_download = query.download.unwrap_or(false);
     let wants_viewer = query.viewer.unwrap_or(false);
 
+    // Validate transform params early
+    let transform = TransformParams::from_query(query.w, query.h, query.q);
+    if let Some(ref params) = transform {
+        if let Err(msg) = params.validate() {
+            return FileResponse {
+                response: (axum::http::StatusCode::BAD_REQUEST, msg.to_string()).into_response(),
+                cacheable: None,
+            };
+        }
+    }
+
     // Read file data
     let file_data = match mount.cat(path_buf).await {
         Ok(data) => data,
         Err(e) => {
             tracing::error!("Failed to read file: {}", e);
-            return super::error_response("Failed to read file");
+            return FileResponse {
+                response: super::error_response("Failed to read file"),
+                cacheable: None,
+            };
         }
+    };
+
+    // Apply image transform if requested and applicable
+    let (file_data, mime_type) = if let Some(ref params) = transform {
+        if TransformParams::applies_to_mime(&mime_type) {
+            match super::cache::transform::transform_image(&file_data, &mime_type, params) {
+                Ok(transformed) => (transformed, mime_type),
+                Err(TransformError::UnsupportedFormat(_)) => {
+                    // Not an image type we can transform, serve as-is
+                    (file_data, mime_type)
+                }
+                Err(e) => {
+                    tracing::error!("Image transform failed: {}", e);
+                    return FileResponse {
+                        response: super::error_response("Image transform failed"),
+                        cacheable: None,
+                    };
+                }
+            }
+        } else {
+            // Non-image: ignore transform params, serve normally
+            (file_data, mime_type)
+        }
+    } else {
+        (file_data, mime_type)
     };
 
     let size_formatted = format_bytes(file_data.len());
 
-    // If download is requested, serve with attachment disposition
+    // If download is requested, serve with attachment disposition (not cacheable)
     if wants_download {
-        return (
-            axum::http::StatusCode::OK,
-            [
-                (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
-                (
-                    axum::http::header::CONTENT_DISPOSITION,
-                    &format!("attachment; filename=\"{}\"", filename),
-                ),
-            ],
-            file_data,
-        )
-            .into_response();
+        return FileResponse {
+            response: (
+                axum::http::StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        &format!("attachment; filename=\"{}\"", filename),
+                    ),
+                ],
+                file_data.clone(),
+            )
+                .into_response(),
+            cacheable: None,
+        };
     }
 
     // When viewer is NOT explicitly set, act like a web server:
@@ -107,52 +201,86 @@ pub async fn handler(
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             };
 
-            return (
-                axum::http::StatusCode::OK,
-                [
-                    (axum::http::header::CONTENT_TYPE, final_mime_type),
-                    (
-                        axum::http::header::CONTENT_DISPOSITION,
-                        &format!("inline; filename=\"{}\"", filename),
-                    ),
-                ],
-                final_content,
-            )
-                .into_response();
+            // HTML/Markdown with rewriting is not cacheable (host-dependent)
+            return FileResponse {
+                response: (
+                    axum::http::StatusCode::OK,
+                    [
+                        (axum::http::header::CONTENT_TYPE, final_mime_type),
+                        (
+                            axum::http::header::CONTENT_DISPOSITION,
+                            &format!("inline; filename=\"{}\"", filename),
+                        ),
+                    ],
+                    final_content,
+                )
+                    .into_response(),
+                cacheable: None,
+            };
         }
 
-        // Non-HTML/Markdown: serve raw
-        return (
-            axum::http::StatusCode::OK,
-            [
-                (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
-                (
-                    axum::http::header::CONTENT_DISPOSITION,
-                    &format!("inline; filename=\"{}\"", filename),
-                ),
-            ],
-            file_data,
-        )
-            .into_response();
+        // Non-HTML/Markdown: serve raw and cache
+        let cacheable = Some(CacheableData {
+            data: file_data.clone(),
+            mime_type: mime_type.clone(),
+        });
+
+        return FileResponse {
+            response: (
+                axum::http::StatusCode::OK,
+                [
+                    (
+                        axum::http::header::CONTENT_TYPE,
+                        mime_type.as_str().to_string(),
+                    ),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        format!("inline; filename=\"{}\"", filename),
+                    ),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        CACHE_CONTROL_IMMUTABLE.to_string(),
+                    ),
+                ],
+                file_data,
+            )
+                .into_response(),
+            cacheable,
+        };
     }
 
     // viewer=false: serve raw file inline
     if !wants_viewer {
-        return (
-            axum::http::StatusCode::OK,
-            [
-                (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
-                (
-                    axum::http::header::CONTENT_DISPOSITION,
-                    &format!("inline; filename=\"{}\"", filename),
-                ),
-            ],
-            file_data,
-        )
-            .into_response();
+        let cacheable = Some(CacheableData {
+            data: file_data.clone(),
+            mime_type: mime_type.clone(),
+        });
+
+        return FileResponse {
+            response: (
+                axum::http::StatusCode::OK,
+                [
+                    (
+                        axum::http::header::CONTENT_TYPE,
+                        mime_type.as_str().to_string(),
+                    ),
+                    (
+                        axum::http::header::CONTENT_DISPOSITION,
+                        format!("inline; filename=\"{}\"", filename),
+                    ),
+                    (
+                        axum::http::header::CACHE_CONTROL,
+                        CACHE_CONTROL_IMMUTABLE.to_string(),
+                    ),
+                ],
+                file_data,
+            )
+                .into_response(),
+            cacheable,
+        };
     }
 
-    // Render file viewer template
+    // Render file viewer template (not cacheable)
     let content = if mime_type.starts_with("text/")
         || mime_type == "application/json"
         || mime_type == "application/xml"
@@ -179,17 +307,20 @@ pub async fn handler(
         back_url,
     };
 
-    match template.render() {
-        Ok(html) => (
-            axum::http::StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            html,
-        )
-            .into_response(),
-        Err(e) => {
-            tracing::error!("Failed to render viewer template: {}", e);
-            super::error_response("Failed to render page")
-        }
+    FileResponse {
+        response: match template.render() {
+            Ok(html) => (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                html,
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!("Failed to render viewer template: {}", e);
+                super::error_response("Failed to render page")
+            }
+        },
+        cacheable: None,
     }
 }
 
