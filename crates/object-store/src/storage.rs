@@ -44,7 +44,7 @@ pub enum ObjectStoreConfig {
 
 /// Wrapper around different object storage backends.
 #[derive(Debug, Clone)]
-pub(crate) struct Storage {
+pub struct Storage {
     inner: Arc<dyn ObjectStore>,
 }
 
@@ -175,15 +175,33 @@ impl Storage {
     }
 }
 
-#[cfg(test)]
 impl Storage {
-    /// Create an in-memory storage backend (test-only).
+    /// Create an in-memory storage backend.
     pub fn memory() -> Self {
         Self {
             inner: Arc::new(InMemory::new()),
         }
     }
 
+    /// Stream all blob hashes in the data directory.
+    pub fn list_data_hashes_stream(&self) -> impl futures::Stream<Item = Result<String>> + '_ {
+        use futures::StreamExt;
+
+        let prefix = ObjectPath::from("data/");
+        self.inner.list(Some(&prefix)).filter_map(|r| async {
+            match r {
+                Ok(meta) => {
+                    let path = meta.location.as_ref();
+                    path.strip_prefix("data/").map(|s| Ok(s.to_string()))
+                }
+                Err(e) => Some(Err(e.into())),
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+impl Storage {
     /// Get blob outboard data from storage.
     pub async fn get_outboard(&self, hash: &str) -> Result<Option<Bytes>> {
         let path = Self::outboard_path(hash);
@@ -205,22 +223,6 @@ impl Storage {
             Err(object_store::Error::NotFound { .. }) => Ok(false),
             Err(e) => Err(e.into()),
         }
-    }
-
-    /// Stream all blob hashes in the data directory without collecting into memory.
-    pub fn list_data_hashes_stream(&self) -> impl futures::Stream<Item = Result<String>> + '_ {
-        use futures::StreamExt;
-
-        let prefix = ObjectPath::from("data/");
-        self.inner.list(Some(&prefix)).filter_map(|r| async {
-            match r {
-                Ok(meta) => {
-                    let path = meta.location.as_ref();
-                    path.strip_prefix("data/").map(|s| Ok(s.to_string()))
-                }
-                Err(e) => Some(Err(e.into())),
-            }
-        })
     }
 }
 

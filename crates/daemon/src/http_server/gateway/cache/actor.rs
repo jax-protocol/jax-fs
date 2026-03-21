@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use futures::StreamExt;
 
-use super::store::CacheStore;
+use object_store::Storage;
+
 use super::CacheConfig;
 use crate::database::models::GatewayCacheEntry;
 use crate::database::Database;
@@ -19,7 +20,7 @@ pub enum CacheHint {
 /// blocks on cleanup — all eviction work happens here.
 pub struct CacheActor {
     db: Database,
-    store: CacheStore,
+    store: Storage,
     config: CacheConfig,
     hints_rx: flume::Receiver<CacheHint>,
 }
@@ -27,7 +28,7 @@ pub struct CacheActor {
 impl CacheActor {
     pub fn new(
         db: Database,
-        store: CacheStore,
+        store: Storage,
         config: CacheConfig,
         hints_rx: flume::Receiver<CacheHint>,
     ) -> Self {
@@ -75,7 +76,7 @@ impl CacheActor {
     }
 }
 
-async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
+async fn run_eviction(db: &Database, store: &Storage, config: &CacheConfig) {
     // 1. Evict old height entries
     match GatewayCacheEntry::evict_old_heights(config.max_versions, db).await {
         Ok(removed) if removed > 0 => {
@@ -121,7 +122,9 @@ async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
 }
 
 /// Remove blobs from the content store that are not referenced by any index entry.
-async fn sweep_unreferenced(db: &Database, store: &CacheStore) {
+async fn sweep_unreferenced(db: &Database, store: &Storage) {
+    use futures::TryStreamExt;
+
     let referenced = match GatewayCacheEntry::referenced_links(db).await {
         Ok(h) => h,
         Err(e) => {
@@ -130,7 +133,11 @@ async fn sweep_unreferenced(db: &Database, store: &CacheStore) {
         }
     };
 
-    let stored = match store.list_hashes().await {
+    let referenced_set: std::collections::HashSet<&str> =
+        referenced.iter().map(|s| s.as_str()).collect();
+
+    let stream = store.list_data_hashes_stream();
+    let stored: Vec<String> = match std::pin::pin!(stream).try_collect().await {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("cache: failed to list stored hashes: {}", e);
@@ -138,13 +145,10 @@ async fn sweep_unreferenced(db: &Database, store: &CacheStore) {
         }
     };
 
-    let referenced_set: std::collections::HashSet<&str> =
-        referenced.iter().map(|s| s.as_str()).collect();
-
     let mut removed = 0u64;
     for hash in &stored {
         if !referenced_set.contains(hash.as_str()) {
-            if let Err(e) = store.delete(hash).await {
+            if let Err(e) = store.delete_data(hash).await {
                 tracing::warn!(hash, "cache: failed to delete unreferenced blob: {}", e);
             } else {
                 removed += 1;

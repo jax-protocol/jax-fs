@@ -1,13 +1,12 @@
 pub mod actor;
-pub mod store;
 
 use std::path::Path;
 
 use bytes::Bytes;
+use object_store::Storage;
 use uuid::Uuid;
 
 use actor::CacheHint;
-use store::CacheStore;
 
 use crate::database::models::GatewayCacheEntry;
 use crate::database::Database;
@@ -47,7 +46,7 @@ pub struct GatewayCacheHandle {
 
 impl GatewayCacheHandle {
     /// Spawn the background eviction actor and return a handle.
-    pub fn spawn(db: Database, store: CacheStore, config: CacheConfig) -> Self {
+    pub fn spawn(db: Database, store: Storage, config: CacheConfig) -> Self {
         let (hints_tx, hints_rx) = flume::bounded(64);
 
         let actor = actor::CacheActor::new(db, store, config, hints_rx);
@@ -69,7 +68,7 @@ pub async fn get(
     path: &Path,
     query_string: Option<&str>,
     db: &Database,
-    store: &CacheStore,
+    store: &Storage,
 ) -> Option<(Bytes, String)> {
     // Layer 1: path index lookup
     let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, db).await {
@@ -84,7 +83,7 @@ pub async fn get(
     let link_hex = entry.link.to_string();
 
     // Layer 2: content store lookup
-    match store.get(&link_hex).await {
+    match store.get_data(&link_hex).await {
         Ok(Some(data)) => Some((data, entry.mime_type.to_string())),
         Ok(None) => {
             tracing::debug!(
@@ -110,24 +109,20 @@ pub async fn put(
     data: &[u8],
     mime_type: &str,
     db: &Database,
-    store: &CacheStore,
+    store: &Storage,
 ) {
-    // Layer 2: store content (content-addressed, deduped automatically)
-    let link_hex = match store.put(data).await {
-        Ok(h) => h,
-        Err(e) => {
-            tracing::warn!("cache put error (store): {}", e);
-            return;
-        }
-    };
+    // Compute content-addressed link
+    let link = common::linked_data::Hash::new(data);
+    let link_hex = link.to_string();
 
-    let link: common::linked_data::Hash = match link_hex.parse() {
-        Ok(h) => h,
-        Err(e) => {
-            tracing::warn!("cache put error (invalid hash): {}", e);
-            return;
-        }
-    };
+    // Layer 2: store content (content-addressed, deduped automatically)
+    if let Err(e) = store
+        .put_data(&link_hex, Bytes::copy_from_slice(data))
+        .await
+    {
+        tracing::warn!("cache put error (store): {}", e);
+        return;
+    }
 
     let mime: mime::Mime = match mime_type.parse() {
         Ok(m) => m,
@@ -161,7 +156,7 @@ mod tests {
     #[tokio::test]
     async fn test_full_cache_flow() {
         let db = Database::memory().await.unwrap();
-        let store = CacheStore::new_memory();
+        let store = Storage::memory();
         let bucket = Uuid::new_v4();
         let path = Path::new("/photo.jpg");
 
@@ -181,7 +176,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_string_cache_separately() {
         let db = Database::memory().await.unwrap();
-        let store = CacheStore::new_memory();
+        let store = Storage::memory();
         let bucket = Uuid::new_v4();
         let path = Path::new("/photo.jpg");
 
@@ -220,7 +215,7 @@ mod tests {
     #[tokio::test]
     async fn test_content_dedup_across_paths() {
         let db = Database::memory().await.unwrap();
-        let store = CacheStore::new_memory();
+        let store = Storage::memory();
         let bucket = Uuid::new_v4();
         let data = b"same content at different paths";
 
@@ -258,7 +253,7 @@ mod tests {
     #[tokio::test]
     async fn test_different_heights() {
         let db = Database::memory().await.unwrap();
-        let store = CacheStore::new_memory();
+        let store = Storage::memory();
         let bucket = Uuid::new_v4();
         let path = Path::new("/file.txt");
 
