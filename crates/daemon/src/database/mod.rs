@@ -16,6 +16,15 @@ pub struct Database(SqlitePool);
 pub type DatabaseConnection = sqlx::SqliteConnection;
 
 impl Database {
+    /// Create a unique in-memory database (for tests).
+    /// Each call produces an isolated database with all migrations applied.
+    pub async fn memory() -> Result<Self, DatabaseSetupError> {
+        let id = uuid::Uuid::new_v4();
+        let url = url::Url::parse(&format!("sqlite:file:test_{id}?mode=memory&cache=shared"))
+            .expect("valid memory URL");
+        Self::connect(&url).await
+    }
+
     pub async fn connect(database_url: &url::Url) -> Result<Self, DatabaseSetupError> {
         if database_url.scheme() == "sqlite" {
             let db = sqlite::connect_sqlite(database_url).await?;

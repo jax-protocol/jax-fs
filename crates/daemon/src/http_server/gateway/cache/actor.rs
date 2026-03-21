@@ -89,7 +89,7 @@ async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
 
     // 2. Evict expired entries
     if let Some(max_age) = config.max_entry_age_secs {
-        match GatewayCacheEntry::evict_expired(max_age as i64, db).await {
+        match GatewayCacheEntry::evict_expired(max_age, db).await {
             Ok(hashes) if !hashes.is_empty() => {
                 tracing::info!(count = hashes.len(), "cache: evicted expired entries");
             }
@@ -102,7 +102,7 @@ async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
 
     // 3. Enforce size limit via LRU eviction
     if let Some(max_size) = config.max_cache_size_bytes {
-        match GatewayCacheEntry::evict_lru(max_size as i64, db).await {
+        match GatewayCacheEntry::evict_lru(max_size, db).await {
             Ok(hashes) if !hashes.is_empty() => {
                 tracing::info!(
                     count = hashes.len(),
@@ -122,7 +122,7 @@ async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
 
 /// Remove blobs from the content store that are not referenced by any index entry.
 async fn sweep_unreferenced(db: &Database, store: &CacheStore) {
-    let referenced = match GatewayCacheEntry::referenced_hashes(db).await {
+    let referenced = match GatewayCacheEntry::referenced_links(db).await {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("cache: failed to get referenced hashes: {}", e);

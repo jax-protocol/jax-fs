@@ -3,7 +3,7 @@ CREATE TABLE gateway_cache (
     height           INTEGER NOT NULL,
     path             TEXT    NOT NULL,
     query_string     TEXT    NOT NULL DEFAULT '',
-    content_hash     TEXT    NOT NULL,
+    link             TEXT    NOT NULL,
     content_size     INTEGER NOT NULL DEFAULT 0,
     mime_type        TEXT    NOT NULL DEFAULT 'application/octet-stream',
     created_at       INTEGER NOT NULL DEFAULT (unixepoch()),

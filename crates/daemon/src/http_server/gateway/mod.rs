@@ -211,18 +211,18 @@ pub async fn handler(
         let use_cache = query.at.is_none();
         let cache_store = if use_cache { state.cache_store() } else { None };
 
-        let height = inner.height() as i64;
+        let height = inner.height();
         let cache_query_string = transform::TransformParams::from_query(query.w, query.h, query.q)
-            .map(|p| p.to_query_string())
-            .unwrap_or_default();
+            .map(|p| p.to_query_string());
+        let cache_qs_ref = cache_query_string.as_deref();
 
         // Check cache before traversal/decrypt
         if let Some(store) = cache_store {
             if let Some((cached_bytes, cached_mime)) = cache::get(
                 &bucket_id_str,
                 height,
-                &absolute_path,
-                &cache_query_string,
+                &path_buf,
+                cache_qs_ref,
                 state.database(),
                 store,
             )
@@ -246,14 +246,12 @@ pub async fn handler(
         // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
         if let (Some(store), Some(ref cacheable)) = (cache_store, &response_data.cacheable) {
             cache::put(
-                &cache::PutParams {
-                    bucket_id: &bucket_id_str,
-                    height,
-                    path: &absolute_path,
-                    query_string: &cache_query_string,
-                    data: &cacheable.data,
-                    mime_type: &cacheable.mime_type,
-                },
+                &bucket_id_str,
+                height,
+                &path_buf,
+                cache_qs_ref,
+                &cacheable.data,
+                &cacheable.mime_type,
                 state.database(),
                 store,
             )

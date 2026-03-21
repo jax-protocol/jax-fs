@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use sqlx::FromRow;
 
 use crate::database::Database;
@@ -5,38 +7,31 @@ use crate::database::Database;
 /// A cached gateway response lookup result.
 #[derive(Debug, Clone, FromRow)]
 pub struct GatewayCacheEntry {
-    pub content_hash: String,
+    /// BLAKE3 hash of the cached content (content-addressed link).
+    pub link: String,
+    /// MIME type of the cached content.
     pub mime_type: String,
-}
-
-/// Parameters for inserting/upserting a cache entry.
-pub struct UpsertParams<'a> {
-    pub bucket_id: &'a str,
-    pub height: i64,
-    pub path: &'a str,
-    pub query_string: &'a str,
-    pub content_hash: &'a str,
-    pub content_size: i64,
-    pub mime_type: &'a str,
 }
 
 impl GatewayCacheEntry {
     /// Look up a cached entry by its key.
     pub async fn lookup(
         bucket_id: &str,
-        height: i64,
-        path: &str,
-        query_string: &str,
+        height: u64,
+        path: &Path,
+        query_string: Option<&str>,
         db: &Database,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let path_str = path.to_string_lossy();
+        let qs = query_string.unwrap_or("");
         let entry = sqlx::query_as::<_, Self>(
-            "SELECT content_hash, mime_type FROM gateway_cache
+            "SELECT link, mime_type FROM gateway_cache
              WHERE bucket_id = ? AND height = ? AND path = ? AND query_string = ?",
         )
         .bind(bucket_id)
-        .bind(height)
-        .bind(path)
-        .bind(query_string)
+        .bind(height as i64)
+        .bind(path_str.as_ref())
+        .bind(qs)
         .fetch_optional(&**db)
         .await?;
 
@@ -47,9 +42,9 @@ impl GatewayCacheEntry {
                  WHERE bucket_id = ? AND height = ? AND path = ? AND query_string = ?",
             )
             .bind(bucket_id)
-            .bind(height)
-            .bind(path)
-            .bind(query_string)
+            .bind(height as i64)
+            .bind(path_str.as_ref())
+            .bind(qs)
             .execute(&**db)
             .await;
         }
@@ -58,28 +53,31 @@ impl GatewayCacheEntry {
     }
 
     /// Insert or replace a cache entry.
-    pub async fn upsert(params: &UpsertParams<'_>, db: &Database) -> Result<(), sqlx::Error> {
-        let UpsertParams {
-            bucket_id,
-            height,
-            path,
-            query_string,
-            content_hash,
-            content_size,
-            mime_type,
-        } = params;
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert(
+        bucket_id: &str,
+        height: u64,
+        path: &Path,
+        query_string: Option<&str>,
+        link: &str,
+        content_size: u64,
+        mime_type: &str,
+        db: &Database,
+    ) -> Result<(), sqlx::Error> {
+        let path_str = path.to_string_lossy();
+        let qs = query_string.unwrap_or("");
         sqlx::query(
             "INSERT OR REPLACE INTO gateway_cache
-             (bucket_id, height, path, query_string, content_hash, content_size, mime_type,
+             (bucket_id, height, path, query_string, link, content_size, mime_type,
               created_at, last_accessed)
              VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())",
         )
         .bind(bucket_id)
-        .bind(height)
-        .bind(path)
-        .bind(query_string)
-        .bind(content_hash)
-        .bind(content_size)
+        .bind(height as i64)
+        .bind(path_str.as_ref())
+        .bind(qs)
+        .bind(link)
+        .bind(content_size as i64)
         .bind(mime_type)
         .execute(&**db)
         .await?;
@@ -111,28 +109,27 @@ impl GatewayCacheEntry {
     }
 
     /// Remove LRU entries until total size is under the limit.
-    /// Returns the content hashes of removed entries.
-    pub async fn evict_lru(max_total_size: i64, db: &Database) -> Result<Vec<String>, sqlx::Error> {
+    /// Returns the links of removed entries.
+    pub async fn evict_lru(max_total_size: u64, db: &Database) -> Result<Vec<String>, sqlx::Error> {
         let total: i64 =
             sqlx::query_scalar("SELECT COALESCE(SUM(content_size), 0) FROM gateway_cache")
                 .fetch_one(&**db)
                 .await?;
 
-        if total <= max_total_size {
+        if total <= max_total_size as i64 {
             return Ok(Vec::new());
         }
 
-        let to_free = total - max_total_size;
+        let to_free = total - max_total_size as i64;
         let mut freed: i64 = 0;
-        let mut removed_hashes = Vec::new();
+        let mut removed_links = Vec::new();
 
-        let rows: Vec<(i64, String)> = sqlx::query_as(
-            "SELECT rowid, content_hash FROM gateway_cache ORDER BY last_accessed ASC",
-        )
-        .fetch_all(&**db)
-        .await?;
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT rowid, link FROM gateway_cache ORDER BY last_accessed ASC")
+                .fetch_all(&**db)
+                .await?;
 
-        for (rowid, hash) in rows {
+        for (rowid, link) in rows {
             if freed >= to_free {
                 break;
             }
@@ -149,42 +146,41 @@ impl GatewayCacheEntry {
                 .await?;
 
             freed += size;
-            removed_hashes.push(hash);
+            removed_links.push(link);
         }
 
-        Ok(removed_hashes)
+        Ok(removed_links)
     }
 
     /// Remove entries older than `max_age_secs`.
-    /// Returns the content hashes of removed entries.
+    /// Returns the links of removed entries.
     pub async fn evict_expired(
-        max_age_secs: i64,
+        max_age_secs: u64,
         db: &Database,
     ) -> Result<Vec<String>, sqlx::Error> {
         let hashes: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT content_hash FROM gateway_cache
+            "SELECT DISTINCT link FROM gateway_cache
              WHERE created_at < unixepoch() - ?",
         )
-        .bind(max_age_secs)
+        .bind(max_age_secs as i64)
         .fetch_all(&**db)
         .await?;
 
         sqlx::query("DELETE FROM gateway_cache WHERE created_at < unixepoch() - ?")
-            .bind(max_age_secs)
+            .bind(max_age_secs as i64)
             .execute(&**db)
             .await?;
 
         Ok(hashes.into_iter().map(|(h,)| h).collect())
     }
 
-    /// Get all content hashes still referenced in the index.
-    pub async fn referenced_hashes(db: &Database) -> Result<Vec<String>, sqlx::Error> {
-        let hashes: Vec<(String,)> =
-            sqlx::query_as("SELECT DISTINCT content_hash FROM gateway_cache")
-                .fetch_all(&**db)
-                .await?;
+    /// Get all links still referenced in the index.
+    pub async fn referenced_links(db: &Database) -> Result<Vec<String>, sqlx::Error> {
+        let links: Vec<(String,)> = sqlx::query_as("SELECT DISTINCT link FROM gateway_cache")
+            .fetch_all(&**db)
+            .await?;
 
-        Ok(hashes.into_iter().map(|(h,)| h).collect())
+        Ok(links.into_iter().map(|(h,)| h).collect())
     }
 
     /// Count total entries (for tests).
@@ -199,115 +195,97 @@ impl GatewayCacheEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::Database;
-
-    async fn test_db() -> Database {
-        let id = uuid::Uuid::new_v4();
-        let url =
-            url::Url::parse(&format!("sqlite:file:test_{id}?mode=memory&cache=shared")).unwrap();
-        Database::connect(&url).await.unwrap()
-    }
-
-    fn params<'a>(
-        bucket_id: &'a str,
-        height: i64,
-        path: &'a str,
-        query_string: &'a str,
-        content_hash: &'a str,
-        content_size: i64,
-        mime_type: &'a str,
-    ) -> UpsertParams<'a> {
-        UpsertParams {
-            bucket_id,
-            height,
-            path,
-            query_string,
-            content_hash,
-            content_size,
-            mime_type,
-        }
-    }
 
     #[tokio::test]
     async fn test_insert_and_lookup() {
-        let db = test_db().await;
+        let db = Database::memory().await.unwrap();
 
         // Miss
-        assert!(GatewayCacheEntry::lookup("b1", 1, "/photo.jpg", "", &db)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // Insert and hit
         GatewayCacheEntry::upsert(
-            &params("b1", 1, "/photo.jpg", "", "abc123", 1024, "image/jpeg"),
+            "b1",
+            1,
+            Path::new("/photo.jpg"),
+            None,
+            "abc123",
+            1024,
+            "image/jpeg",
             &db,
         )
         .await
         .unwrap();
 
-        let entry = GatewayCacheEntry::lookup("b1", 1, "/photo.jpg", "", &db)
+        let entry = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(entry.content_hash, "abc123");
+        assert_eq!(entry.link, "abc123");
         assert_eq!(entry.mime_type, "image/jpeg");
     }
 
     #[tokio::test]
     async fn test_query_string_differentiates_entries() {
-        let db = test_db().await;
+        let db = Database::memory().await.unwrap();
 
         GatewayCacheEntry::upsert(
-            &params(
-                "b1",
-                1,
-                "/photo.jpg",
-                "",
-                "hash-original",
-                5000,
-                "image/jpeg",
-            ),
+            "b1",
+            1,
+            Path::new("/photo.jpg"),
+            None,
+            "hash-original",
+            5000,
+            "image/jpeg",
             &db,
         )
         .await
         .unwrap();
         GatewayCacheEntry::upsert(
-            &params(
-                "b1",
-                1,
-                "/photo.jpg",
-                "w=200",
-                "hash-thumb",
-                500,
-                "image/jpeg",
-            ),
+            "b1",
+            1,
+            Path::new("/photo.jpg"),
+            Some("w=200"),
+            "hash-thumb",
+            500,
+            "image/jpeg",
             &db,
         )
         .await
         .unwrap();
 
-        let original = GatewayCacheEntry::lookup("b1", 1, "/photo.jpg", "", &db)
+        let original = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(original.content_hash, "hash-original");
+        assert_eq!(original.link, "hash-original");
 
-        let thumb = GatewayCacheEntry::lookup("b1", 1, "/photo.jpg", "w=200", &db)
+        let thumb = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), Some("w=200"), &db)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(thumb.content_hash, "hash-thumb");
+        assert_eq!(thumb.link, "hash-thumb");
     }
 
     #[tokio::test]
     async fn test_evict_old_heights() {
-        let db = test_db().await;
+        let db = Database::memory().await.unwrap();
 
-        for h in 1..=3 {
-            let hash = format!("hash-{}", h);
+        for h in 1u64..=3 {
+            let link = format!("hash-{}", h);
             GatewayCacheEntry::upsert(
-                &params("b1", h, "/file.txt", "", &hash, 100, "text/plain"),
+                "b1",
+                h,
+                Path::new("/file.txt"),
+                None,
+                &link,
+                100,
+                "text/plain",
                 &db,
             )
             .await
@@ -319,13 +297,17 @@ mod tests {
         assert_eq!(removed, 2);
         assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 1);
 
-        assert!(GatewayCacheEntry::lookup("b1", 3, "/file.txt", "", &db)
-            .await
-            .unwrap()
-            .is_some());
-        assert!(GatewayCacheEntry::lookup("b1", 1, "/file.txt", "", &db)
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            GatewayCacheEntry::lookup("b1", 3, Path::new("/file.txt"), None, &db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            GatewayCacheEntry::lookup("b1", 1, Path::new("/file.txt"), None, &db)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }
