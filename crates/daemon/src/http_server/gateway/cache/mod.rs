@@ -4,6 +4,7 @@ pub mod store;
 use std::path::Path;
 
 use bytes::Bytes;
+use uuid::Uuid;
 
 use actor::CacheHint;
 use store::CacheStore;
@@ -63,7 +64,7 @@ impl GatewayCacheHandle {
 
 /// Look up cached content. Returns (bytes, mime_type) on hit.
 pub async fn get(
-    bucket_id: &str,
+    bucket_id: &Uuid,
     height: u64,
     path: &Path,
     query_string: Option<&str>,
@@ -80,12 +81,14 @@ pub async fn get(
         }
     };
 
+    let link_hex = entry.link.to_hex().to_string();
+
     // Layer 2: content store lookup
-    match store.get(&entry.link).await {
-        Ok(Some(data)) => Some((data, entry.mime_type)),
+    match store.get(&link_hex).await {
+        Ok(Some(data)) => Some((data, entry.mime_type.to_string())),
         Ok(None) => {
             tracing::debug!(
-                link = entry.link,
+                link = %link_hex,
                 "cache layer 1 hit but layer 2 miss — orphaned index entry"
             );
             None
@@ -100,7 +103,7 @@ pub async fn get(
 /// Populate the cache with content.
 #[allow(clippy::too_many_arguments)]
 pub async fn put(
-    bucket_id: &str,
+    bucket_id: &Uuid,
     height: u64,
     path: &Path,
     query_string: Option<&str>,
@@ -110,10 +113,26 @@ pub async fn put(
     store: &CacheStore,
 ) {
     // Layer 2: store content (content-addressed, deduped automatically)
-    let link = match store.put(data).await {
+    let link_hex = match store.put(data).await {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("cache put error (store): {}", e);
+            return;
+        }
+    };
+
+    let link = match blake3::Hash::from_hex(&link_hex) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!("cache put error (invalid hash): {}", e);
+            return;
+        }
+    };
+
+    let mime: mime::Mime = match mime_type.parse() {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("cache put error (invalid mime): {}", e);
             return;
         }
     };
@@ -126,7 +145,7 @@ pub async fn put(
         query_string,
         &link,
         data.len() as u64,
-        mime_type,
+        &mime,
         db,
     )
     .await
@@ -143,17 +162,18 @@ mod tests {
     async fn test_full_cache_flow() {
         let db = Database::memory().await.unwrap();
         let store = CacheStore::new_memory();
+        let bucket = Uuid::new_v4();
         let path = Path::new("/photo.jpg");
 
         // Miss
-        assert!(get("bucket-1", 1, path, None, &db, &store).await.is_none());
+        assert!(get(&bucket, 1, path, None, &db, &store).await.is_none());
 
         // Populate
         let data = b"fake jpeg data";
-        put("bucket-1", 1, path, None, data, "image/jpeg", &db, &store).await;
+        put(&bucket, 1, path, None, data, "image/jpeg", &db, &store).await;
 
         // Hit
-        let (bytes, mime) = get("bucket-1", 1, path, None, &db, &store).await.unwrap();
+        let (bytes, mime) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
         assert_eq!(bytes.as_ref(), data);
         assert_eq!(mime, "image/jpeg");
     }
@@ -162,11 +182,22 @@ mod tests {
     async fn test_query_string_cache_separately() {
         let db = Database::memory().await.unwrap();
         let store = CacheStore::new_memory();
+        let bucket = Uuid::new_v4();
         let path = Path::new("/photo.jpg");
 
-        put("b1", 1, path, None, b"original", "image/jpeg", &db, &store).await;
         put(
-            "b1",
+            &bucket,
+            1,
+            path,
+            None,
+            b"original",
+            "image/jpeg",
+            &db,
+            &store,
+        )
+        .await;
+        put(
+            &bucket,
             1,
             path,
             Some("w=200"),
@@ -177,10 +208,10 @@ mod tests {
         )
         .await;
 
-        let (original, _) = get("b1", 1, path, None, &db, &store).await.unwrap();
+        let (original, _) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
         assert_eq!(original.as_ref(), b"original");
 
-        let (thumb, _) = get("b1", 1, path, Some("w=200"), &db, &store)
+        let (thumb, _) = get(&bucket, 1, path, Some("w=200"), &db, &store)
             .await
             .unwrap();
         assert_eq!(thumb.as_ref(), b"thumbnail");
@@ -190,10 +221,11 @@ mod tests {
     async fn test_content_dedup_across_paths() {
         let db = Database::memory().await.unwrap();
         let store = CacheStore::new_memory();
+        let bucket = Uuid::new_v4();
         let data = b"same content at different paths";
 
         put(
-            "b1",
+            &bucket,
             1,
             Path::new("/a.txt"),
             None,
@@ -204,7 +236,7 @@ mod tests {
         )
         .await;
         put(
-            "b1",
+            &bucket,
             1,
             Path::new("/b.txt"),
             None,
@@ -215,10 +247,10 @@ mod tests {
         )
         .await;
 
-        assert!(get("b1", 1, Path::new("/a.txt"), None, &db, &store)
+        assert!(get(&bucket, 1, Path::new("/a.txt"), None, &db, &store)
             .await
             .is_some());
-        assert!(get("b1", 1, Path::new("/b.txt"), None, &db, &store)
+        assert!(get(&bucket, 1, Path::new("/b.txt"), None, &db, &store)
             .await
             .is_some());
     }
@@ -227,15 +259,36 @@ mod tests {
     async fn test_different_heights() {
         let db = Database::memory().await.unwrap();
         let store = CacheStore::new_memory();
+        let bucket = Uuid::new_v4();
         let path = Path::new("/file.txt");
 
-        put("b1", 1, path, None, b"version 1", "text/plain", &db, &store).await;
-        put("b1", 2, path, None, b"version 2", "text/plain", &db, &store).await;
+        put(
+            &bucket,
+            1,
+            path,
+            None,
+            b"version 1",
+            "text/plain",
+            &db,
+            &store,
+        )
+        .await;
+        put(
+            &bucket,
+            2,
+            path,
+            None,
+            b"version 2",
+            "text/plain",
+            &db,
+            &store,
+        )
+        .await;
 
-        let (v1, _) = get("b1", 1, path, None, &db, &store).await.unwrap();
+        let (v1, _) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
         assert_eq!(v1.as_ref(), b"version 1");
 
-        let (v2, _) = get("b1", 2, path, None, &db, &store).await.unwrap();
+        let (v2, _) = get(&bucket, 2, path, None, &db, &store).await.unwrap();
         assert_eq!(v2.as_ref(), b"version 2");
     }
 }

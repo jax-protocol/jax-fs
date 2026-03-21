@@ -219,7 +219,7 @@ pub async fn handler(
         // Check cache before traversal/decrypt
         if let Some(store) = cache_store {
             if let Some((cached_bytes, cached_mime)) = cache::get(
-                &bucket_id_str,
+                &bucket_id,
                 height,
                 &path_buf,
                 cache_qs_ref,
@@ -246,7 +246,7 @@ pub async fn handler(
         // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
         if let (Some(store), Some(ref cacheable)) = (cache_store, &response_data.cacheable) {
             cache::put(
-                &bucket_id_str,
+                &bucket_id,
                 height,
                 &path_buf,
                 cache_qs_ref,

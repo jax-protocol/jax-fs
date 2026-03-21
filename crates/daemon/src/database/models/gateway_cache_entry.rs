@@ -1,34 +1,53 @@
 use std::path::Path;
 
 use sqlx::FromRow;
+use uuid::Uuid;
 
+use crate::database::types::{DBlake3, DMime, DUuid};
 use crate::database::Database;
 
 /// A cached gateway response lookup result.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone)]
 pub struct GatewayCacheEntry {
     /// BLAKE3 hash of the cached content (content-addressed link).
-    pub link: String,
+    pub link: blake3::Hash,
     /// MIME type of the cached content.
-    pub mime_type: String,
+    pub mime_type: mime::Mime,
+}
+
+/// Row type for sqlx deserialization.
+#[derive(FromRow)]
+struct Row {
+    link: DBlake3,
+    mime_type: DMime,
+}
+
+impl From<Row> for GatewayCacheEntry {
+    fn from(row: Row) -> Self {
+        Self {
+            link: row.link.into(),
+            mime_type: row.mime_type.into(),
+        }
+    }
 }
 
 impl GatewayCacheEntry {
     /// Look up a cached entry by its key.
     pub async fn lookup(
-        bucket_id: &str,
+        bucket_id: &Uuid,
         height: u64,
         path: &Path,
         query_string: Option<&str>,
         db: &Database,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let bid = DUuid::from(*bucket_id);
         let path_str = path.to_string_lossy();
         let qs = query_string.unwrap_or("");
-        let entry = sqlx::query_as::<_, Self>(
+        let row = sqlx::query_as::<_, Row>(
             "SELECT link, mime_type FROM gateway_cache
              WHERE bucket_id = ? AND height = ? AND path = ? AND query_string = ?",
         )
-        .bind(bucket_id)
+        .bind(bid)
         .bind(height as i64)
         .bind(path_str.as_ref())
         .bind(qs)
@@ -36,12 +55,12 @@ impl GatewayCacheEntry {
         .await?;
 
         // Touch last_accessed on hit
-        if entry.is_some() {
+        if row.is_some() {
             let _ = sqlx::query(
                 "UPDATE gateway_cache SET last_accessed = unixepoch()
                  WHERE bucket_id = ? AND height = ? AND path = ? AND query_string = ?",
             )
-            .bind(bucket_id)
+            .bind(bid)
             .bind(height as i64)
             .bind(path_str.as_ref())
             .bind(qs)
@@ -49,36 +68,39 @@ impl GatewayCacheEntry {
             .await;
         }
 
-        Ok(entry)
+        Ok(row.map(Into::into))
     }
 
     /// Insert or replace a cache entry.
     #[allow(clippy::too_many_arguments)]
     pub async fn upsert(
-        bucket_id: &str,
+        bucket_id: &Uuid,
         height: u64,
         path: &Path,
         query_string: Option<&str>,
-        link: &str,
+        link: &blake3::Hash,
         content_size: u64,
-        mime_type: &str,
+        mime_type: &mime::Mime,
         db: &Database,
     ) -> Result<(), sqlx::Error> {
+        let bid = DUuid::from(*bucket_id);
         let path_str = path.to_string_lossy();
         let qs = query_string.unwrap_or("");
+        let dlink = DBlake3::from(*link);
+        let dmime = DMime::from(mime_type.clone());
         sqlx::query(
             "INSERT OR REPLACE INTO gateway_cache
              (bucket_id, height, path, query_string, link, content_size, mime_type,
               created_at, last_accessed)
              VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())",
         )
-        .bind(bucket_id)
+        .bind(bid)
         .bind(height as i64)
         .bind(path_str.as_ref())
         .bind(qs)
-        .bind(link)
+        .bind(dlink)
         .bind(content_size as i64)
-        .bind(mime_type)
+        .bind(dmime)
         .execute(&**db)
         .await?;
 
@@ -158,7 +180,7 @@ impl GatewayCacheEntry {
         max_age_secs: u64,
         db: &Database,
     ) -> Result<Vec<String>, sqlx::Error> {
-        let hashes: Vec<(String,)> = sqlx::query_as(
+        let links: Vec<(String,)> = sqlx::query_as(
             "SELECT DISTINCT link FROM gateway_cache
              WHERE created_at < unixepoch() - ?",
         )
@@ -171,7 +193,7 @@ impl GatewayCacheEntry {
             .execute(&**db)
             .await?;
 
-        Ok(hashes.into_iter().map(|(h,)| h).collect())
+        Ok(links.into_iter().map(|(h,)| h).collect())
     }
 
     /// Get all links still referenced in the index.
@@ -199,10 +221,13 @@ mod tests {
     #[tokio::test]
     async fn test_insert_and_lookup() {
         let db = Database::memory().await.unwrap();
+        let bucket = Uuid::new_v4();
+        let link = blake3::hash(b"test content");
+        let mime = mime::IMAGE_JPEG;
 
         // Miss
         assert!(
-            GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
+            GatewayCacheEntry::lookup(&bucket, 1, Path::new("/photo.jpg"), None, &db)
                 .await
                 .unwrap()
                 .is_none()
@@ -210,82 +235,88 @@ mod tests {
 
         // Insert and hit
         GatewayCacheEntry::upsert(
-            "b1",
+            &bucket,
             1,
             Path::new("/photo.jpg"),
             None,
-            "abc123",
+            &link,
             1024,
-            "image/jpeg",
+            &mime,
             &db,
         )
         .await
         .unwrap();
 
-        let entry = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
+        let entry = GatewayCacheEntry::lookup(&bucket, 1, Path::new("/photo.jpg"), None, &db)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(entry.link, "abc123");
-        assert_eq!(entry.mime_type, "image/jpeg");
+        assert_eq!(entry.link, link);
+        assert_eq!(entry.mime_type, mime::IMAGE_JPEG);
     }
 
     #[tokio::test]
     async fn test_query_string_differentiates_entries() {
         let db = Database::memory().await.unwrap();
+        let bucket = Uuid::new_v4();
+        let link_orig = blake3::hash(b"original");
+        let link_thumb = blake3::hash(b"thumbnail");
+        let mime = mime::IMAGE_JPEG;
 
         GatewayCacheEntry::upsert(
-            "b1",
+            &bucket,
             1,
             Path::new("/photo.jpg"),
             None,
-            "hash-original",
+            &link_orig,
             5000,
-            "image/jpeg",
+            &mime,
             &db,
         )
         .await
         .unwrap();
         GatewayCacheEntry::upsert(
-            "b1",
+            &bucket,
             1,
             Path::new("/photo.jpg"),
             Some("w=200"),
-            "hash-thumb",
+            &link_thumb,
             500,
-            "image/jpeg",
+            &mime,
             &db,
         )
         .await
         .unwrap();
 
-        let original = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), None, &db)
+        let original = GatewayCacheEntry::lookup(&bucket, 1, Path::new("/photo.jpg"), None, &db)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(original.link, "hash-original");
+        assert_eq!(original.link, link_orig);
 
-        let thumb = GatewayCacheEntry::lookup("b1", 1, Path::new("/photo.jpg"), Some("w=200"), &db)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(thumb.link, "hash-thumb");
+        let thumb =
+            GatewayCacheEntry::lookup(&bucket, 1, Path::new("/photo.jpg"), Some("w=200"), &db)
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(thumb.link, link_thumb);
     }
 
     #[tokio::test]
     async fn test_evict_old_heights() {
         let db = Database::memory().await.unwrap();
+        let bucket = Uuid::new_v4();
 
         for h in 1u64..=3 {
-            let link = format!("hash-{}", h);
+            let link = blake3::hash(format!("v{}", h).as_bytes());
             GatewayCacheEntry::upsert(
-                "b1",
+                &bucket,
                 h,
                 Path::new("/file.txt"),
                 None,
                 &link,
                 100,
-                "text/plain",
+                &mime::TEXT_PLAIN,
                 &db,
             )
             .await
@@ -298,13 +329,13 @@ mod tests {
         assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 1);
 
         assert!(
-            GatewayCacheEntry::lookup("b1", 3, Path::new("/file.txt"), None, &db)
+            GatewayCacheEntry::lookup(&bucket, 3, Path::new("/file.txt"), None, &db)
                 .await
                 .unwrap()
                 .is_some()
         );
         assert!(
-            GatewayCacheEntry::lookup("b1", 1, Path::new("/file.txt"), None, &db)
+            GatewayCacheEntry::lookup(&bucket, 1, Path::new("/file.txt"), None, &db)
                 .await
                 .unwrap()
                 .is_none()

@@ -443,6 +443,54 @@ If `#[allow(dead_code)]` is needed, the code probably shouldn't exist yet.
 
 ---
 
+## Database Model Types
+
+### Never Use Raw Strings for Structured Data
+
+Database model fields must use typed wrappers, not raw `String`. The project provides SQLite-compatible wrapper types in `database/types/` with `Encode`/`Decode` impls:
+
+| Domain Type | DB Wrapper | Stored As |
+|-------------|-----------|-----------|
+| `Uuid` | `DUuid` | TEXT |
+| `Link` / `Cid` | `DCid` | TEXT (base32) |
+| `blake3::Hash` | `DBlake3` | TEXT (hex) |
+| `mime::Mime` | `DMime` | TEXT |
+| `bool` | `DBool` | INTEGER |
+
+**Bad** — raw strings lose type safety and allow invalid data:
+```rust
+pub struct CacheEntry {
+    pub link: String,       // Could be anything
+    pub mime_type: String,  // Could be "not a mime type"
+    pub bucket_id: String,  // Should be Uuid
+}
+```
+
+**Good** — typed wrappers enforce validity at the boundary:
+```rust
+pub struct CacheEntry {
+    pub link: DBlake3,      // Validated BLAKE3 hash
+    pub mime_type: DMime,   // Validated MIME type
+    pub bucket_id: DUuid,   // Validated UUID
+}
+```
+
+When adding a new domain type that needs SQLite storage, create a wrapper in `database/types/` following the `DCid`/`DUuid` pattern: implement `Encode`, `Decode`, `Type` for `Sqlite`, plus `From` conversions to/from the inner type.
+
+### Model Methods Take Typed Parameters
+
+Model methods should accept domain types, not strings:
+
+```rust
+// Bad
+pub async fn lookup(bucket_id: &str, ...) { ... }
+
+// Good
+pub async fn lookup(bucket_id: &Uuid, ...) { ... }
+```
+
+---
+
 ## Quick Reference
 
 | Pattern | Example |
