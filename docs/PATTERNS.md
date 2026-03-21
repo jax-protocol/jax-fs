@@ -453,7 +453,7 @@ Database model fields must use typed wrappers, not raw `String`. The project pro
 |-------------|-----------|-----------|
 | `Uuid` | `DUuid` | TEXT |
 | `Link` / `Cid` | `DCid` | TEXT (base32) |
-| `blake3::Hash` | `DBlake3` | TEXT (hex) |
+| `blake3::Hash` | `DbHash` | TEXT (hex) |
 | `mime::Mime` | `DMime` | TEXT |
 | `bool` | `DBool` | INTEGER |
 
@@ -469,7 +469,7 @@ pub struct CacheEntry {
 **Good** — typed wrappers enforce validity at the boundary:
 ```rust
 pub struct CacheEntry {
-    pub link: DBlake3,      // Validated BLAKE3 hash
+    pub link: DbHash,      // Validated BLAKE3 hash
     pub mime_type: DMime,   // Validated MIME type
     pub bucket_id: DUuid,   // Validated UUID
 }

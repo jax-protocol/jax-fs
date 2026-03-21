@@ -6,7 +6,7 @@ use uuid::Uuid;
 use common::linked_data::Hash;
 use common::prelude::Mime;
 
-use crate::database::types::{DBlake3, DMime, DUuid};
+use crate::database::types::{DMime, DUuid, DbHash};
 use crate::database::Database;
 
 /// A cached gateway response lookup result.
@@ -21,7 +21,7 @@ pub struct GatewayCacheEntry {
 /// Row type for sqlx deserialization.
 #[derive(FromRow)]
 struct Row {
-    link: DBlake3,
+    link: DbHash,
     mime_type: DMime,
 }
 
@@ -89,7 +89,7 @@ impl GatewayCacheEntry {
         let bid = DUuid::from(*bucket_id);
         let path_str = path.to_string_lossy();
         let qs = query_string.unwrap_or("");
-        let dlink = DBlake3::from(*link);
+        let dlink = DbHash::from(*link);
         let dmime = DMime::from(mime_type.clone());
         sqlx::query(
             "INSERT OR IGNORE INTO gateway_cache
