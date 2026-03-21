@@ -69,7 +69,7 @@ pub async fn get(
     query_string: Option<&str>,
     db: &Database,
     store: &Storage,
-) -> Option<(Bytes, mime::Mime)> {
+) -> Option<(Bytes, common::prelude::Mime)> {
     // Layer 1: path index lookup
     let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, db).await {
         Ok(Some(entry)) => entry,
@@ -124,7 +124,7 @@ pub async fn put(
         return;
     }
 
-    let mime: mime::Mime = match mime_type.parse() {
+    let mime: common::prelude::Mime = match mime_type.parse() {
         Ok(m) => m,
         Err(e) => {
             tracing::warn!("cache put error (invalid mime): {}", e);

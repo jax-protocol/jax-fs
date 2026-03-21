@@ -59,7 +59,11 @@ pub struct FileResponse {
 const CACHE_CONTROL_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 /// Serve cached content directly, bypassing all mount traversal and decryption.
-pub fn serve_cached(data: Bytes, mime_type: &mime::Mime, absolute_path: &str) -> Response {
+pub fn serve_cached(
+    data: Bytes,
+    mime_type: &common::prelude::Mime,
+    absolute_path: &str,
+) -> Response {
     let filename = std::path::Path::new(absolute_path)
         .file_name()
         .and_then(|n| n.to_str())
@@ -136,7 +140,8 @@ pub async fn handler(
 
     // Apply image transform if requested and applicable
     let (file_data, mime_type) = if let Some(ref params) = transform {
-        let parsed_mime: mime::Mime = mime_type.parse().unwrap_or(mime::APPLICATION_OCTET_STREAM);
+        let parsed_mime: common::prelude::Mime =
+            mime_type.parse().unwrap_or(mime::APPLICATION_OCTET_STREAM);
         if TransformParams::is_transformable(&parsed_mime) {
             match super::transform::transform_image(&file_data, &parsed_mime, params) {
                 Ok(transformed) => (transformed, mime_type),
