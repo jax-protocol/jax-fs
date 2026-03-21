@@ -15,26 +15,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core data structures and cryptography
 - End-to-end encrypted P2P storage primitives
 
+## v0.1.11 (2026-03-21)
+
+### New Features
+
+ - <csr-id-9c8bcce6898c669f99db2de72afeda54f7d82555/> response cache + image transform
+   * feat(gateway): add two-tier response cache and image transform
+   
+   Add a gateway response cache that eliminates repeated tree traversal,
+   decryption, and image transformation on cache hit.
+   
+   Cache architecture:
+   - Layer 1 (Path Index): SQLite-backed mapping of (bucket_id, height,
+     path, transform_params) to content hash
+   - Layer 2 (Content Store): BLAKE3-addressed blob store for
+     decrypted/transformed content, naturally deduplicated
+   - Background actor for periodic eviction (old heights, LRU, TTL)
+   
+   Image transform API via query params on existing gateway routes:
+   - ?w=400 — resize to width (maintains aspect ratio)
+   - ?w=400&h=300 — resize to exact dimensions
+   - ?q=75 — output quality 1-100 (JPEG/WebP)
+   - Supports JPEG, PNG, WebP, GIF
+   - Caps dimensions at 4096px, validates params
+   
+   Cached/transformed responses include Cache-Control: public,
+   max-age=31536000, immutable.
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 2 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#156](https://github.com/jax-protocol/jax-fs/issues/156)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#156](https://github.com/jax-protocol/jax-fs/issues/156)**
+    - Response cache + image transform ([`9c8bcce`](https://github.com/jax-protocol/jax-fs/commit/9c8bcce6898c669f99db2de72afeda54f7d82555))
+</details>
+
 ## v0.1.10 (2026-03-19)
 
 ### New Features
 
  - <csr-id-bcfb790dca89b970bc8091f9a9093274932a57be/> bucket allowlist with approval, removal, and sync filtering
    * feat: add bucket allowlist with approval, removal, and sync filtering
-   
-   Introduces a bucket status model (pending/active/ignored) so peers can
-   approve incoming shares before syncing content, and ignore buckets they
-   don't want. Bucket log entries are preserved as an audit trail.
-   
-   - Add bucket_status table with migration
-   - Extend BucketLogProvider trait with should_sync_content,
+- Add bucket_status table with migration
+- Extend BucketLogProvider trait with should_sync_content,
      on_new_bucket_discovered, and list_syncable_buckets
-   - Gate pin/blob downloads on bucket status in sync_bucket
-   - Filter periodic pings to only active buckets
-   - New POST /api/v0/bucket/approve and /ignore endpoints
-   - Add status field and filter to bucket list API
-   - Auto-set active status on self-created buckets
-   - Unmount FUSE mounts when ignoring a bucket
+- Gate pin/blob downloads on bucket status in sync_bucket
+- Filter periodic pings to only active buckets
+- New POST /api/v0/bucket/approve and /ignore endpoints
+- Add status field and filter to bucket list API
+- Auto-set active status on self-created buckets
+- Unmount FUSE mounts when ignoring a bucket
 
 ### Bug Fixes
 
@@ -43,19 +84,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    starving sync/download jobs and flooding the bounded queue. This change:
    
    - Adds 5s timeout to ping operations (peer unavailability returns Ok)
-   - Spawns ping jobs concurrently (semaphore-capped at 10) instead of
+- Spawns ping jobs concurrently (semaphore-capped at 10) instead of
      blocking the worker loop
-   - Increases periodic ping interval from 60s to 5 minutes
-   - Skips periodic batch if previous is still in flight
+- Increases periodic ping interval from 60s to 5 minutes
+- Skips periodic batch if previous is still in flight
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
- - 2 commits contributed to the release.
+ - 3 commits contributed to the release.
  - 9 days passed between releases.
  - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
- - 2 unique issues were worked on: [#141](https://github.com/jax-protocol/jax-fs/issues/141), [#142](https://github.com/jax-protocol/jax-fs/issues/142)
+ - 3 unique issues were worked on: [#141](https://github.com/jax-protocol/jax-fs/issues/141), [#142](https://github.com/jax-protocol/jax-fs/issues/142), [#152](https://github.com/jax-protocol/jax-fs/issues/152)
 
 ### Commit Details
 
@@ -67,7 +108,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Prevent ping job queue saturation from blocking syncs ([`56fece5`](https://github.com/jax-protocol/jax-fs/commit/56fece5340a6a1dda8afad8c651baa9f41d6591d))
  * **[#142](https://github.com/jax-protocol/jax-fs/issues/142)**
     - Bucket allowlist with approval, removal, and sync filtering ([`bcfb790`](https://github.com/jax-protocol/jax-fs/commit/bcfb790dca89b970bc8091f9a9093274932a57be))
+ * **[#152](https://github.com/jax-protocol/jax-fs/issues/152)**
+    - Bump jax-common v0.1.10, jax-daemon v0.1.14 ([`bfdbca1`](https://github.com/jax-protocol/jax-fs/commit/bfdbca1b53b99e3ad00833c2cf909afe368085a7))
 </details>
+
+<csr-unknown>
+Introduces a bucket status model (pending/active/ignored) so peers canapprove incoming shares before syncing content, and ignore buckets theydon’t want. Bucket log entries are preserved as an audit trail.<csr-unknown/>
 
 ## v0.1.9 (2026-03-09)
 
@@ -109,9 +155,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Bump jax-common v0.1.9, jax-daemon v0.1.11 ([`3b7f495`](https://github.com/jax-protocol/jax-fs/commit/3b7f4951a2e5c7ad7a232c80bc997b2d7aef3886))
 </details>
 
-<csr-unknown>
-Publish status was being cleared on every save(publish=false) call,meaning any bucket operation (add, mv, rename, etc.) would silentlyunpublish a published bucket. This was a bug — buckets should staypublished until explicitly unpublished.<csr-unknown/>
-
 ## v0.1.8 (2026-02-20)
 
 ### New Features
@@ -139,9 +182,6 @@ Publish status was being cleared on every save(publish=false) call,meaning any b
  * **[#115](https://github.com/jax-protocol/jax-fs/issues/115)**
     - Bump jax-object-store v0.1.3, jax-common v0.1.8, jax-daemon v0.1.10 ([`9eb3ccd`](https://github.com/jax-protocol/jax-fs/commit/9eb3ccd4612ed3a88d82f01e7055e30a0bb69c54))
 </details>
-
-<csr-unknown>
-Update ObjectStore::new_local to accept separate db_path and objects_pathinstead of deriving both from a single data_dirMake MAX_IMPORT_SIZE configurable via ObjectStoreActor instead of hardcodedconstant, exposed as DEFAULT_MAX_IMPORT_SIZE (1GB)Add optional db_path field to BlobStoreConfig::Filesystem variant forseparate SQLite metadata DB locationAdd max_import_size to AppConfig with serde default for backward compatThread max_import_size through setup_blobs_store, Blobs::setup, andServiceConfig to the actorAdd *_with_max_import_size constructors to BlobsStore and ObjectStore<csr-unknown/>
 
 ## v0.1.7 (2026-02-17)
 
