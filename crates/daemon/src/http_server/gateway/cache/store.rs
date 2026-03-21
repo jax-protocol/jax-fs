@@ -40,7 +40,7 @@ impl CacheStore {
 
     /// Compute BLAKE3 hash of data and store it. Returns the hex hash.
     pub async fn put(&self, data: &[u8]) -> Result<String, CacheStoreError> {
-        let hash = blake3::hash(data).to_hex().to_string();
+        let hash = common::linked_data::Hash::new(data).to_string();
 
         match &self.inner {
             CacheStoreInner::Filesystem { base_path } => {

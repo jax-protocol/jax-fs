@@ -3,6 +3,8 @@ use std::path::Path;
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use common::linked_data::Hash;
+
 use crate::database::types::{DBlake3, DMime, DUuid};
 use crate::database::Database;
 
@@ -10,7 +12,7 @@ use crate::database::Database;
 #[derive(Debug, Clone)]
 pub struct GatewayCacheEntry {
     /// BLAKE3 hash of the cached content (content-addressed link).
-    pub link: blake3::Hash,
+    pub link: Hash,
     /// MIME type of the cached content.
     pub mime_type: mime::Mime,
 }
@@ -78,7 +80,7 @@ impl GatewayCacheEntry {
         height: u64,
         path: &Path,
         query_string: Option<&str>,
-        link: &blake3::Hash,
+        link: &Hash,
         content_size: u64,
         mime_type: &mime::Mime,
         db: &Database,
@@ -222,7 +224,7 @@ mod tests {
     async fn test_insert_and_lookup() {
         let db = Database::memory().await.unwrap();
         let bucket = Uuid::new_v4();
-        let link = blake3::hash(b"test content");
+        let link = Hash::new(b"test content");
         let mime = mime::IMAGE_JPEG;
 
         // Miss
@@ -259,8 +261,8 @@ mod tests {
     async fn test_query_string_differentiates_entries() {
         let db = Database::memory().await.unwrap();
         let bucket = Uuid::new_v4();
-        let link_orig = blake3::hash(b"original");
-        let link_thumb = blake3::hash(b"thumbnail");
+        let link_orig = Hash::new(b"original");
+        let link_thumb = Hash::new(b"thumbnail");
         let mime = mime::IMAGE_JPEG;
 
         GatewayCacheEntry::upsert(
@@ -308,7 +310,7 @@ mod tests {
         let bucket = Uuid::new_v4();
 
         for h in 1u64..=3 {
-            let link = blake3::hash(format!("v{}", h).as_bytes());
+            let link = Hash::new(format!("v{}", h).as_bytes());
             GatewayCacheEntry::upsert(
                 &bucket,
                 h,

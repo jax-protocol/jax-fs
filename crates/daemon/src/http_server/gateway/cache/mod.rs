@@ -81,7 +81,7 @@ pub async fn get(
         }
     };
 
-    let link_hex = entry.link.to_hex().to_string();
+    let link_hex = entry.link.to_string();
 
     // Layer 2: content store lookup
     match store.get(&link_hex).await {
@@ -121,7 +121,7 @@ pub async fn put(
         }
     };
 
-    let link = match blake3::Hash::from_hex(&link_hex) {
+    let link: common::linked_data::Hash = match link_hex.parse() {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("cache put error (invalid hash): {}", e);
