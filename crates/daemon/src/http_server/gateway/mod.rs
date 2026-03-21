@@ -209,11 +209,7 @@ pub async fn handler(
         // from the mount may not match the historical version's actual position
         // in the log, which could cause cache key collisions.
         let use_cache = query.at.is_none();
-        let gw_cache = if use_cache {
-            state.gateway_cache()
-        } else {
-            None
-        };
+        let cache_store = if use_cache { state.cache_store() } else { None };
 
         let height = inner.height() as i64;
         let cache_query_string = transform::TransformParams::from_query(query.w, query.h, query.q)
@@ -221,10 +217,16 @@ pub async fn handler(
             .unwrap_or_default();
 
         // Check cache before traversal/decrypt
-        if let Some(gw_cache) = gw_cache {
-            if let Some((cached_bytes, cached_mime)) = gw_cache
-                .get(&bucket_id_str, height, &absolute_path, &cache_query_string)
-                .await
+        if let Some(store) = cache_store {
+            if let Some((cached_bytes, cached_mime)) = cache::get(
+                &bucket_id_str,
+                height,
+                &absolute_path,
+                &cache_query_string,
+                state.database(),
+                store,
+            )
+            .await
             {
                 tracing::debug!(path = %absolute_path, "gateway cache hit");
                 return file::serve_cached(cached_bytes, &cached_mime, &absolute_path);
@@ -242,17 +244,20 @@ pub async fn handler(
         .await;
 
         // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
-        if let (Some(gw_cache), Some(ref cacheable)) = (gw_cache, &response_data.cacheable) {
-            gw_cache
-                .put(
-                    &bucket_id_str,
+        if let (Some(store), Some(ref cacheable)) = (cache_store, &response_data.cacheable) {
+            cache::put(
+                &cache::PutParams {
+                    bucket_id: &bucket_id_str,
                     height,
-                    &absolute_path,
-                    &cache_query_string,
-                    &cacheable.data,
-                    &cacheable.mime_type,
-                )
-                .await;
+                    path: &absolute_path,
+                    query_string: &cache_query_string,
+                    data: &cacheable.data,
+                    mime_type: &cacheable.mime_type,
+                },
+                state.database(),
+                store,
+            )
+            .await;
         }
 
         response_data.response

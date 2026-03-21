@@ -34,117 +34,24 @@ impl Default for CacheConfig {
     }
 }
 
-/// Handle for the gateway response cache.
+/// Thin handle for the gateway cache eviction actor.
 ///
-/// Uses the shared `Database` for layer 1 (path index) and a dedicated
-/// `CacheStore` for layer 2 (content blobs). The background actor handles
-/// eviction and cleanup.
+/// Does not own database or store state — those are passed by the caller.
+/// Only holds the channel for sending hints to the background eviction actor.
 #[derive(Clone)]
-pub struct GatewayCache {
-    db: Database,
-    store: CacheStore,
+pub struct GatewayCacheHandle {
     hints_tx: flume::Sender<CacheHint>,
 }
 
-impl GatewayCache {
-    /// Initialize the cache and spawn the background eviction actor.
+impl GatewayCacheHandle {
+    /// Spawn the background eviction actor and return a handle.
     pub fn spawn(db: Database, store: CacheStore, config: CacheConfig) -> Self {
         let (hints_tx, hints_rx) = flume::bounded(64);
 
-        let actor = actor::CacheActor::new(db.clone(), store.clone(), config, hints_rx);
+        let actor = actor::CacheActor::new(db, store, config, hints_rx);
         tokio::spawn(actor.run());
 
-        Self {
-            db,
-            store,
-            hints_tx,
-        }
-    }
-
-    /// Create a cache handle without the background actor (for tests).
-    #[cfg(test)]
-    fn new_without_actor(db: Database, store: CacheStore) -> Self {
-        let (hints_tx, _) = flume::bounded(64);
-        Self {
-            db,
-            store,
-            hints_tx,
-        }
-    }
-
-    /// Look up cached content. Returns (bytes, mime_type) on hit.
-    pub async fn get(
-        &self,
-        bucket_id: &str,
-        height: i64,
-        path: &str,
-        query_string: &str,
-    ) -> Option<(Bytes, String)> {
-        // Layer 1: path index lookup
-        let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, &self.db)
-            .await
-        {
-            Ok(Some(entry)) => entry,
-            Ok(None) => return None,
-            Err(e) => {
-                tracing::warn!("cache layer 1 lookup error: {}", e);
-                return None;
-            }
-        };
-
-        // Layer 2: content store lookup
-        match self.store.get(&entry.content_hash).await {
-            Ok(Some(data)) => Some((data, entry.mime_type)),
-            Ok(None) => {
-                tracing::debug!(
-                    hash = entry.content_hash,
-                    "cache layer 1 hit but layer 2 miss — orphaned index entry"
-                );
-                None
-            }
-            Err(e) => {
-                tracing::warn!("cache layer 2 get error: {}", e);
-                None
-            }
-        }
-    }
-
-    /// Populate the cache with content.
-    pub async fn put(
-        &self,
-        bucket_id: &str,
-        height: i64,
-        path: &str,
-        query_string: &str,
-        data: &[u8],
-        mime_type: &str,
-    ) {
-        // Layer 2: store content (content-addressed, deduped automatically)
-        let hash = match self.store.put(data).await {
-            Ok(h) => h,
-            Err(e) => {
-                tracing::warn!("cache put error (store): {}", e);
-                return;
-            }
-        };
-
-        // Layer 1: index the path → hash mapping
-        if let Err(e) = GatewayCacheEntry::upsert(
-            &UpsertParams {
-                bucket_id,
-                height,
-                path,
-                query_string,
-                content_hash: &hash,
-                content_size: data.len() as i64,
-                mime_type,
-            },
-            &self.db,
-        )
-        .await
-        {
-            tracing::warn!("cache put error (index): {}", e);
-        }
+        Self { hints_tx }
     }
 
     /// Send a non-blocking hint to the cache actor.
@@ -153,83 +60,225 @@ impl GatewayCache {
     }
 }
 
+/// Look up cached content. Returns (bytes, mime_type) on hit.
+pub async fn get(
+    bucket_id: &str,
+    height: i64,
+    path: &str,
+    query_string: &str,
+    db: &Database,
+    store: &CacheStore,
+) -> Option<(Bytes, String)> {
+    // Layer 1: path index lookup
+    let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, db).await {
+        Ok(Some(entry)) => entry,
+        Ok(None) => return None,
+        Err(e) => {
+            tracing::warn!("cache layer 1 lookup error: {}", e);
+            return None;
+        }
+    };
+
+    // Layer 2: content store lookup
+    match store.get(&entry.content_hash).await {
+        Ok(Some(data)) => Some((data, entry.mime_type)),
+        Ok(None) => {
+            tracing::debug!(
+                hash = entry.content_hash,
+                "cache layer 1 hit but layer 2 miss — orphaned index entry"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::warn!("cache layer 2 get error: {}", e);
+            None
+        }
+    }
+}
+
+/// Parameters for populating the cache.
+pub struct PutParams<'a> {
+    pub bucket_id: &'a str,
+    pub height: i64,
+    pub path: &'a str,
+    pub query_string: &'a str,
+    pub data: &'a [u8],
+    pub mime_type: &'a str,
+}
+
+/// Populate the cache with content.
+pub async fn put(params: &PutParams<'_>, db: &Database, store: &CacheStore) {
+    let PutParams {
+        bucket_id,
+        height,
+        path,
+        query_string,
+        data,
+        mime_type,
+    } = params;
+    // Layer 2: store content (content-addressed, deduped automatically)
+    let hash = match store.put(data).await {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!("cache put error (store): {}", e);
+            return;
+        }
+    };
+
+    // Layer 1: index the path → hash mapping
+    if let Err(e) = GatewayCacheEntry::upsert(
+        &UpsertParams {
+            bucket_id,
+            height: *height,
+            path,
+            query_string,
+            content_hash: &hash,
+            content_size: data.len() as i64,
+            mime_type,
+        },
+        db,
+    )
+    .await
+    {
+        tracing::warn!("cache put error (index): {}", e);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    async fn test_cache() -> GatewayCache {
+    async fn test_deps() -> (Database, CacheStore) {
         let id = uuid::Uuid::new_v4();
         let url =
             url::Url::parse(&format!("sqlite:file:test_{id}?mode=memory&cache=shared")).unwrap();
         let db = Database::connect(&url).await.unwrap();
         let store = CacheStore::new_memory();
-        GatewayCache::new_without_actor(db, store)
+        (db, store)
     }
 
     #[tokio::test]
     async fn test_full_cache_flow() {
-        let cache = test_cache().await;
+        let (db, store) = test_deps().await;
 
         // Miss
-        assert!(cache.get("bucket-1", 1, "/photo.jpg", "").await.is_none());
+        assert!(get("bucket-1", 1, "/photo.jpg", "", &db, &store)
+            .await
+            .is_none());
 
         // Populate
         let data = b"fake jpeg data";
-        cache
-            .put("bucket-1", 1, "/photo.jpg", "", data, "image/jpeg")
-            .await;
+        put(
+            &PutParams {
+                bucket_id: "bucket-1",
+                height: 1,
+                path: "/photo.jpg",
+                query_string: "",
+                data,
+                mime_type: "image/jpeg",
+            },
+            &db,
+            &store,
+        )
+        .await;
 
         // Hit
-        let (bytes, mime) = cache.get("bucket-1", 1, "/photo.jpg", "").await.unwrap();
+        let (bytes, mime) = get("bucket-1", 1, "/photo.jpg", "", &db, &store)
+            .await
+            .unwrap();
         assert_eq!(bytes.as_ref(), data);
         assert_eq!(mime, "image/jpeg");
     }
 
     #[tokio::test]
     async fn test_query_string_cache_separately() {
-        let cache = test_cache().await;
+        let (db, store) = test_deps().await;
 
-        cache
-            .put("b1", 1, "/photo.jpg", "", b"original", "image/jpeg")
-            .await;
-        cache
-            .put("b1", 1, "/photo.jpg", "w=200", b"thumbnail", "image/jpeg")
-            .await;
+        put(
+            &PutParams {
+                bucket_id: "b1",
+                height: 1,
+                path: "/photo.jpg",
+                query_string: "",
+                data: b"original",
+                mime_type: "image/jpeg",
+            },
+            &db,
+            &store,
+        )
+        .await;
+        put(
+            &PutParams {
+                bucket_id: "b1",
+                height: 1,
+                path: "/photo.jpg",
+                query_string: "w=200",
+                data: b"thumbnail",
+                mime_type: "image/jpeg",
+            },
+            &db,
+            &store,
+        )
+        .await;
 
-        let (original, _) = cache.get("b1", 1, "/photo.jpg", "").await.unwrap();
+        let (original, _) = get("b1", 1, "/photo.jpg", "", &db, &store).await.unwrap();
         assert_eq!(original.as_ref(), b"original");
 
-        let (thumb, _) = cache.get("b1", 1, "/photo.jpg", "w=200").await.unwrap();
+        let (thumb, _) = get("b1", 1, "/photo.jpg", "w=200", &db, &store)
+            .await
+            .unwrap();
         assert_eq!(thumb.as_ref(), b"thumbnail");
     }
 
     #[tokio::test]
     async fn test_content_dedup_across_paths() {
-        let cache = test_cache().await;
+        let (db, store) = test_deps().await;
         let data = b"same content at different paths";
 
-        cache.put("b1", 1, "/a.txt", "", data, "text/plain").await;
-        cache.put("b1", 1, "/b.txt", "", data, "text/plain").await;
+        for path in ["/a.txt", "/b.txt"] {
+            put(
+                &PutParams {
+                    bucket_id: "b1",
+                    height: 1,
+                    path,
+                    query_string: "",
+                    data,
+                    mime_type: "text/plain",
+                },
+                &db,
+                &store,
+            )
+            .await;
+        }
 
-        assert!(cache.get("b1", 1, "/a.txt", "").await.is_some());
-        assert!(cache.get("b1", 1, "/b.txt", "").await.is_some());
+        assert!(get("b1", 1, "/a.txt", "", &db, &store).await.is_some());
+        assert!(get("b1", 1, "/b.txt", "", &db, &store).await.is_some());
     }
 
     #[tokio::test]
     async fn test_different_heights() {
-        let cache = test_cache().await;
+        let (db, store) = test_deps().await;
 
-        cache
-            .put("b1", 1, "/file.txt", "", b"version 1", "text/plain")
+        for (h, content) in [(1, "version 1"), (2, "version 2")] {
+            put(
+                &PutParams {
+                    bucket_id: "b1",
+                    height: h,
+                    path: "/file.txt",
+                    query_string: "",
+                    data: content.as_bytes(),
+                    mime_type: "text/plain",
+                },
+                &db,
+                &store,
+            )
             .await;
-        cache
-            .put("b1", 2, "/file.txt", "", b"version 2", "text/plain")
-            .await;
+        }
 
-        let (v1, _) = cache.get("b1", 1, "/file.txt", "").await.unwrap();
+        let (v1, _) = get("b1", 1, "/file.txt", "", &db, &store).await.unwrap();
         assert_eq!(v1.as_ref(), b"version 1");
 
-        let (v2, _) = cache.get("b1", 2, "/file.txt", "").await.unwrap();
+        let (v2, _) = get("b1", 2, "/file.txt", "", &db, &store).await.unwrap();
         assert_eq!(v2.as_ref(), b"version 2");
     }
 }
