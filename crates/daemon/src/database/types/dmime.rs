@@ -3,25 +3,27 @@ use sqlx::error::BoxDynError;
 use sqlx::sqlite::{SqliteArgumentValue, SqliteTypeInfo, SqliteValueRef};
 use sqlx::{Decode, Encode, Sqlite, Type};
 
+use common::prelude::Mime;
+
 /// Database-compatible MIME type wrapper with sqlx Encode/Decode.
 /// Stored as string in SQLite (e.g. "image/jpeg").
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DMime(mime::Mime);
+pub struct DMime(Mime);
 
-impl From<mime::Mime> for DMime {
-    fn from(m: mime::Mime) -> Self {
+impl From<Mime> for DMime {
+    fn from(m: Mime) -> Self {
         Self(m)
     }
 }
 
-impl From<DMime> for mime::Mime {
+impl From<DMime> for Mime {
     fn from(val: DMime) -> Self {
         val.0
     }
 }
 
 impl std::ops::Deref for DMime {
-    type Target = mime::Mime;
+    type Target = Mime;
 
     fn deref(&self) -> &Self::Target {
         &self.0

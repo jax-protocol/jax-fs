@@ -38,4 +38,5 @@ pub mod prelude {
     pub use crate::mount::{Manifest, Mount, MountError};
     pub use crate::peer::Peer;
     pub use crate::version::build_info;
+    pub use mime::Mime;
 }

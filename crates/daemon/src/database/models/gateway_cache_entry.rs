@@ -4,6 +4,7 @@ use sqlx::FromRow;
 use uuid::Uuid;
 
 use common::linked_data::Hash;
+use common::prelude::Mime;
 
 use crate::database::types::{DBlake3, DMime, DUuid};
 use crate::database::Database;
@@ -14,7 +15,7 @@ pub struct GatewayCacheEntry {
     /// BLAKE3 hash of the cached content (content-addressed link).
     pub link: Hash,
     /// MIME type of the cached content.
-    pub mime_type: mime::Mime,
+    pub mime_type: Mime,
 }
 
 /// Row type for sqlx deserialization.
@@ -73,16 +74,16 @@ impl GatewayCacheEntry {
         Ok(row.map(Into::into))
     }
 
-    /// Insert or replace a cache entry.
+    /// Append a cache entry to the log. No-op if the key already exists.
     #[allow(clippy::too_many_arguments)]
-    pub async fn upsert(
+    pub async fn log(
         bucket_id: &Uuid,
         height: u64,
         path: &Path,
         query_string: Option<&str>,
         link: &Hash,
         content_size: u64,
-        mime_type: &mime::Mime,
+        mime_type: &Mime,
         db: &Database,
     ) -> Result<(), sqlx::Error> {
         let bid = DUuid::from(*bucket_id);
@@ -91,7 +92,7 @@ impl GatewayCacheEntry {
         let dlink = DBlake3::from(*link);
         let dmime = DMime::from(mime_type.clone());
         sqlx::query(
-            "INSERT OR REPLACE INTO gateway_cache
+            "INSERT OR IGNORE INTO gateway_cache
              (bucket_id, height, path, query_string, link, content_size, mime_type,
               created_at, last_accessed)
              VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())",
@@ -236,7 +237,7 @@ mod tests {
         );
 
         // Insert and hit
-        GatewayCacheEntry::upsert(
+        GatewayCacheEntry::log(
             &bucket,
             1,
             Path::new("/photo.jpg"),
@@ -265,7 +266,7 @@ mod tests {
         let link_thumb = Hash::new(b"thumbnail");
         let mime = mime::IMAGE_JPEG;
 
-        GatewayCacheEntry::upsert(
+        GatewayCacheEntry::log(
             &bucket,
             1,
             Path::new("/photo.jpg"),
@@ -277,7 +278,7 @@ mod tests {
         )
         .await
         .unwrap();
-        GatewayCacheEntry::upsert(
+        GatewayCacheEntry::log(
             &bucket,
             1,
             Path::new("/photo.jpg"),
@@ -311,7 +312,7 @@ mod tests {
 
         for h in 1u64..=3 {
             let link = Hash::new(format!("v{}", h).as_bytes());
-            GatewayCacheEntry::upsert(
+            GatewayCacheEntry::log(
                 &bucket,
                 h,
                 Path::new("/file.txt"),

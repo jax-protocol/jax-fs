@@ -138,7 +138,7 @@ pub async fn put(
     };
 
     // Layer 1: index the path → link mapping
-    if let Err(e) = GatewayCacheEntry::upsert(
+    if let Err(e) = GatewayCacheEntry::log(
         bucket_id,
         height,
         path,
