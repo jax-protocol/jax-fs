@@ -401,8 +401,44 @@ curl http://localhost:8080/gw/550e8400-.../path/to/file.txt
 
 Query parameters:
 - `download=true` - Force download with Content-Disposition: attachment
-- `view=true` - Show file in viewer UI instead of rendering HTML/Markdown
+- `viewer=true` - Show file in viewer UI instead of rendering HTML/Markdown
 - `deep=true` - Recursively list all files (for directories)
+- `at=<hash>` - Access a specific version by content hash
+- `w=<pixels>` - Resize image to target width (maintains aspect ratio if `h` omitted)
+- `h=<pixels>` - Resize image to target height (optional, used with `w`)
+- `q=<1-100>` - Output quality for JPEG/WebP (default: 80)
+
+#### Image Transform
+
+The gateway supports on-the-fly image resizing and quality adjustment for image files (`image/jpeg`, `image/png`, `image/webp`, `image/gif`):
+
+```bash
+# Resize to 400px wide (aspect ratio maintained)
+curl http://localhost:8080/gw/550e8400-.../photos/beach.jpg?w=400
+
+# Resize to exact dimensions
+curl http://localhost:8080/gw/550e8400-.../photos/beach.jpg?w=400&h=300
+
+# Lower quality (smaller file size)
+curl http://localhost:8080/gw/550e8400-.../photos/beach.jpg?w=400&q=75
+```
+
+Constraints:
+- `w` and `h` are capped at 4096px. Values of 0 or above 4096 return 400 Bad Request.
+- `q` must be 1-100. Values outside this range return 400 Bad Request.
+- Transform params are ignored for non-image files.
+- Output format matches input format.
+
+#### Response Cache
+
+The gateway includes a two-tier response cache that eliminates repeated tree traversal and decryption:
+
+- **Layer 1 (Path Index)**: Maps `(bucket_id, height, path, transform_params)` to a content hash. Stored in SQLite.
+- **Layer 2 (Content Store)**: Maps content hash to decrypted/transformed bytes. Content-addressed and naturally deduplicated.
+
+On cache hit, responses are served directly without mount traversal or decryption. Cached and transformed responses include `Cache-Control: public, max-age=31536000, immutable`.
+
+A background actor periodically evicts old entries based on configurable policies (version retention, size limits, TTL).
 
 ### GET /gw/:bucket_id/version
 

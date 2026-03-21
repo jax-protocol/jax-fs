@@ -40,4 +40,4 @@ mod storage;
 pub use actor::DEFAULT_MAX_IMPORT_SIZE;
 pub use error::{BlobStoreError, Result};
 pub use object_store::ObjectStore;
-pub use storage::ObjectStoreConfig;
+pub use storage::{ObjectStoreConfig, Storage};

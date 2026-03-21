@@ -9,9 +9,11 @@ use common::mount::NodeLink;
 
 use crate::ServiceState;
 
+pub mod cache;
 pub mod directory;
 pub mod file;
 pub mod index;
+pub mod transform;
 pub mod version;
 
 /// Bucket metadata passed to sub-handlers.
@@ -48,20 +50,38 @@ pub struct GatewayQuery {
     /// If true, use the HTML viewer UI instead of raw JSON/binary responses.
     #[serde(default)]
     pub viewer: Option<bool>,
+    /// Target width in pixels for image transforms (maintains aspect ratio if h omitted).
+    #[serde(default)]
+    pub w: Option<u32>,
+    /// Target height in pixels for image transforms (optional).
+    #[serde(default)]
+    pub h: Option<u32>,
+    /// Output quality 1-100 for JPEG/WebP (default: 80).
+    #[serde(default)]
+    pub q: Option<u8>,
 }
 
 /// Handler for bucket root requests (no file path).
 pub async fn root_handler(
     state: State<ServiceState>,
+    gw_cache: cache::GatewayCache,
     Path(bucket_id): Path<Uuid>,
     query: Query<GatewayQuery>,
     headers: axum::http::HeaderMap,
 ) -> Response {
-    handler(state, Path((bucket_id, "/".to_string())), query, headers).await
+    handler(
+        state,
+        gw_cache,
+        Path((bucket_id, "/".to_string())),
+        query,
+        headers,
+    )
+    .await
 }
 
 pub async fn handler(
     State(state): State<ServiceState>,
+    gw_cache: cache::GatewayCache,
     Path((bucket_id, file_path)): Path<(Uuid, String)>,
     Query(query): Query<GatewayQuery>,
     headers: axum::http::HeaderMap,
@@ -189,8 +209,32 @@ pub async fn handler(
         let file_query = file::FileQuery {
             download: query.download,
             viewer: query.viewer,
+            w: query.w,
+            h: query.h,
+            q: query.q,
         };
-        file::handler(
+
+        let height = inner.height();
+        let cache_query_string = transform::TransformParams::from_query(query.w, query.h, query.q)
+            .map(|p| p.to_query_string());
+        let cache_qs_ref = cache_query_string.as_deref();
+
+        // Skip cache for historical version requests (?at=) — the height
+        // may not match the historical version's position in the log.
+        let use_cache = query.at.is_none();
+
+        // Check cache before traversal/decrypt
+        if use_cache {
+            if let Some((cached_bytes, cached_mime)) = gw_cache
+                .get(&bucket_id, height, &path_buf, cache_qs_ref)
+                .await
+            {
+                tracing::debug!(path = %absolute_path, "gateway cache hit");
+                return file::serve_cached(cached_bytes, &cached_mime, &absolute_path);
+            }
+        }
+
+        let response_data = file::handler(
             &mount,
             &path_buf,
             &absolute_path,
@@ -198,7 +242,26 @@ pub async fn handler(
             &meta,
             node_link.unwrap(),
         )
-        .await
+        .await;
+
+        // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
+        if use_cache {
+            if let Some(ref cacheable) = response_data.cacheable {
+                gw_cache
+                    .put(
+                        &bucket_id,
+                        height,
+                        &path_buf,
+                        cache_qs_ref,
+                        &cacheable.link,
+                        &cacheable.data,
+                        &cacheable.mime_type,
+                    )
+                    .await;
+            }
+        }
+
+        response_data.response
     }
 }
 

@@ -22,6 +22,10 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
     - `directory.rs` - Directory listing handler (self-contained)
     - `file.rs` - File serving handler (self-contained)
     - `version.rs` - Latest published version metadata endpoint (JSON)
+    - `transform.rs` - Image resize/quality via `image` crate (mime-typed)
+    - `cache/` - Two-tier response cache (generic over query strings)
+      - `mod.rs` - Cache get/put functions + `GatewayCacheHandle` (dep-injected Database + Storage)
+      - `actor.rs` - Background eviction actor (height, LRU, TTL sweeps)
 - `src/database/` - SQLite storage and bucket log provider
   - `mount_queries.rs` - FUSE mount persistence (CRUD, status updates)
 - `src/blobs/` - Blob store setup and configuration
