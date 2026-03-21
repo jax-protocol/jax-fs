@@ -176,3 +176,210 @@ async fn sweep_unreferenced(db: &Database, store: &Storage) {
         tracing::info!(removed, "cache: swept unreferenced blobs");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use bytes::Bytes;
+
+    use super::*;
+
+    fn test_config() -> CacheConfig {
+        CacheConfig {
+            max_versions: 1,
+            max_cache_size_bytes: Some(500),
+            max_entry_age_secs: None,
+            eviction_interval_secs: 86400,
+        }
+    }
+
+    /// Helper: populate cache entries at multiple heights for a bucket.
+    async fn populate_heights(bucket: &Uuid, heights: &[u64], db: &Database, store: &Storage) {
+        for &h in heights {
+            let data = format!("data-at-height-{}", h);
+            let link = common::linked_data::Hash::new(data.as_bytes());
+            store
+                .put_data(&link.to_string(), Bytes::copy_from_slice(data.as_bytes()))
+                .await
+                .unwrap();
+            GatewayCacheEntry::log(
+                bucket,
+                h,
+                Path::new("/file.txt"),
+                None,
+                &link,
+                data.len() as u64,
+                &mime::TEXT_PLAIN,
+                db,
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_evict_bucket_keeps_latest_height() {
+        let db = Database::memory().await.unwrap();
+        let store = Storage::memory();
+        let config = test_config();
+        let bucket = Uuid::new_v4();
+
+        populate_heights(&bucket, &[1, 2, 3], &db, &store).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 3);
+
+        // Evict for this bucket — should keep only height 3
+        evict_bucket(&bucket, &config, &db).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 1);
+
+        assert!(
+            GatewayCacheEntry::lookup(&bucket, 3, Path::new("/file.txt"), None, &db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_evict_bucket_does_not_touch_other_buckets() {
+        let db = Database::memory().await.unwrap();
+        let store = Storage::memory();
+        let config = test_config();
+        let alice = Uuid::new_v4();
+        let bob = Uuid::new_v4();
+
+        populate_heights(&alice, &[1, 2, 3], &db, &store).await;
+        populate_heights(&bob, &[1, 2], &db, &store).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 5);
+
+        // Evict only alice — bob's entries should remain
+        evict_bucket(&alice, &config, &db).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 3); // 1 alice + 2 bob
+    }
+
+    #[tokio::test]
+    async fn test_global_eviction_sweeps_all_buckets() {
+        let db = Database::memory().await.unwrap();
+        let store = Storage::memory();
+        let config = test_config();
+        let alice = Uuid::new_v4();
+        let bob = Uuid::new_v4();
+
+        populate_heights(&alice, &[1, 2, 3], &db, &store).await;
+        populate_heights(&bob, &[1, 2], &db, &store).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 5);
+
+        run_global_eviction(&db, &store, &config).await;
+
+        // max_versions=1: alice keeps height 3, bob keeps height 2
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_sweep_unreferenced_removes_orphan_blobs() {
+        let db = Database::memory().await.unwrap();
+        let store = Storage::memory();
+        let bucket = Uuid::new_v4();
+
+        // Store a blob referenced by the index
+        let referenced_data = b"referenced";
+        let referenced_link = common::linked_data::Hash::new(referenced_data);
+        store
+            .put_data(
+                &referenced_link.to_string(),
+                Bytes::from_static(referenced_data),
+            )
+            .await
+            .unwrap();
+        GatewayCacheEntry::log(
+            &bucket,
+            1,
+            Path::new("/kept.txt"),
+            None,
+            &referenced_link,
+            referenced_data.len() as u64,
+            &mime::TEXT_PLAIN,
+            &db,
+        )
+        .await
+        .unwrap();
+
+        // Store an orphan blob (no index entry)
+        store
+            .put_data("orphan-hash", Bytes::from_static(b"orphaned"))
+            .await
+            .unwrap();
+
+        // Before sweep: 2 blobs in store
+        {
+            use futures::TryStreamExt;
+            let count: Vec<String> = std::pin::pin!(store.list_data_hashes_stream())
+                .try_collect()
+                .await
+                .unwrap();
+            assert_eq!(count.len(), 2);
+        }
+
+        sweep_unreferenced(&db, &store).await;
+
+        // After sweep: orphan removed, referenced kept
+        {
+            use futures::TryStreamExt;
+            let remaining: Vec<String> = std::pin::pin!(store.list_data_hashes_stream())
+                .try_collect()
+                .await
+                .unwrap();
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(remaining[0], referenced_link.to_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_lru_eviction_respects_size_limit() {
+        let db = Database::memory().await.unwrap();
+        let store = Storage::memory();
+        let bucket = Uuid::new_v4();
+
+        // Insert 3 entries of ~100 bytes each, total ~300
+        for i in 0..3u64 {
+            let data = format!("{:>100}", i); // 100 bytes each
+            let link = common::linked_data::Hash::new(data.as_bytes());
+            let path_str = format!("/file-{}.txt", i);
+            store
+                .put_data(&link.to_string(), Bytes::copy_from_slice(data.as_bytes()))
+                .await
+                .unwrap();
+            GatewayCacheEntry::log(
+                &bucket,
+                1,
+                Path::new(&path_str),
+                None,
+                &link,
+                data.len() as u64,
+                &mime::TEXT_PLAIN,
+                &db,
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 3);
+
+        // Config has max_cache_size_bytes=500, total is 300 — no eviction
+        let config = CacheConfig {
+            max_versions: 100,
+            max_cache_size_bytes: Some(500),
+            ..CacheConfig::default()
+        };
+        run_global_eviction(&db, &store, &config).await;
+        assert_eq!(GatewayCacheEntry::count(&db).await.unwrap(), 3);
+
+        // Shrink limit to 150 — should evict LRU entries until under limit
+        let tight_config = CacheConfig {
+            max_versions: 100,
+            max_cache_size_bytes: Some(150),
+            ..CacheConfig::default()
+        };
+        run_global_eviction(&db, &store, &tight_config).await;
+        assert!(GatewayCacheEntry::count(&db).await.unwrap() < 3);
+    }
+}
