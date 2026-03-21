@@ -106,6 +106,7 @@ pub async fn run_api(
 pub async fn run_gateway(
     config: Config,
     state: ServiceState,
+    jax_dir: std::path::PathBuf,
     mut shutdown_rx: watch::Receiver<()>,
 ) -> Result<(), HttpServerError> {
     let listen_addr = config.listen_addr;
@@ -128,6 +129,31 @@ pub async fn run_gateway(
         .allow_origin(Any)
         .allow_credentials(false);
 
+    // Initialize gateway cache — Storage as extension for the GatewayCache extractor
+    let cache_dir = jax_dir.join("gateway-cache");
+    let cache_config = object_store::ObjectStoreConfig::Local {
+        path: cache_dir.join("blobs"),
+    };
+    let cache_store = match object_store::Storage::new(cache_config).await {
+        Ok(store) => {
+            tracing::info!("Gateway cache initialized at {:?}", cache_dir);
+            store
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to initialize local cache store, falling back to memory: {}",
+                e
+            );
+            object_store::Storage::memory()
+        }
+    };
+
+    gateway::cache::spawn_eviction_actor(
+        state.database().clone(),
+        cache_store.clone(),
+        gateway::cache::CacheConfig::default(),
+    );
+
     // Gateway routes with their own CORS layer
     let gateway_routes = Router::new()
         .route("/:bucket_id/version", get(gateway::version::handler))
@@ -135,7 +161,8 @@ pub async fn run_gateway(
         .route("/:bucket_id/", get(gateway::root_handler))
         .route("/:bucket_id/*file_path", get(gateway::handler))
         .with_state(state.clone())
-        .layer(gateway_cors);
+        .layer(gateway_cors)
+        .layer(Extension(cache_store));
 
     let router = Router::new()
         .nest(STATUS_PREFIX, health::router(state.clone()))

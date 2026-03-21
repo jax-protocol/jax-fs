@@ -9,10 +9,8 @@ use crate::blobs::{Blobs, BlobsSetupError};
 use crate::database::{Database, DatabaseSetupError};
 #[cfg(feature = "fuse")]
 use crate::fuse::{MountManager, MountManagerConfig};
-use crate::http_server::gateway::cache::GatewayCacheHandle;
 use crate::service_config::Config;
 use crate::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
-use object_store::Storage;
 
 use common::crypto::SecretKey;
 use common::peer::{Peer, PeerBuilder};
@@ -22,8 +20,6 @@ use common::peer::{Peer, PeerBuilder};
 pub struct State {
     database: Database,
     peer: Peer<Database>,
-    cache_store: Option<Storage>,
-    cache_handle: Option<GatewayCacheHandle>,
     #[cfg(feature = "fuse")]
     mount_manager: Arc<RwLock<Option<MountManager>>>,
 }
@@ -90,36 +86,10 @@ impl State {
             crate::sync_provider::run_worker(peer_for_worker, job_stream).await;
         });
 
-        // Initialize gateway cache content store + eviction actor
-        let cache_dir = config.jax_dir.join("gateway-cache");
-        let cache_config = object_store::ObjectStoreConfig::Local {
-            path: cache_dir.join("blobs"),
-        };
-        let (cache_store, cache_handle) = match Storage::new(cache_config).await {
-            Ok(store) => {
-                let handle = GatewayCacheHandle::spawn(
-                    database.clone(),
-                    store.clone(),
-                    crate::http_server::gateway::cache::CacheConfig::default(),
-                );
-                tracing::info!("Gateway cache initialized at {:?}", cache_dir);
-                (Some(store), Some(handle))
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to initialize gateway cache store, continuing without: {}",
-                    e
-                );
-                (None, None)
-            }
-        };
-
         // Create the initial state
         let state = Self {
             database: database.clone(),
             peer: peer.clone(),
-            cache_store,
-            cache_handle,
             #[cfg(feature = "fuse")]
             mount_manager: Arc::new(RwLock::new(None)),
         };
@@ -152,14 +122,6 @@ impl State {
 
     pub fn database(&self) -> &Database {
         &self.database
-    }
-
-    pub fn cache_store(&self) -> Option<&Storage> {
-        self.cache_store.as_ref()
-    }
-
-    pub fn cache_handle(&self) -> Option<&GatewayCacheHandle> {
-        self.cache_handle.as_ref()
     }
 
     /// Get the mount manager (only available with fuse feature)

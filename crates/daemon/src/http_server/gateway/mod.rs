@@ -64,15 +64,24 @@ pub struct GatewayQuery {
 /// Handler for bucket root requests (no file path).
 pub async fn root_handler(
     state: State<ServiceState>,
+    gw_cache: cache::GatewayCache,
     Path(bucket_id): Path<Uuid>,
     query: Query<GatewayQuery>,
     headers: axum::http::HeaderMap,
 ) -> Response {
-    handler(state, Path((bucket_id, "/".to_string())), query, headers).await
+    handler(
+        state,
+        gw_cache,
+        Path((bucket_id, "/".to_string())),
+        query,
+        headers,
+    )
+    .await
 }
 
 pub async fn handler(
     State(state): State<ServiceState>,
+    gw_cache: cache::GatewayCache,
     Path((bucket_id, file_path)): Path<(Uuid, String)>,
     Query(query): Query<GatewayQuery>,
     headers: axum::http::HeaderMap,
@@ -205,28 +214,20 @@ pub async fn handler(
             q: query.q,
         };
 
-        // Skip cache for historical version requests (?at=) since the height
-        // from the mount may not match the historical version's actual position
-        // in the log, which could cause cache key collisions.
-        let use_cache = query.at.is_none();
-        let cache_store = if use_cache { state.cache_store() } else { None };
-
         let height = inner.height();
         let cache_query_string = transform::TransformParams::from_query(query.w, query.h, query.q)
             .map(|p| p.to_query_string());
         let cache_qs_ref = cache_query_string.as_deref();
 
+        // Skip cache for historical version requests (?at=) — the height
+        // may not match the historical version's position in the log.
+        let use_cache = query.at.is_none();
+
         // Check cache before traversal/decrypt
-        if let Some(store) = cache_store {
-            if let Some((cached_bytes, cached_mime)) = cache::get(
-                &bucket_id,
-                height,
-                &path_buf,
-                cache_qs_ref,
-                state.database(),
-                store,
-            )
-            .await
+        if use_cache {
+            if let Some((cached_bytes, cached_mime)) = gw_cache
+                .get(&bucket_id, height, &path_buf, cache_qs_ref)
+                .await
             {
                 tracing::debug!(path = %absolute_path, "gateway cache hit");
                 return file::serve_cached(cached_bytes, &cached_mime, &absolute_path);
@@ -244,19 +245,20 @@ pub async fn handler(
         .await;
 
         // Populate cache on miss (for non-viewer, non-download, non-HTML responses)
-        if let (Some(store), Some(ref cacheable)) = (cache_store, &response_data.cacheable) {
-            cache::put(
-                &bucket_id,
-                height,
-                &path_buf,
-                cache_qs_ref,
-                &cacheable.link,
-                &cacheable.data,
-                &cacheable.mime_type,
-                state.database(),
-                store,
-            )
-            .await;
+        if use_cache {
+            if let Some(ref cacheable) = response_data.cacheable {
+                gw_cache
+                    .put(
+                        &bucket_id,
+                        height,
+                        &path_buf,
+                        cache_qs_ref,
+                        &cacheable.link,
+                        &cacheable.data,
+                        &cacheable.mime_type,
+                    )
+                    .await;
+            }
         }
 
         response_data.response

@@ -110,33 +110,6 @@ impl GatewayCacheEntry {
         Ok(())
     }
 
-    /// Remove old height entries for a specific bucket, keeping only the most recent `keep_versions`.
-    pub async fn evict_old_heights_for_bucket(
-        bucket_id: &Uuid,
-        keep_versions: u32,
-        db: &Database,
-    ) -> Result<u64, sqlx::Error> {
-        let bid = DUuid::from(*bucket_id);
-        let result = sqlx::query(
-            "DELETE FROM gateway_cache
-             WHERE bucket_id = ? AND height < (
-                 SELECT COALESCE(MIN(h), 0) FROM (
-                     SELECT DISTINCT height AS h FROM gateway_cache
-                     WHERE bucket_id = ?
-                     ORDER BY height DESC
-                     LIMIT ?
-                 )
-             )",
-        )
-        .bind(bid)
-        .bind(bid)
-        .bind(keep_versions)
-        .execute(&**db)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
-
     /// Remove entries for old heights across all buckets, keeping only the most recent `keep_versions` each.
     pub async fn evict_old_heights(keep_versions: u32, db: &Database) -> Result<u64, sqlx::Error> {
         let result = sqlx::query(

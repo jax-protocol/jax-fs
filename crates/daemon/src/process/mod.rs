@@ -180,8 +180,9 @@ pub async fn start_service(service_config: &ServiceConfig) -> (ServiceState, Shu
     let gw_state = state.clone();
     let gw_config = http_server::Config::new(gw_addr, service_config.gateway_url.clone());
     let gw_rx = shutdown_rx.clone();
+    let gw_jax_dir = service_config.jax_dir.clone();
     let gw_handle = tokio::spawn(async move {
-        if let Err(e) = http_server::run_gateway(gw_config, gw_state, gw_rx).await {
+        if let Err(e) = http_server::run_gateway(gw_config, gw_state, gw_jax_dir, gw_rx).await {
             tracing::error!("Gateway server error: {}", e);
         }
     });
