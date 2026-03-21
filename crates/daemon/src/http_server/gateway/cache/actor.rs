@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use futures::StreamExt;
+use uuid::Uuid;
 
 use object_store::Storage;
 
@@ -10,8 +11,8 @@ use crate::database::Database;
 
 /// Hints the request path can send to the cache actor.
 pub enum CacheHint {
-    /// A bucket advanced to a new height — old entries may be evictable.
-    BucketAdvanced { bucket_id: String, new_height: i64 },
+    /// A bucket advanced to a new height — evict old entries for this bucket.
+    BucketAdvanced { bucket_id: Uuid },
 }
 
 /// Background actor that owns eviction and cleanup.
@@ -58,12 +59,12 @@ impl CacheActor {
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    run_eviction(&db, &store, &config).await;
+                    run_global_eviction(&db, &store, &config).await;
                 }
                 hint = hint_stream.next() => {
                     match hint {
-                        Some(CacheHint::BucketAdvanced { .. }) => {
-                            run_eviction(&db, &store, &config).await;
+                        Some(CacheHint::BucketAdvanced { bucket_id }) => {
+                            evict_bucket(&bucket_id, &config, &db).await;
                         }
                         None => {
                             tracing::debug!("Cache actor shutting down — hints channel closed");
@@ -76,8 +77,23 @@ impl CacheActor {
     }
 }
 
-async fn run_eviction(db: &Database, store: &Storage, config: &CacheConfig) {
-    // 1. Evict old height entries
+/// Evict old heights for a single bucket that just advanced.
+async fn evict_bucket(bucket_id: &Uuid, config: &CacheConfig, db: &Database) {
+    match GatewayCacheEntry::evict_old_heights_for_bucket(bucket_id, config.max_versions, db).await
+    {
+        Ok(removed) if removed > 0 => {
+            tracing::info!(%bucket_id, removed, "cache: evicted old heights for bucket");
+        }
+        Err(e) => {
+            tracing::warn!(%bucket_id, "cache: failed to evict old heights for bucket: {}", e);
+        }
+        _ => {}
+    }
+}
+
+/// Full eviction sweep across all buckets (timer-driven).
+async fn run_global_eviction(db: &Database, store: &Storage, config: &CacheConfig) {
+    // 1. Evict old height entries across all buckets
     match GatewayCacheEntry::evict_old_heights(config.max_versions, db).await {
         Ok(removed) if removed > 0 => {
             tracing::info!(removed, "cache: evicted old height entries");
