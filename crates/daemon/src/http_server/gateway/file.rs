@@ -4,7 +4,7 @@ use bytes::Bytes;
 use common::mount::{Mount, NodeLink};
 use serde::Deserialize;
 
-use super::cache::transform::{TransformError, TransformParams};
+use super::transform::{TransformError, TransformParams};
 
 /// Query parameters for file requests.
 #[derive(Debug, Deserialize)]
@@ -136,8 +136,9 @@ pub async fn handler(
 
     // Apply image transform if requested and applicable
     let (file_data, mime_type) = if let Some(ref params) = transform {
-        if TransformParams::applies_to_mime(&mime_type) {
-            match super::cache::transform::transform_image(&file_data, &mime_type, params) {
+        let parsed_mime: mime::Mime = mime_type.parse().unwrap_or(mime::APPLICATION_OCTET_STREAM);
+        if TransformParams::is_transformable(&parsed_mime) {
+            match super::transform::transform_image(&file_data, &parsed_mime, params) {
                 Ok(transformed) => (transformed, mime_type),
                 Err(TransformError::UnsupportedFormat(_)) => {
                     // Not an image type we can transform, serve as-is

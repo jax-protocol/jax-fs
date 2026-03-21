@@ -9,6 +9,7 @@ use crate::blobs::{Blobs, BlobsSetupError};
 use crate::database::{Database, DatabaseSetupError};
 #[cfg(feature = "fuse")]
 use crate::fuse::{MountManager, MountManagerConfig};
+use crate::http_server::gateway::cache::store::CacheStore;
 use crate::http_server::gateway::cache::GatewayCache;
 use crate::service_config::Config;
 use crate::sync_provider::{QueuedSyncConfig, QueuedSyncProvider};
@@ -89,22 +90,20 @@ impl State {
         });
 
         // Initialize gateway cache
-        let gateway_cache = match GatewayCache::new(
-            &config.jax_dir,
-            crate::http_server::gateway::cache::CacheConfig::default(),
-        )
-        .await
-        {
-            Ok(cache) => {
-                tracing::info!(
-                    "Gateway cache initialized at {:?}",
-                    config.jax_dir.join("gateway-cache")
+        let cache_dir = config.jax_dir.join("gateway-cache");
+        let gateway_cache = match CacheStore::new_local(&cache_dir.join("blobs")).await {
+            Ok(store) => {
+                let cache = GatewayCache::spawn(
+                    database.clone(),
+                    store,
+                    crate::http_server::gateway::cache::CacheConfig::default(),
                 );
+                tracing::info!("Gateway cache initialized at {:?}", cache_dir);
                 Some(cache)
             }
             Err(e) => {
                 tracing::warn!(
-                    "Failed to initialize gateway cache, continuing without: {}",
+                    "Failed to initialize gateway cache store, continuing without: {}",
                     e
                 );
                 None

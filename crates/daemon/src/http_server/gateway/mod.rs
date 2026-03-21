@@ -13,6 +13,7 @@ pub mod cache;
 pub mod directory;
 pub mod file;
 pub mod index;
+pub mod transform;
 pub mod version;
 
 /// Bucket metadata passed to sub-handlers.
@@ -215,20 +216,14 @@ pub async fn handler(
         };
 
         let height = inner.height() as i64;
-        let transform_params_key =
-            cache::transform::TransformParams::from_query(query.w, query.h, query.q)
-                .map(|p| p.to_cache_key())
-                .unwrap_or_default();
+        let cache_query_string = transform::TransformParams::from_query(query.w, query.h, query.q)
+            .map(|p| p.to_query_string())
+            .unwrap_or_default();
 
         // Check cache before traversal/decrypt
         if let Some(gw_cache) = gw_cache {
             if let Some((cached_bytes, cached_mime)) = gw_cache
-                .get(
-                    &bucket_id_str,
-                    height,
-                    &absolute_path,
-                    &transform_params_key,
-                )
+                .get(&bucket_id_str, height, &absolute_path, &cache_query_string)
                 .await
             {
                 tracing::debug!(path = %absolute_path, "gateway cache hit");
@@ -253,7 +248,7 @@ pub async fn handler(
                     &bucket_id_str,
                     height,
                     &absolute_path,
-                    &transform_params_key,
+                    &cache_query_string,
                     &cacheable.data,
                     &cacheable.mime_type,
                 )

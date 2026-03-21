@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use futures::StreamExt;
 
-use super::database::CacheDatabase;
 use super::store::CacheStore;
 use super::CacheConfig;
+use crate::database::models::GatewayCacheEntry;
+use crate::database::Database;
 
 /// Hints the request path can send to the cache actor.
 pub enum CacheHint {
@@ -17,7 +18,7 @@ pub enum CacheHint {
 /// The gateway writes to the cache inline (populate on miss) but never
 /// blocks on cleanup — all eviction work happens here.
 pub struct CacheActor {
-    db: CacheDatabase,
+    db: Database,
     store: CacheStore,
     config: CacheConfig,
     hints_rx: flume::Receiver<CacheHint>,
@@ -25,7 +26,7 @@ pub struct CacheActor {
 
 impl CacheActor {
     pub fn new(
-        db: CacheDatabase,
+        db: Database,
         store: CacheStore,
         config: CacheConfig,
         hints_rx: flume::Receiver<CacheHint>,
@@ -74,9 +75,9 @@ impl CacheActor {
     }
 }
 
-async fn run_eviction(db: &CacheDatabase, store: &CacheStore, config: &CacheConfig) {
+async fn run_eviction(db: &Database, store: &CacheStore, config: &CacheConfig) {
     // 1. Evict old height entries
-    match db.evict_old_heights(config.max_versions).await {
+    match GatewayCacheEntry::evict_old_heights(config.max_versions, db).await {
         Ok(removed) if removed > 0 => {
             tracing::info!(removed, "cache: evicted old height entries");
         }
@@ -88,7 +89,7 @@ async fn run_eviction(db: &CacheDatabase, store: &CacheStore, config: &CacheConf
 
     // 2. Evict expired entries
     if let Some(max_age) = config.max_entry_age_secs {
-        match db.evict_expired(max_age as i64).await {
+        match GatewayCacheEntry::evict_expired(max_age as i64, db).await {
             Ok(hashes) if !hashes.is_empty() => {
                 tracing::info!(count = hashes.len(), "cache: evicted expired entries");
             }
@@ -101,7 +102,7 @@ async fn run_eviction(db: &CacheDatabase, store: &CacheStore, config: &CacheConf
 
     // 3. Enforce size limit via LRU eviction
     if let Some(max_size) = config.max_cache_size_bytes {
-        match db.evict_lru(max_size as i64).await {
+        match GatewayCacheEntry::evict_lru(max_size as i64, db).await {
             Ok(hashes) if !hashes.is_empty() => {
                 tracing::info!(
                     count = hashes.len(),
@@ -120,8 +121,8 @@ async fn run_eviction(db: &CacheDatabase, store: &CacheStore, config: &CacheConf
 }
 
 /// Remove blobs from the content store that are not referenced by any index entry.
-async fn sweep_unreferenced(db: &CacheDatabase, store: &CacheStore) {
-    let referenced = match db.referenced_hashes().await {
+async fn sweep_unreferenced(db: &Database, store: &CacheStore) {
+    let referenced = match GatewayCacheEntry::referenced_hashes(db).await {
         Ok(h) => h,
         Err(e) => {
             tracing::warn!("cache: failed to get referenced hashes: {}", e);

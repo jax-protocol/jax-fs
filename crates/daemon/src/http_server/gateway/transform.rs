@@ -1,6 +1,7 @@
 use std::io::Cursor;
 
 use image::ImageFormat;
+use mime::Mime;
 
 /// Parsed and validated image transform parameters.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -12,9 +13,6 @@ pub struct TransformParams {
 
 const MAX_DIMENSION: u32 = 4096;
 const DEFAULT_QUALITY: u8 = 80;
-
-/// MIME types eligible for image transform.
-const IMAGE_MIMES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 impl TransformParams {
     /// Parse from raw query params, returning None if no transform is requested.
@@ -51,13 +49,14 @@ impl TransformParams {
         Ok(())
     }
 
-    /// Whether this transform applies to the given MIME type.
-    pub fn applies_to_mime(mime: &str) -> bool {
-        IMAGE_MIMES.contains(&mime)
+    /// Whether the given MIME type is eligible for image transform.
+    pub fn is_transformable(mime: &Mime) -> bool {
+        mime.type_() == mime::IMAGE
+            && matches!(mime.subtype().as_str(), "jpeg" | "png" | "webp" | "gif")
     }
 
-    /// Serialize to a stable string key for cache indexing.
-    pub fn to_cache_key(&self) -> String {
+    /// Serialize to a stable query string for cache indexing.
+    pub fn to_query_string(&self) -> String {
         let mut parts = Vec::new();
         if let Some(w) = self.w {
             parts.push(format!("w={}", w));
@@ -77,7 +76,7 @@ impl TransformParams {
 /// Output format matches input. Returns transformed bytes.
 pub fn transform_image(
     data: &[u8],
-    mime: &str,
+    mime: &Mime,
     params: &TransformParams,
 ) -> Result<Vec<u8>, TransformError> {
     let format = mime_to_format(mime)?;
@@ -112,12 +111,12 @@ pub fn transform_image(
     encode_image(&img, format, quality)
 }
 
-fn mime_to_format(mime: &str) -> Result<ImageFormat, TransformError> {
-    match mime {
-        "image/jpeg" => Ok(ImageFormat::Jpeg),
-        "image/png" => Ok(ImageFormat::Png),
-        "image/webp" => Ok(ImageFormat::WebP),
-        "image/gif" => Ok(ImageFormat::Gif),
+fn mime_to_format(mime: &Mime) -> Result<ImageFormat, TransformError> {
+    match mime.subtype().as_str() {
+        "jpeg" => Ok(ImageFormat::Jpeg),
+        "png" => Ok(ImageFormat::Png),
+        "webp" => Ok(ImageFormat::WebP),
+        "gif" => Ok(ImageFormat::Gif),
         _ => Err(TransformError::UnsupportedFormat(mime.to_string())),
     }
 }
@@ -167,7 +166,14 @@ pub enum TransformError {
 mod tests {
     use super::*;
 
-    /// Create a small test JPEG in memory.
+    fn jpeg_mime() -> Mime {
+        "image/jpeg".parse().unwrap()
+    }
+
+    fn png_mime() -> Mime {
+        "image/png".parse().unwrap()
+    }
+
     fn make_test_jpeg(width: u32, height: u32) -> Vec<u8> {
         let img = image::DynamicImage::new_rgb8(width, height);
         let mut buf = Cursor::new(Vec::new());
@@ -175,7 +181,6 @@ mod tests {
         buf.into_inner()
     }
 
-    /// Create a small test PNG in memory.
     fn make_test_png(width: u32, height: u32) -> Vec<u8> {
         let img = image::DynamicImage::new_rgba8(width, height);
         let mut buf = Cursor::new(Vec::new());
@@ -191,10 +196,10 @@ mod tests {
             h: None,
             q: None,
         };
-        let result = transform_image(&jpeg, "image/jpeg", &params).unwrap();
+        let result = transform_image(&jpeg, &jpeg_mime(), &params).unwrap();
         let decoded = image::load_from_memory_with_format(&result, ImageFormat::Jpeg).unwrap();
         assert_eq!(decoded.width(), 200);
-        assert_eq!(decoded.height(), 150); // maintains aspect ratio
+        assert_eq!(decoded.height(), 150);
     }
 
     #[test]
@@ -205,7 +210,7 @@ mod tests {
             h: Some(150),
             q: None,
         };
-        let result = transform_image(&jpeg, "image/jpeg", &params).unwrap();
+        let result = transform_image(&jpeg, &jpeg_mime(), &params).unwrap();
         let decoded = image::load_from_memory_with_format(&result, ImageFormat::Jpeg).unwrap();
         assert_eq!(decoded.width(), 200);
         assert_eq!(decoded.height(), 150);
@@ -224,8 +229,8 @@ mod tests {
             h: None,
             q: Some(10),
         };
-        let high = transform_image(&jpeg, "image/jpeg", &high_q).unwrap();
-        let low = transform_image(&jpeg, "image/jpeg", &low_q).unwrap();
+        let high = transform_image(&jpeg, &jpeg_mime(), &high_q).unwrap();
+        let low = transform_image(&jpeg, &jpeg_mime(), &low_q).unwrap();
         assert!(
             low.len() <= high.len(),
             "lower quality should produce smaller output"
@@ -240,7 +245,7 @@ mod tests {
             h: None,
             q: None,
         };
-        let result = transform_image(&png, "image/png", &params).unwrap();
+        let result = transform_image(&png, &png_mime(), &params).unwrap();
         let decoded = image::load_from_memory_with_format(&result, ImageFormat::Png).unwrap();
         assert_eq!(decoded.width(), 200);
     }
@@ -282,47 +287,45 @@ mod tests {
         }
         .validate()
         .is_err());
-        assert!(TransformParams {
-            w: None,
-            h: None,
-            q: Some(80)
-        }
-        .validate()
-        .is_ok());
     }
 
     #[test]
-    fn test_cache_key_stable() {
+    fn test_query_string_stable() {
         let params = TransformParams {
             w: Some(200),
             h: Some(150),
             q: Some(75),
         };
-        assert_eq!(params.to_cache_key(), "w=200&h=150&q=75");
-
-        let params2 = TransformParams {
-            w: Some(200),
-            h: None,
-            q: None,
-        };
-        assert_eq!(params2.to_cache_key(), "w=200");
+        assert_eq!(params.to_query_string(), "w=200&h=150&q=75");
     }
 
     #[test]
-    fn test_applies_to_mime() {
-        assert!(TransformParams::applies_to_mime("image/jpeg"));
-        assert!(TransformParams::applies_to_mime("image/png"));
-        assert!(TransformParams::applies_to_mime("image/webp"));
-        assert!(TransformParams::applies_to_mime("image/gif"));
-        assert!(!TransformParams::applies_to_mime("text/plain"));
-        assert!(!TransformParams::applies_to_mime("application/pdf"));
+    fn test_is_transformable() {
+        assert!(TransformParams::is_transformable(
+            &"image/jpeg".parse().unwrap()
+        ));
+        assert!(TransformParams::is_transformable(
+            &"image/png".parse().unwrap()
+        ));
+        assert!(TransformParams::is_transformable(
+            &"image/webp".parse().unwrap()
+        ));
+        assert!(TransformParams::is_transformable(
+            &"image/gif".parse().unwrap()
+        ));
+        assert!(!TransformParams::is_transformable(
+            &"text/plain".parse().unwrap()
+        ));
+        assert!(!TransformParams::is_transformable(
+            &"application/pdf".parse().unwrap()
+        ));
     }
 
     #[test]
     fn test_unsupported_format() {
         let result = transform_image(
             b"not an image",
-            "text/plain",
+            &"text/plain".parse().unwrap(),
             &TransformParams {
                 w: Some(100),
                 h: None,

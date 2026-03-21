@@ -85,6 +85,7 @@ pulldown-cmark = "0.12"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 blake3 = "1"
 tempfile = { workspace = true }
+mime = "0.3"
 mime_guess = { workspace = true }
 directories = { workspace = true }
 dirs = { workspace = true }

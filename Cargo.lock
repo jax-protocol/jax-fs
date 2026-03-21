@@ -3853,6 +3853,7 @@ dependencies = [
  "jax-common",
  "jax-object-store",
  "libc",
+ "mime",
  "mime_guess",
  "moka",
  "owo-colors",

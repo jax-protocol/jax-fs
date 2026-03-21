@@ -1,15 +1,14 @@
 pub mod actor;
-pub mod database;
 pub mod store;
-pub mod transform;
-
-use std::path::Path;
 
 use bytes::Bytes;
 
-use actor::{CacheActor, CacheHint};
-use database::{CacheDatabase, InsertEntry};
+use actor::CacheHint;
 use store::CacheStore;
+
+use crate::database::models::gateway_cache_entry::UpsertParams;
+use crate::database::models::GatewayCacheEntry;
+use crate::database::Database;
 
 /// Configuration for the gateway cache.
 #[derive(Debug, Clone)]
@@ -37,60 +36,40 @@ impl Default for CacheConfig {
 
 /// Handle for the gateway response cache.
 ///
-/// Provides direct read access (no actor round-trip) and async writes.
-/// The background actor handles eviction and cleanup.
+/// Uses the shared `Database` for layer 1 (path index) and a dedicated
+/// `CacheStore` for layer 2 (content blobs). The background actor handles
+/// eviction and cleanup.
 #[derive(Clone)]
 pub struct GatewayCache {
-    db: CacheDatabase,
+    db: Database,
     store: CacheStore,
     hints_tx: flume::Sender<CacheHint>,
 }
 
 impl GatewayCache {
-    /// Initialize the cache with filesystem storage at the given data directory.
-    pub async fn new(data_dir: &Path, config: CacheConfig) -> Result<Self, GatewayCacheError> {
-        let cache_dir = data_dir.join("gateway-cache");
-        tokio::fs::create_dir_all(&cache_dir)
-            .await
-            .map_err(GatewayCacheError::Io)?;
-
-        let db = CacheDatabase::open(&cache_dir.join("cache.db"))
-            .await
-            .map_err(GatewayCacheError::Database)?;
-        let store = CacheStore::new_local(&cache_dir.join("blobs"))
-            .await
-            .map_err(GatewayCacheError::Store)?;
-
+    /// Initialize the cache and spawn the background eviction actor.
+    pub fn spawn(db: Database, store: CacheStore, config: CacheConfig) -> Self {
         let (hints_tx, hints_rx) = flume::bounded(64);
 
-        // Spawn the background eviction actor
-        let actor = CacheActor::new(db.clone(), store.clone(), config, hints_rx);
+        let actor = actor::CacheActor::new(db.clone(), store.clone(), config, hints_rx);
         tokio::spawn(actor.run());
 
-        Ok(Self {
+        Self {
             db,
             store,
             hints_tx,
-        })
+        }
     }
 
-    /// Create an in-memory cache (for tests).
-    pub async fn new_memory(config: CacheConfig) -> Result<Self, GatewayCacheError> {
-        let db = CacheDatabase::in_memory()
-            .await
-            .map_err(GatewayCacheError::Database)?;
-        let store = CacheStore::new_memory();
-
-        let (hints_tx, hints_rx) = flume::bounded(64);
-
-        let actor = CacheActor::new(db.clone(), store.clone(), config, hints_rx);
-        tokio::spawn(actor.run());
-
-        Ok(Self {
+    /// Create a cache handle without the background actor (for tests).
+    #[cfg(test)]
+    fn new_without_actor(db: Database, store: CacheStore) -> Self {
+        let (hints_tx, _) = flume::bounded(64);
+        Self {
             db,
             store,
             hints_tx,
-        })
+        }
     }
 
     /// Look up cached content. Returns (bytes, mime_type) on hit.
@@ -99,12 +78,10 @@ impl GatewayCache {
         bucket_id: &str,
         height: i64,
         path: &str,
-        transform_params: &str,
+        query_string: &str,
     ) -> Option<(Bytes, String)> {
         // Layer 1: path index lookup
-        let entry = match self
-            .db
-            .lookup(bucket_id, height, path, transform_params)
+        let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, &self.db)
             .await
         {
             Ok(Some(entry)) => entry,
@@ -138,7 +115,7 @@ impl GatewayCache {
         bucket_id: &str,
         height: i64,
         path: &str,
-        transform_params: &str,
+        query_string: &str,
         data: &[u8],
         mime_type: &str,
     ) {
@@ -152,18 +129,19 @@ impl GatewayCache {
         };
 
         // Layer 1: index the path → hash mapping
-        if let Err(e) = self
-            .db
-            .insert(&InsertEntry {
+        if let Err(e) = GatewayCacheEntry::upsert(
+            &UpsertParams {
                 bucket_id,
                 height,
                 path,
-                transform_params,
+                query_string,
                 content_hash: &hash,
                 content_size: data.len() as i64,
                 mime_type,
-            })
-            .await
+            },
+            &self.db,
+        )
+        .await
         {
             tracing::warn!("cache put error (index): {}", e);
         }
@@ -175,37 +153,25 @@ impl GatewayCache {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum GatewayCacheError {
-    #[error("cache database error: {0}")]
-    Database(database::CacheDatabaseError),
-    #[error("cache store error: {0}")]
-    Store(store::CacheStoreError),
-    #[error("I/O error: {0}")]
-    Io(std::io::Error),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test config with eviction disabled so tests don't race with the actor.
-    fn test_config() -> CacheConfig {
-        CacheConfig {
-            max_versions: 100,
-            max_cache_size_bytes: None,
-            max_entry_age_secs: None,
-            eviction_interval_secs: 86400, // 24h — effectively disabled in tests
-        }
+    async fn test_cache() -> GatewayCache {
+        let id = uuid::Uuid::new_v4();
+        let url =
+            url::Url::parse(&format!("sqlite:file:test_{id}?mode=memory&cache=shared")).unwrap();
+        let db = Database::connect(&url).await.unwrap();
+        let store = CacheStore::new_memory();
+        GatewayCache::new_without_actor(db, store)
     }
 
     #[tokio::test]
     async fn test_full_cache_flow() {
-        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
+        let cache = test_cache().await;
 
         // Miss
-        let result = cache.get("bucket-1", 1, "/photo.jpg", "").await;
-        assert!(result.is_none());
+        assert!(cache.get("bucket-1", 1, "/photo.jpg", "").await.is_none());
 
         // Populate
         let data = b"fake jpeg data";
@@ -220,8 +186,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transform_params_cache_separately() {
-        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
+    async fn test_query_string_cache_separately() {
+        let cache = test_cache().await;
 
         cache
             .put("b1", 1, "/photo.jpg", "", b"original", "image/jpeg")
@@ -239,20 +205,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_content_dedup_across_paths() {
-        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
+        let cache = test_cache().await;
         let data = b"same content at different paths";
 
         cache.put("b1", 1, "/a.txt", "", data, "text/plain").await;
         cache.put("b1", 1, "/b.txt", "", data, "text/plain").await;
 
-        // Both paths should hit
         assert!(cache.get("b1", 1, "/a.txt", "").await.is_some());
         assert!(cache.get("b1", 1, "/b.txt", "").await.is_some());
     }
 
     #[tokio::test]
     async fn test_different_heights() {
-        let cache = GatewayCache::new_memory(test_config()).await.unwrap();
+        let cache = test_cache().await;
 
         cache
             .put("b1", 1, "/file.txt", "", b"version 1", "text/plain")
