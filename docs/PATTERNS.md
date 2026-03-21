@@ -443,6 +443,140 @@ If `#[allow(dead_code)]` is needed, the code probably shouldn't exist yet.
 
 ---
 
+## Channels
+
+### Use flume, Not tokio::sync::mpsc
+
+The project uses `flume` for all async channels. Don't introduce `tokio::sync::mpsc`:
+
+```rust
+// Bad
+use tokio::sync::mpsc;
+let (tx, rx) = mpsc::channel(64);
+
+// Good
+let (tx, rx) = flume::bounded(64);
+```
+
+See `sync_provider.rs` for the canonical pattern.
+
+---
+
+## Database Models
+
+### Models Own Their Query Behavior
+
+Database models are structs that define their own query methods, taking `db: &Database` as a parameter. Do **not** add `impl Database` methods in separate files.
+
+```rust
+// Bad — spreading queries across impl Database blocks
+impl Database {
+    pub async fn get_foo(&self, id: &Uuid) -> Result<Foo, sqlx::Error> { ... }
+}
+
+// Good — the model owns its queries
+impl Foo {
+    pub async fn get(id: &Uuid, db: &Database) -> Result<Option<Self>, sqlx::Error> { ... }
+    pub async fn create(name: &str, db: &Database) -> Result<Self, sqlx::Error> { ... }
+}
+```
+
+This matches the `FuseMount` pattern in `database/models/fuse_mount.rs`.
+
+### Append-Only Tables Use INSERT OR IGNORE
+
+Cache and log tables are append-only. Use `INSERT OR IGNORE`, not `INSERT OR REPLACE` — if the key exists, the data hasn't changed:
+
+```rust
+// Bad — overwrites existing entries
+"INSERT OR REPLACE INTO cache ..."
+
+// Good — no-op if key exists
+"INSERT OR IGNORE INTO cache ..."
+```
+
+Name the write method `log()`, not `upsert()` or `insert()`, to signal append-only semantics.
+
+---
+
+## Use Project Type Re-exports
+
+### Import from common, Not Raw Crates
+
+The project re-exports domain types through `common`. Use these, not the underlying crate types directly:
+
+```rust
+// Bad — importing from the raw crate
+use mime::Mime;
+use iroh_blobs::Hash;
+use blake3::Hash;
+
+// Good — using project re-exports
+use common::prelude::Mime;
+use common::linked_data::Hash;
+```
+
+If a type isn't re-exported from common and you need it in multiple crates, add the re-export to `common::prelude` or the appropriate module.
+
+### Import, Don't Inline Paths
+
+If you use a type more than once, import it. Don't repeat full paths:
+
+```rust
+// Bad
+fn foo(m: common::prelude::Mime) -> common::prelude::Mime { ... }
+
+// Good
+use common::prelude::Mime;
+fn foo(m: Mime) -> Mime { ... }
+```
+
+### Don't Recompute Content Hashes
+
+Blobs in jax-bucket are content-addressed — their hash is computed at creation time and stored in `NodeLink`. When caching or processing decrypted data, pass the existing hash through rather than recomputing it:
+
+```rust
+// Bad — redundant BLAKE3 computation
+let link = Hash::new(&decrypted_data);
+
+// Good — use the hash from the source NodeLink
+let (link, _secret, _meta) = match &node_link {
+    NodeLink::Data(link, secret, meta) => (link.hash(), secret, meta),
+    ...
+};
+```
+
+---
+
+## ServiceState
+
+### Don't Accumulate Subsystem State
+
+`ServiceState` holds core infrastructure (database, peer). Feature-specific state belongs with the feature, not in State:
+
+```rust
+// Bad — State grows with every new feature
+pub struct State {
+    database: Database,
+    peer: Peer<Database>,
+    cache_store: Option<Storage>,      // gateway-specific
+    cache_handle: Option<CacheHandle>, // gateway-specific
+}
+
+// Good — feature state lives where it's used
+pub struct State {
+    database: Database,
+    peer: Peer<Database>,
+}
+
+// Cache is set up in run_gateway and extracted from request parts
+impl FromRequestParts<ServiceState> for GatewayCache { ... }
+```
+
+Use axum `Extension` layers and `FromRequestParts` extractors to make feature-specific dependencies available to handlers without polluting State.
+
+---
+
 ## Database Model Types
 
 ### Never Use Raw Strings for Structured Data
@@ -477,16 +611,52 @@ pub struct CacheEntry {
 
 When adding a new domain type that needs SQLite storage, create a wrapper in `database/types/` following the `DCid`/`DUuid` pattern: implement `Encode`, `Decode`, `Type` for `Sqlite`, plus `From` conversions to/from the inner type.
 
+### D-Wrappers Are for Ser/De Only
+
+Database wrapper types (`DUuid`, `DbHash`, `DMime`, etc.) handle SQLite encoding/decoding. They should **never** appear on public struct fields. Public structs use the unwrapped domain types; conversion happens internally:
+
+```rust
+// Bad — D-wrapper leaks into the public API
+pub struct CacheEntry {
+    pub link: DbHash,
+    pub mime_type: DMime,
+}
+
+// Good — public struct uses domain types, internal Row handles ser/de
+pub struct CacheEntry {
+    pub link: Hash,
+    pub mime_type: Mime,
+}
+
+#[derive(FromRow)]
+struct Row {
+    link: DbHash,
+    mime_type: DMime,
+}
+
+impl From<Row> for CacheEntry {
+    fn from(row: Row) -> Self {
+        Self {
+            link: row.link.into(),
+            mime_type: row.mime_type.into(),
+        }
+    }
+}
+```
+
 ### Model Methods Take Typed Parameters
 
-Model methods should accept domain types, not strings:
+Model methods accept domain types, not strings. Convert to D-wrappers internally for binding:
 
 ```rust
 // Bad
 pub async fn lookup(bucket_id: &str, ...) { ... }
 
 // Good
-pub async fn lookup(bucket_id: &Uuid, ...) { ... }
+pub async fn lookup(bucket_id: &Uuid, db: &Database) -> Result<...> {
+    let bid = DUuid::from(*bucket_id);
+    sqlx::query_as(...).bind(bid).fetch_optional(&**db).await
+}
 ```
 
 ---
