@@ -69,7 +69,7 @@ pub async fn get(
     query_string: Option<&str>,
     db: &Database,
     store: &Storage,
-) -> Option<(Bytes, String)> {
+) -> Option<(Bytes, mime::Mime)> {
     // Layer 1: path index lookup
     let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, db).await {
         Ok(Some(entry)) => entry,
@@ -84,7 +84,7 @@ pub async fn get(
 
     // Layer 2: content store lookup
     match store.get_data(&link_hex).await {
-        Ok(Some(data)) => Some((data, entry.mime_type.to_string())),
+        Ok(Some(data)) => Some((data, entry.mime_type)),
         Ok(None) => {
             tracing::debug!(
                 link = %link_hex,
@@ -170,7 +170,7 @@ mod tests {
         // Hit
         let (bytes, mime) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
         assert_eq!(bytes.as_ref(), data);
-        assert_eq!(mime, "image/jpeg");
+        assert_eq!(mime, mime::IMAGE_JPEG);
     }
 
     #[tokio::test]

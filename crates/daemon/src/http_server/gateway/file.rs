@@ -59,7 +59,7 @@ pub struct FileResponse {
 const CACHE_CONTROL_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 /// Serve cached content directly, bypassing all mount traversal and decryption.
-pub fn serve_cached(data: Bytes, mime_type: &str, absolute_path: &str) -> Response {
+pub fn serve_cached(data: Bytes, mime_type: &mime::Mime, absolute_path: &str) -> Response {
     let filename = std::path::Path::new(absolute_path)
         .file_name()
         .and_then(|n| n.to_str())
