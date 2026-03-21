@@ -2,6 +2,7 @@ use askama::Template;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use common::mount::{Mount, NodeLink};
+use common::prelude::Mime;
 use serde::Deserialize;
 
 use super::transform::{TransformError, TransformParams};
@@ -46,7 +47,7 @@ pub struct GatewayViewerTemplate {
 /// Data that can be cached by the gateway layer.
 pub struct CacheableData {
     pub data: Vec<u8>,
-    pub mime_type: String,
+    pub mime_type: Mime,
 }
 
 /// Response from the file handler, with optional cacheable data.
@@ -59,11 +60,7 @@ pub struct FileResponse {
 const CACHE_CONTROL_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
 /// Serve cached content directly, bypassing all mount traversal and decryption.
-pub fn serve_cached(
-    data: Bytes,
-    mime_type: &common::prelude::Mime,
-    absolute_path: &str,
-) -> Response {
+pub fn serve_cached(data: Bytes, mime_type: &Mime, absolute_path: &str) -> Response {
     let filename = std::path::Path::new(absolute_path)
         .file_name()
         .and_then(|n| n.to_str())
@@ -103,8 +100,8 @@ pub async fn handler(
 
     let mime_type = file_metadata_data
         .mime()
-        .map(|m| m.to_string())
-        .unwrap_or_else(|| "application/octet-stream".to_string());
+        .cloned()
+        .unwrap_or(mime::APPLICATION_OCTET_STREAM);
 
     let filename = path_buf
         .file_name()
@@ -140,10 +137,8 @@ pub async fn handler(
 
     // Apply image transform if requested and applicable
     let (file_data, mime_type) = if let Some(ref params) = transform {
-        let parsed_mime: common::prelude::Mime =
-            mime_type.parse().unwrap_or(mime::APPLICATION_OCTET_STREAM);
-        if TransformParams::is_transformable(&parsed_mime) {
-            match super::transform::transform_image(&file_data, &parsed_mime, params) {
+        if TransformParams::is_transformable(&mime_type) {
+            match super::transform::transform_image(&file_data, &mime_type, params) {
                 Ok(transformed) => (transformed, mime_type),
                 Err(TransformError::UnsupportedFormat(_)) => {
                     // Not an image type we can transform, serve as-is
@@ -165,6 +160,7 @@ pub async fn handler(
         (file_data, mime_type)
     };
 
+    let mime_str = mime_type.to_string();
     let size_formatted = format_bytes(file_data.len());
 
     // If download is requested, serve with attachment disposition (not cacheable)
@@ -173,7 +169,7 @@ pub async fn handler(
             response: (
                 axum::http::StatusCode::OK,
                 [
-                    (axum::http::header::CONTENT_TYPE, mime_type.as_str()),
+                    (axum::http::header::CONTENT_TYPE, mime_str.as_str()),
                     (
                         axum::http::header::CONTENT_DISPOSITION,
                         &format!("attachment; filename=\"{}\"", filename),
@@ -190,8 +186,8 @@ pub async fn handler(
     // - Render HTML/Markdown with URL rewriting
     // - Serve other files raw inline
     if query.viewer.is_none() {
-        let is_html = mime_type == "text/html";
-        let is_markdown = mime_type == "text/markdown";
+        let is_html = mime_type == mime::TEXT_HTML;
+        let is_markdown = mime_type.essence_str() == "text/markdown";
 
         if is_html || is_markdown {
             let (final_content, final_mime_type) = if is_markdown {
@@ -235,10 +231,7 @@ pub async fn handler(
             response: (
                 axum::http::StatusCode::OK,
                 [
-                    (
-                        axum::http::header::CONTENT_TYPE,
-                        mime_type.as_str().to_string(),
-                    ),
+                    (axum::http::header::CONTENT_TYPE, mime_str.clone()),
                     (
                         axum::http::header::CONTENT_DISPOSITION,
                         format!("inline; filename=\"{}\"", filename),
@@ -266,10 +259,7 @@ pub async fn handler(
             response: (
                 axum::http::StatusCode::OK,
                 [
-                    (
-                        axum::http::header::CONTENT_TYPE,
-                        mime_type.as_str().to_string(),
-                    ),
+                    (axum::http::header::CONTENT_TYPE, mime_str.clone()),
                     (
                         axum::http::header::CONTENT_DISPOSITION,
                         format!("inline; filename=\"{}\"", filename),
@@ -287,10 +277,10 @@ pub async fn handler(
     }
 
     // Render file viewer template (not cacheable)
-    let content = if mime_type.starts_with("text/")
-        || mime_type == "application/json"
-        || mime_type == "application/xml"
-        || mime_type == "application/javascript"
+    let content = if mime_type.type_() == mime::TEXT
+        || mime_type == mime::APPLICATION_JSON
+        || mime_type.essence_str() == "application/xml"
+        || mime_type == mime::APPLICATION_JAVASCRIPT
     {
         String::from_utf8_lossy(&file_data).to_string()
     } else {
@@ -307,7 +297,7 @@ pub async fn handler(
         bucket_link_short: meta.link_short.to_string(),
         file_path: absolute_path.to_string(),
         file_name: filename,
-        mime_type,
+        mime_type: mime_str,
         size_formatted,
         content,
         back_url,

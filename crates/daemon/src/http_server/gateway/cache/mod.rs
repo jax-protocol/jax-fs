@@ -3,6 +3,7 @@ pub mod actor;
 use std::path::Path;
 
 use bytes::Bytes;
+use common::prelude::Mime;
 use object_store::Storage;
 use uuid::Uuid;
 
@@ -69,7 +70,7 @@ pub async fn get(
     query_string: Option<&str>,
     db: &Database,
     store: &Storage,
-) -> Option<(Bytes, common::prelude::Mime)> {
+) -> Option<(Bytes, Mime)> {
     // Layer 1: path index lookup
     let entry = match GatewayCacheEntry::lookup(bucket_id, height, path, query_string, db).await {
         Ok(Some(entry)) => entry,
@@ -107,30 +108,21 @@ pub async fn put(
     path: &Path,
     query_string: Option<&str>,
     data: &[u8],
-    mime_type: &str,
+    mime_type: &Mime,
     db: &Database,
     store: &Storage,
 ) {
-    // Compute content-addressed link
+    // Content-addressed link — trust the BLAKE3 hash
     let link = common::linked_data::Hash::new(data);
-    let link_hex = link.to_string();
 
-    // Layer 2: store content (content-addressed, deduped automatically)
+    // Layer 2: store content (deduped by hash automatically)
     if let Err(e) = store
-        .put_data(&link_hex, Bytes::copy_from_slice(data))
+        .put_data(&link.to_string(), Bytes::copy_from_slice(data))
         .await
     {
         tracing::warn!("cache put error (store): {}", e);
         return;
     }
-
-    let mime: common::prelude::Mime = match mime_type.parse() {
-        Ok(m) => m,
-        Err(e) => {
-            tracing::warn!("cache put error (invalid mime): {}", e);
-            return;
-        }
-    };
 
     // Layer 1: index the path → link mapping
     if let Err(e) = GatewayCacheEntry::log(
@@ -140,7 +132,7 @@ pub async fn put(
         query_string,
         &link,
         data.len() as u64,
-        &mime,
+        mime_type,
         db,
     )
     .await
@@ -165,7 +157,7 @@ mod tests {
 
         // Populate
         let data = b"fake jpeg data";
-        put(&bucket, 1, path, None, data, "image/jpeg", &db, &store).await;
+        put(&bucket, 1, path, None, data, &mime::IMAGE_JPEG, &db, &store).await;
 
         // Hit
         let (bytes, mime) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
@@ -186,7 +178,7 @@ mod tests {
             path,
             None,
             b"original",
-            "image/jpeg",
+            &mime::IMAGE_JPEG,
             &db,
             &store,
         )
@@ -197,7 +189,7 @@ mod tests {
             path,
             Some("w=200"),
             b"thumbnail",
-            "image/jpeg",
+            &mime::IMAGE_JPEG,
             &db,
             &store,
         )
@@ -225,7 +217,7 @@ mod tests {
             Path::new("/a.txt"),
             None,
             data,
-            "text/plain",
+            &mime::TEXT_PLAIN,
             &db,
             &store,
         )
@@ -236,7 +228,7 @@ mod tests {
             Path::new("/b.txt"),
             None,
             data,
-            "text/plain",
+            &mime::TEXT_PLAIN,
             &db,
             &store,
         )
@@ -263,7 +255,7 @@ mod tests {
             path,
             None,
             b"version 1",
-            "text/plain",
+            &mime::TEXT_PLAIN,
             &db,
             &store,
         )
@@ -274,7 +266,7 @@ mod tests {
             path,
             None,
             b"version 2",
-            "text/plain",
+            &mime::TEXT_PLAIN,
             &db,
             &store,
         )
