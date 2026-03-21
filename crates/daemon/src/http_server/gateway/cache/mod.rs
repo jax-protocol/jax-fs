@@ -100,21 +100,20 @@ pub async fn get(
     }
 }
 
-/// Populate the cache with content.
+/// Populate the cache with content. The link is the content-addressed hash
+/// from the source blob — no rehashing needed.
 #[allow(clippy::too_many_arguments)]
 pub async fn put(
     bucket_id: &Uuid,
     height: u64,
     path: &Path,
     query_string: Option<&str>,
+    link: &common::linked_data::Hash,
     data: &[u8],
     mime_type: &Mime,
     db: &Database,
     store: &Storage,
 ) {
-    // Content-addressed link — trust the BLAKE3 hash
-    let link = common::linked_data::Hash::new(data);
-
     // Layer 2: store content (deduped by hash automatically)
     if let Err(e) = store
         .put_data(&link.to_string(), Bytes::copy_from_slice(data))
@@ -130,7 +129,7 @@ pub async fn put(
         height,
         path,
         query_string,
-        &link,
+        link,
         data.len() as u64,
         mime_type,
         db,
@@ -143,6 +142,8 @@ pub async fn put(
 
 #[cfg(test)]
 mod tests {
+    use common::linked_data::Hash;
+
     use super::*;
 
     #[tokio::test]
@@ -157,7 +158,19 @@ mod tests {
 
         // Populate
         let data = b"fake jpeg data";
-        put(&bucket, 1, path, None, data, &mime::IMAGE_JPEG, &db, &store).await;
+        let link = Hash::new(data);
+        put(
+            &bucket,
+            1,
+            path,
+            None,
+            &link,
+            data,
+            &mime::IMAGE_JPEG,
+            &db,
+            &store,
+        )
+        .await;
 
         // Hit
         let (bytes, mime) = get(&bucket, 1, path, None, &db, &store).await.unwrap();
@@ -172,23 +185,27 @@ mod tests {
         let bucket = Uuid::new_v4();
         let path = Path::new("/photo.jpg");
 
+        let orig = b"original";
         put(
             &bucket,
             1,
             path,
             None,
-            b"original",
+            &Hash::new(orig),
+            orig,
             &mime::IMAGE_JPEG,
             &db,
             &store,
         )
         .await;
+        let thumb = b"thumbnail";
         put(
             &bucket,
             1,
             path,
             Some("w=200"),
-            b"thumbnail",
+            &Hash::new(thumb),
+            thumb,
             &mime::IMAGE_JPEG,
             &db,
             &store,
@@ -210,12 +227,14 @@ mod tests {
         let store = Storage::memory();
         let bucket = Uuid::new_v4();
         let data = b"same content at different paths";
+        let link = Hash::new(data);
 
         put(
             &bucket,
             1,
             Path::new("/a.txt"),
             None,
+            &link,
             data,
             &mime::TEXT_PLAIN,
             &db,
@@ -227,6 +246,7 @@ mod tests {
             1,
             Path::new("/b.txt"),
             None,
+            &link,
             data,
             &mime::TEXT_PLAIN,
             &db,
@@ -249,12 +269,15 @@ mod tests {
         let bucket = Uuid::new_v4();
         let path = Path::new("/file.txt");
 
+        let v1_data = b"version 1";
+        let v2_data = b"version 2";
         put(
             &bucket,
             1,
             path,
             None,
-            b"version 1",
+            &Hash::new(v1_data),
+            v1_data,
             &mime::TEXT_PLAIN,
             &db,
             &store,
@@ -265,7 +288,8 @@ mod tests {
             2,
             path,
             None,
-            b"version 2",
+            &Hash::new(v2_data),
+            v2_data,
             &mime::TEXT_PLAIN,
             &db,
             &store,

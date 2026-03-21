@@ -250,6 +250,7 @@ pub async fn handler(
                 height,
                 &path_buf,
                 cache_qs_ref,
+                &cacheable.link,
                 &cacheable.data,
                 &cacheable.mime_type,
                 state.database(),

@@ -1,6 +1,7 @@
 use askama::Template;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
+use common::linked_data::Hash;
 use common::mount::{Mount, NodeLink};
 use common::prelude::Mime;
 use serde::Deserialize;
@@ -46,6 +47,7 @@ pub struct GatewayViewerTemplate {
 
 /// Data that can be cached by the gateway layer.
 pub struct CacheableData {
+    pub link: Hash,
     pub data: Vec<u8>,
     pub mime_type: Mime,
 }
@@ -93,8 +95,8 @@ pub async fn handler(
     meta: &super::BucketMeta<'_>,
     node_link: NodeLink,
 ) -> FileResponse {
-    let file_metadata_data = match &node_link {
-        NodeLink::Data(_, _, metadata) => metadata.clone(),
+    let (content_link, file_metadata_data) = match &node_link {
+        NodeLink::Data(link, _, metadata) => (link.hash(), metadata.clone()),
         _ => unreachable!("Already checked is_directory"),
     };
 
@@ -223,6 +225,7 @@ pub async fn handler(
 
         // Non-HTML/Markdown: serve raw and cache
         let cacheable = Some(CacheableData {
+            link: content_link,
             data: file_data.clone(),
             mime_type: mime_type.clone(),
         });
@@ -251,6 +254,7 @@ pub async fn handler(
     // viewer=false: serve raw file inline
     if !wants_viewer {
         let cacheable = Some(CacheableData {
+            link: content_link,
             data: file_data.clone(),
             mime_type: mime_type.clone(),
         });
