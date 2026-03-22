@@ -15,29 +15,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
-## v0.1.15 (2026-03-19)
+## v0.1.16 (2026-03-21)
 
-### Bug Fixes
+### New Features
 
- - <csr-id-e474643292f567e1148e175932da4cda220dd4d8/> invalidate parent cache on create, extend e2e with FUSE tests
-   * fix(fuse): invalidate parent cache on create, extend e2e with FUSE tests
+ - <csr-id-9c8bcce6898c669f99db2de72afeda54f7d82555/> response cache + image transform
+   * feat(gateway): add two-tier response cache and image transform
    
-   Fix a bug where files created via shell redirect (echo > file.txt)
-   could not immediately be renamed (mv file.txt other.md → ENOENT).
-   The root cause was that create() did not invalidate the parent
-   directory cache after creating a file, while mkdir() already did.
+   Add a gateway response cache that eliminates repeated tree traversal,
+   decryption, and image transformation on cache hit.
    
-   Also extends the e2e test system to detect FUSE availability, run
-   filesystem operation tests (including the create-then-rename
-   regression), and report FUSE test results accurately in the test plan.
+   Cache architecture:
+   - Layer 1 (Path Index): SQLite-backed mapping of (bucket_id, height,
+     path, transform_params) to content hash
+   - Layer 2 (Content Store): BLAKE3-addressed blob store for
+     decrypted/transformed content, naturally deduplicated
+   - Background actor for periodic eviction (old heights, LRU, TTL)
+   
+   Image transform API via query params on existing gateway routes:
+   - ?w=400 — resize to width (maintains aspect ratio)
+   - ?w=400&h=300 — resize to exact dimensions
+   - ?q=75 — output quality 1-100 (JPEG/WebP)
+   - Supports JPEG, PNG, WebP, GIF
+   - Caps dimensions at 4096px, validates params
+   
+   Cached/transformed responses include Cache-Control: public,
+   max-age=31536000, immutable.
 
 ### Commit Statistics
 
 <csr-read-only-do-not-edit/>
 
  - 1 commit contributed to the release.
+ - 2 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#154](https://github.com/jax-protocol/jax-fs/issues/154)
+ - 1 unique issue was worked on: [#156](https://github.com/jax-protocol/jax-fs/issues/156)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#156](https://github.com/jax-protocol/jax-fs/issues/156)**
+    - Response cache + image transform ([`9c8bcce`](https://github.com/jax-protocol/jax-fs/commit/9c8bcce6898c669f99db2de72afeda54f7d82555))
+</details>
+
+## v0.1.15 (2026-03-19)
+
+### Chore
+
+ - <csr-id-c6f6d9cb7abe6303c46036f755f5934fe4f93717/> release updates
+   * Bump jax-daemon v0.1.15
+   
+   * Bump jax-desktop v0.1.3
+   
+   ---------
+
+### Bug Fixes
+
+ - <csr-id-e474643292f567e1148e175932da4cda220dd4d8/> invalidate parent cache on create, extend e2e with FUSE tests
+   * fix(fuse): invalidate parent cache on create, extend e2e with FUSE tests
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 2 commits contributed to the release.
+ - 2 commits were understood as [conventional](https://www.conventionalcommits.org).
+ - 2 unique issues were worked on: [#154](https://github.com/jax-protocol/jax-fs/issues/154), [#155](https://github.com/jax-protocol/jax-fs/issues/155)
 
 ### Commit Details
 
@@ -47,7 +93,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#154](https://github.com/jax-protocol/jax-fs/issues/154)**
     - Invalidate parent cache on create, extend e2e with FUSE tests ([`e474643`](https://github.com/jax-protocol/jax-fs/commit/e474643292f567e1148e175932da4cda220dd4d8))
+ * **[#155](https://github.com/jax-protocol/jax-fs/issues/155)**
+    - Release updates ([`c6f6d9c`](https://github.com/jax-protocol/jax-fs/commit/c6f6d9cb7abe6303c46036f755f5934fe4f93717))
 </details>
+
+<csr-unknown>
+Fix a bug where files created via shell redirect (echo > file.txt)could not immediately be renamed (mv file.txt other.md → ENOENT).The root cause was that create() did not invalidate the parentdirectory cache after creating a file, while mkdir() already did.Also extends the e2e test system to detect FUSE availability, runfilesystem operation tests (including the create-then-renameregression), and report FUSE test results accurately in the test plan.<csr-unknown/>
 
 ## v0.1.14 (2026-03-19)
 
@@ -59,15 +110,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - <csr-id-bcfb790dca89b970bc8091f9a9093274932a57be/> bucket allowlist with approval, removal, and sync filtering
    * feat: add bucket allowlist with approval, removal, and sync filtering
-- Add bucket_status table with migration
-- Extend BucketLogProvider trait with should_sync_content,
-     on_new_bucket_discovered, and list_syncable_buckets
-- Gate pin/blob downloads on bucket status in sync_bucket
-- Filter periodic pings to only active buckets
-- New POST /api/v0/bucket/approve and /ignore endpoints
-- Add status field and filter to bucket list API
-- Auto-set active status on self-created buckets
-- Unmount FUSE mounts when ignoring a bucket
 * feat(gateway): add version endpoint for latest published bucket version
 
 ### Bug Fixes
@@ -84,10 +126,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    starving sync/download jobs and flooding the bounded queue. This change:
    
    - Adds 5s timeout to ping operations (peer unavailability returns Ok)
-- Spawns ping jobs concurrently (semaphore-capped at 10) instead of
-     blocking the worker loop
-- Increases periodic ping interval from 60s to 5 minutes
-- Skips periodic batch if previous is still in flight
 
 ### Other
 
@@ -125,7 +163,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 </details>
 
 <csr-unknown>
-Introduces a bucket status model (pending/active/ignored) so peers canapprove incoming shares before syncing content, and ignore buckets theydon’t want. Bucket log entries are preserved as an audit trail. add version endpoint for latest published bucket versionAdd GET /gw/:bucket_id/version endpoint that returns JSON metadata forthe latest published version of a bucket. This provides a machine-friendlyway for CI/CD, scripts, and frontends to query version info without theadmin API.Returns 404 when bucket or published version not found, 503 when syncing.Route is registered before the wildcard catch-all to avoid conflicts.<csr-unknown/>
+Add bucket_status table with migrationExtend BucketLogProvider trait with should_sync_content,on_new_bucket_discovered, and list_syncable_bucketsGate pin/blob downloads on bucket status in sync_bucketFilter periodic pings to only active bucketsNew POST /api/v0/bucket/approve and /ignore endpointsAdd status field and filter to bucket list APIAuto-set active status on self-created bucketsUnmount FUSE mounts when ignoring a bucketSpawns ping jobs concurrently (semaphore-capped at 10) instead ofblocking the worker loopIncreases periodic ping interval from 60s to 5 minutesSkips periodic batch if previous is still in flight<csr-unknown/>
 
 ## v0.1.13 (2026-03-19)
 

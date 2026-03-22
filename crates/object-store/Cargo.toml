@@ -1,6 +1,6 @@
 [package]
 name = "jax-object-store"
-version = "0.1.3"
+version = "0.1.4"
 edition.workspace = true
 description = "SQLite + object storage backend for blob data"
 readme = "README.md"
