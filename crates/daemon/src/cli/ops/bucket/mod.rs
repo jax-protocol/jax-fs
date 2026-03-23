@@ -8,6 +8,7 @@ pub mod create;
 pub mod list;
 pub mod ls;
 pub mod publish;
+pub mod rm;
 pub mod shares;
 pub mod stat;
 pub mod unpublish;
@@ -20,6 +21,7 @@ crate::command_enum! {
     (Add, add::Add),
     (Ls, ls::Ls),
     (Cat, cat::Cat),
+    (Rm, rm::Rm),
     (Shares, shares::Shares),
     (Stat, stat::Stat),
     (Clone, clone::Clone),

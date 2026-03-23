@@ -157,4 +157,10 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     async fn list_syncable_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>> {
         self.list_buckets().await
     }
+
+    /// Called when a synced manifest no longer contains our key in shares.
+    /// Implementations should transition the bucket to Ignored status.
+    async fn on_peer_removed(&self, _id: Uuid) -> Result<(), BucketLogError<Self::Error>> {
+        Ok(())
+    }
 }

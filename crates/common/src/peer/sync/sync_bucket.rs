@@ -161,7 +161,17 @@ where
             );
         }
         ProvenanceResult::NotAuthorized => {
-            tracing::warn!("Provenance verification failed: our key not in bucket shares");
+            tracing::warn!(
+                "Removed from bucket {} shares — transitioning to ignored",
+                job.bucket_id
+            );
+            if let Err(e) = peer.logs().on_peer_removed(job.bucket_id).await {
+                tracing::warn!(
+                    "Failed to set bucket {} to ignored after removal: {}",
+                    job.bucket_id,
+                    e
+                );
+            }
             return Ok(());
         }
     }

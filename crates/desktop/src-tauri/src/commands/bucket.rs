@@ -20,6 +20,7 @@ use jax_daemon::http_server::api::v0::bucket::{
     mv::MvRequest,
     ping::PingRequest,
     publish::PublishRequest,
+    remove::RemoveRequest,
     rename::RenameRequest,
     share::{ShareRequest, ShareRole},
     shares::SharesRequest,
@@ -147,6 +148,20 @@ pub async fn delete_bucket(state: State<'_, AppState>, bucket_id: String) -> Res
         .call(DeleteRequest {
             bucket_id: bucket_uuid,
             path: "/".to_string(),
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Remove a bucket (set to ignored, stop sync, unmount FUSE)
+#[tauri::command]
+pub async fn remove_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
+    let mut client = get_client(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+    client
+        .call(RemoveRequest {
+            bucket_id: bucket_uuid,
         })
         .await
         .map_err(|e| e.to_string())?;

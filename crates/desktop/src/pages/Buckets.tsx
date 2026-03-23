@@ -1,6 +1,7 @@
 import { Component, createSignal, onMount, For, Show } from 'solid-js';
 import { A } from '@solidjs/router';
-import { listBuckets, createBucket, BucketInfo, isFuseAvailable, isBucketMounted, mountBucket, unmountBucket, MountInfo } from '../lib/api';
+import { listBuckets, createBucket, removeBucket, BucketInfo, isFuseAvailable, isBucketMounted, mountBucket, unmountBucket, MountInfo } from '../lib/api';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const Buckets: Component = () => {
   const [buckets, setBuckets] = createSignal<BucketInfo[]>([]);
@@ -11,6 +12,7 @@ const Buckets: Component = () => {
   const [fuseAvailable, setFuseAvailable] = createSignal(false);
   const [mountStatus, setMountStatus] = createSignal<Record<string, MountInfo | null>>({});
   const [mountingBucket, setMountingBucket] = createSignal<string | null>(null);
+  const [removingBucket, setRemovingBucket] = createSignal<BucketInfo | null>(null);
 
   const fetchBuckets = async () => {
     try {
@@ -84,6 +86,27 @@ const Buckets: Component = () => {
       setError(String(e));
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleRemoveBucket = async (bucket: BucketInfo, e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRemovingBucket(bucket);
+  };
+
+  const confirmRemoveBucket = async () => {
+    const bucket = removingBucket();
+    if (!bucket) return;
+
+    try {
+      setError(null);
+      await removeBucket(bucket.bucket_id);
+      setRemovingBucket(null);
+      await fetchBuckets();
+    } catch (err) {
+      setError(String(err));
+      setRemovingBucket(null);
     }
   };
 
@@ -322,13 +345,31 @@ const Buckets: Component = () => {
                     <span style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)' }}>
                       {new Date(bucket.created_at).toLocaleDateString()}
                     </span>
-                    <span style={{
-                      'font-size': '0.75rem',
-                      'font-weight': '500',
-                      color: 'var(--fg)',
-                    }}>
-                      Open
-                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem', 'align-items': 'center' }}>
+                      <button
+                        onClick={(e) => handleRemoveBucket(bucket, e)}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          'border-radius': '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg)',
+                          color: 'var(--accent-red)',
+                          cursor: 'pointer',
+                          'font-size': '0.6875rem',
+                          'font-weight': '500',
+                          'font-family': 'inherit',
+                        }}
+                      >
+                        Remove
+                      </button>
+                      <span style={{
+                        'font-size': '0.75rem',
+                        'font-weight': '500',
+                        color: 'var(--fg)',
+                      }}>
+                        Open
+                      </span>
+                    </div>
                   </div>
                 </div>
               </A>
@@ -336,6 +377,15 @@ const Buckets: Component = () => {
           </For>
         </div>
       </Show>
+
+      <ConfirmDialog
+        open={removingBucket() !== null}
+        title="Remove Bucket"
+        message={`Remove "${removingBucket()?.name}" from this node? Sync will stop and any FUSE mounts will be unmounted. The bucket log is preserved.`}
+        confirmLabel="Remove"
+        onConfirm={confirmRemoveBucket}
+        onCancel={() => setRemovingBucket(null)}
+      />
     </div>
   );
 };

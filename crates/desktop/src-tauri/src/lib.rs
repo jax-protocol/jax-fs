@@ -107,6 +107,7 @@ pub fn run() {
             commands::bucket::list_buckets,
             commands::bucket::create_bucket,
             commands::bucket::delete_bucket,
+            commands::bucket::remove_bucket,
             commands::bucket::ls,
             commands::bucket::cat,
             commands::bucket::add_file,

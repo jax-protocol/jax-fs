@@ -18,6 +18,7 @@ pub mod mkdir;
 pub mod mv;
 pub mod ping;
 pub mod publish;
+pub mod remove;
 pub mod rename;
 pub mod share;
 pub mod shares;
@@ -31,6 +32,7 @@ pub use approve::ApproveRequest;
 pub use create::CreateRequest;
 pub use ignore::IgnoreRequest;
 pub use list::ListRequest;
+pub use remove::RemoveRequest;
 pub use share::ShareRequest;
 pub use shares::SharesRequest;
 pub use unshare::UnshareRequest;
@@ -59,5 +61,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/stat", post(stat::handler))
         .route("/approve", post(approve::handler))
         .route("/ignore", post(ignore::handler))
+        .route("/remove", post(remove::handler))
         .with_state(state)
 }

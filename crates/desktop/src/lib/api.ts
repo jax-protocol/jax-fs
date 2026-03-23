@@ -59,6 +59,10 @@ export async function deleteBucket(bucketId: string): Promise<void> {
   return invoke('delete_bucket', { bucketId });
 }
 
+export async function removeBucket(bucketId: string): Promise<void> {
+  return invoke('remove_bucket', { bucketId });
+}
+
 export async function ls(bucketId: string, path: string): Promise<FileEntry[]> {
   return invoke('ls', { bucketId, path });
 }

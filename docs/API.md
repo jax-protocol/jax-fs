@@ -374,6 +374,31 @@ Response:
 }
 ```
 
+### POST /api/v0/bucket/remove - Remove Bucket
+
+Removes a bucket from the local node. Sets status to ignored, stops sync, and unmounts any FUSE mounts. Preserves the bucket log as an audit trail.
+
+```bash
+curl -X POST http://localhost:5001/api/v0/bucket/remove \
+  -H "Content-Type: application/json" \
+  -d '{"bucket_id": "550e8400-..."}'
+```
+
+Request:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+Response:
+```json
+{
+  "bucket_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "ignored"
+}
+```
+
 ### POST /api/v0/bucket/export - Export Bucket
 
 Exports bucket contents.

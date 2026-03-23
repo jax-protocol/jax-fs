@@ -251,6 +251,15 @@ impl BucketLogProvider for Database {
             .map_err(common::bucket_log::BucketLogError::Provider)
     }
 
+    async fn on_peer_removed(
+        &self,
+        id: Uuid,
+    ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
+        self.set_bucket_status(&id, BucketStatus::Ignored, None)
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)
+    }
+
     async fn list_syncable_buckets(
         &self,
     ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {

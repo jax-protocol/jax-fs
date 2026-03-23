@@ -8,12 +8,11 @@ use jax_daemon::http_server::api::client::{resolve_bucket, ApiError};
 use jax_daemon::http_server::api::v0::bucket::unshare::{UnshareRequest, UnshareResponse};
 
 #[derive(Args, Debug, Clone)]
-pub struct Remove {
+pub struct Rm {
     /// Bucket name or UUID
     pub bucket: String,
 
     /// Public key of the peer to remove (hex-encoded)
-    #[arg(long)]
     pub peer_public_key: String,
 }
 
@@ -45,7 +44,7 @@ pub enum ShareRemoveError {
 }
 
 #[async_trait::async_trait]
-impl crate::cli::op::Op for Remove {
+impl crate::cli::op::Op for Rm {
     type Error = ShareRemoveError;
     type Output = ShareRemoveOutput;
 

@@ -2,14 +2,14 @@ use clap::{Args, Subcommand};
 
 pub mod create;
 pub mod ls;
-pub mod remove;
+pub mod rm;
 
 use crate::cli::op::Op;
 
 crate::command_enum! {
     (Create, create::Create),
     (Ls, ls::Ls),
-    (Remove, remove::Remove),
+    (Rm, rm::Rm),
 }
 
 // Rename the generated Command to SharesCommand for clarity
