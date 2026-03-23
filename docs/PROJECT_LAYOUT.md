@@ -13,7 +13,7 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
 - `src/lib.rs` - Library entry point, re-exports service modules and state
 - `src/main.rs` - Binary entry point, CLI parsing
 - `src/http_server/` - HTTP servers (API + gateway)
-  - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, shares, etc.)
+  - `api/v0/bucket/` - REST API handlers (add, cat, create, delete, remove, shares, etc.)
   - `api/v0/mounts/` - FUSE mount REST API (create, list, get, update, delete, start, stop)
   - `api/client/` - API client for CLI commands and FUSE operations
   - `gateway/` - Gateway handlers for published content
@@ -45,9 +45,10 @@ The main binary (`jax-daemon`) and library (`jax_daemon`). The library exports d
   - `op.rs` - Op trait, OpContext, and command_enum macro
   - `ui.rs` - Shared CLI formatting (status symbols, colors, tables, truncation, `--plain` mode)
   - `ops/` - CLI command implementations (bucket, daemon, health, init, mount, version)
+    - `bucket/rm.rs` - Remove bucket subcommand (sets ignored, stops sync)
     - `bucket/publish.rs` - Publish bucket subcommand
     - `bucket/unpublish.rs` - Unpublish bucket subcommand
-    - `bucket/shares/` - Share management subcommands (create, ls)
+    - `bucket/shares/` - Share management subcommands (create, ls, rm)
     - `mount/` - Mount CLI commands (list, add, remove, start, stop, set) — gated behind `fuse` feature
     - `update.rs` - Self-update command (detects install method, platform, FUSE; delegates to install.sh)
 
