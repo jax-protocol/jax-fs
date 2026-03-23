@@ -24,7 +24,7 @@ impl fmt::Display for IgnoreOutput {
         writeln!(
             f,
             "{}",
-            ui::success("Ignored", &format!("bucket {}", self.bucket_id))
+            ui::warning(&format!("Ignored bucket {}", self.bucket_id))
         )?;
         write!(f, "{}", ui::label("status", &self.status))
     }
