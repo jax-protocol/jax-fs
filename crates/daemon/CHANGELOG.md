@@ -15,6 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI tool for JaxBucket
 - Encrypted storage bucket management
 
+## v0.1.17 (2026-03-25)
+
+### New Features
+
+ - <csr-id-d7eb43f96b1ed25ab54b563ddbe08ae6b8a035e5/> add bucket approve and ignore commands
+
+### Commit Statistics
+
+<csr-read-only-do-not-edit/>
+
+ - 1 commit contributed to the release.
+ - 3 days passed between releases.
+ - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
+ - 1 unique issue was worked on: [#158](https://github.com/jax-protocol/jax-fs/issues/158)
+
+### Commit Details
+
+<csr-read-only-do-not-edit/>
+
+<details><summary>view details</summary>
+
+ * **[#158](https://github.com/jax-protocol/jax-fs/issues/158)**
+    - Add bucket approve and ignore commands ([`d7eb43f`](https://github.com/jax-protocol/jax-fs/commit/d7eb43f96b1ed25ab54b563ddbe08ae6b8a035e5))
+</details>
+
 ## v0.1.16 (2026-03-21)
 
 ### New Features
@@ -27,9 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    
    Cache architecture:
    - Layer 1 (Path Index): SQLite-backed mapping of (bucket_id, height,
-     path, transform_params) to content hash
+   path, transform_params) to content hash
    - Layer 2 (Content Store): BLAKE3-addressed blob store for
-     decrypted/transformed content, naturally deduplicated
+   decrypted/transformed content, naturally deduplicated
    - Background actor for periodic eviction (old heights, LRU, TTL)
    
    Image transform API via query params on existing gateway routes:
@@ -46,10 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
+ - 2 commits contributed to the release.
  - 2 days passed between releases.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
- - 1 unique issue was worked on: [#156](https://github.com/jax-protocol/jax-fs/issues/156)
+ - 2 unique issues were worked on: [#156](https://github.com/jax-protocol/jax-fs/issues/156), [#157](https://github.com/jax-protocol/jax-fs/issues/157)
 
 ### Commit Details
 
@@ -59,9 +84,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * **[#156](https://github.com/jax-protocol/jax-fs/issues/156)**
     - Response cache + image transform ([`9c8bcce`](https://github.com/jax-protocol/jax-fs/commit/9c8bcce6898c669f99db2de72afeda54f7d82555))
+ * **[#157](https://github.com/jax-protocol/jax-fs/issues/157)**
+    - Bump jax-object-store v0.1.4, jax-common v0.1.11, jax-daemon v0.1.16 ([`5c01ce1`](https://github.com/jax-protocol/jax-fs/commit/5c01ce1b35355dd315219b87e1908c512fb277b3))
 </details>
 
 ## v0.1.15 (2026-03-19)
+
+<csr-id-c6f6d9cb7abe6303c46036f755f5934fe4f93717/>
 
 ### Chore
 
@@ -96,9 +125,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  * **[#155](https://github.com/jax-protocol/jax-fs/issues/155)**
     - Release updates ([`c6f6d9c`](https://github.com/jax-protocol/jax-fs/commit/c6f6d9cb7abe6303c46036f755f5934fe4f93717))
 </details>
-
-<csr-unknown>
-Fix a bug where files created via shell redirect (echo > file.txt)could not immediately be renamed (mv file.txt other.md → ENOENT).The root cause was that create() did not invalidate the parentdirectory cache after creating a file, while mkdir() already did.Also extends the e2e test system to detect FUSE availability, runfilesystem operation tests (including the create-then-renameregression), and report FUSE test results accurately in the test plan.<csr-unknown/>
 
 ## v0.1.14 (2026-03-19)
 
@@ -161,9 +187,6 @@ Fix a bug where files created via shell redirect (echo > file.txt)could not imme
  * **Uncategorized**
     - Add fuse/no-fuse matrix to Rust CI and Linux FUSE release variant ([`54d05fe`](https://github.com/jax-protocol/jax-fs/commit/54d05fe698640c1f957764519b690e029dbab700))
 </details>
-
-<csr-unknown>
-Add bucket_status table with migrationExtend BucketLogProvider trait with should_sync_content,on_new_bucket_discovered, and list_syncable_bucketsGate pin/blob downloads on bucket status in sync_bucketFilter periodic pings to only active bucketsNew POST /api/v0/bucket/approve and /ignore endpointsAdd status field and filter to bucket list APIAuto-set active status on self-created bucketsUnmount FUSE mounts when ignoring a bucketSpawns ping jobs concurrently (semaphore-capped at 10) instead ofblocking the worker loopIncreases periodic ping interval from 60s to 5 minutesSkips periodic batch if previous is still in flight<csr-unknown/>
 
 ## v0.1.13 (2026-03-19)
 
