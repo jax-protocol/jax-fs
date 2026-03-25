@@ -1,7 +1,7 @@
 # Desktop app (Tauri). Released via GitHub Actions, not cargo publish.
 [package]
 name = "jax-desktop"
-version = "0.1.3"
+version = "0.1.4"
 description = "Jax Desktop Application"
 authors = ["Jax Team"]
 edition = "2021"
