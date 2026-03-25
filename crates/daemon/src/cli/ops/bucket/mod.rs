@@ -1,10 +1,12 @@
 use clap::{Args, Subcommand};
 
 pub mod add;
+pub mod approve;
 pub mod cat;
 pub mod clone;
 pub mod clone_state;
 pub mod create;
+pub mod ignore;
 pub mod list;
 pub mod ls;
 pub mod publish;
@@ -25,6 +27,8 @@ crate::command_enum! {
     (Clone, clone::Clone),
     (Publish, publish::Publish),
     (Unpublish, unpublish::Unpublish),
+    (Approve, approve::Approve),
+    (Ignore, ignore::Ignore),
 }
 
 // Rename the generated Command to BucketCommand for clarity
