@@ -12,6 +12,9 @@ pub struct DirectoryQuery {
     /// If true, use the HTML explorer UI instead of raw JSON
     #[serde(default)]
     pub viewer: Option<bool>,
+    /// Version hash for pinned browsing.
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 /// Path segment for breadcrumb navigation.
@@ -82,16 +85,27 @@ pub async fn handler(
 
             let index_path_str = index_path.to_str().unwrap_or(absolute_path);
 
+            let at_hash = query.at.as_deref();
             let (final_content, final_mime_type) = if index_mime_type == "text/markdown" {
                 let content_str = String::from_utf8_lossy(&file_data);
-                let html = super::markdown_to_html(&content_str);
-                let rewritten =
-                    super::rewrite_relative_urls(&html, index_path_str, meta.id, meta.host);
+                let html = super::rewrite::markdown_to_html(&content_str);
+                let rewritten = super::rewrite::rewrite_relative_urls(
+                    &html,
+                    index_path_str,
+                    meta.id,
+                    meta.host,
+                    at_hash,
+                );
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else if index_mime_type == "text/html" {
                 let content_str = String::from_utf8_lossy(&file_data);
-                let rewritten =
-                    super::rewrite_relative_urls(&content_str, index_path_str, meta.id, meta.host);
+                let rewritten = super::rewrite::rewrite_relative_urls(
+                    &content_str,
+                    index_path_str,
+                    meta.id,
+                    meta.host,
+                    at_hash,
+                );
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             } else {
                 (file_data, "text/plain; charset=utf-8")

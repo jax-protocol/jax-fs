@@ -26,6 +26,9 @@ pub struct FileQuery {
     /// Output quality 1-100 for JPEG/WebP.
     #[serde(default)]
     pub q: Option<u8>,
+    /// Version hash for pinned browsing.
+    #[serde(default)]
+    pub at: Option<String>,
 }
 
 /// Template for file viewer.
@@ -185,27 +188,49 @@ pub async fn handler(
     }
 
     // When viewer is NOT explicitly set, act like a web server:
-    // - Render HTML/Markdown with URL rewriting
+    // - Render HTML/Markdown/CSV with URL rewriting
     // - Serve other files raw inline
     if query.viewer.is_none() {
         let is_html = mime_type == mime::TEXT_HTML;
         let is_markdown = mime_type.essence_str() == "text/markdown";
+        let is_csv = mime_type.essence_str() == "text/csv";
+        let at_hash = query.at.as_deref();
 
-        if is_html || is_markdown {
+        if is_html || is_markdown || is_csv {
             let (final_content, final_mime_type) = if is_markdown {
                 let content_str = String::from_utf8_lossy(&file_data);
-                let html = super::markdown_to_html(&content_str);
-                let rewritten =
-                    super::rewrite_relative_urls(&html, absolute_path, meta.id, meta.host);
+                let html = super::rewrite::markdown_to_html(&content_str);
+                let rewritten = super::rewrite::rewrite_relative_urls(
+                    &html,
+                    absolute_path,
+                    meta.id,
+                    meta.host,
+                    at_hash,
+                );
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
+            } else if is_csv {
+                let content_str = String::from_utf8_lossy(&file_data);
+                let html = super::rewrite::csv_to_html(
+                    &content_str,
+                    absolute_path,
+                    meta.id,
+                    meta.host,
+                    at_hash,
+                );
+                (html.into_bytes(), "text/html; charset=utf-8")
             } else {
                 let content_str = String::from_utf8_lossy(&file_data);
-                let rewritten =
-                    super::rewrite_relative_urls(&content_str, absolute_path, meta.id, meta.host);
+                let rewritten = super::rewrite::rewrite_relative_urls(
+                    &content_str,
+                    absolute_path,
+                    meta.id,
+                    meta.host,
+                    at_hash,
+                );
                 (rewritten.into_bytes(), "text/html; charset=utf-8")
             };
 
-            // HTML/Markdown with rewriting is not cacheable (host-dependent)
+            // Rewritten content is not cacheable (host-dependent)
             return FileResponse {
                 response: (
                     axum::http::StatusCode::OK,
@@ -251,8 +276,37 @@ pub async fn handler(
         };
     }
 
-    // viewer=false: serve raw file inline
+    // viewer=false: serve raw file inline (with CSV URL rewriting)
     if !wants_viewer {
+        let is_csv = mime_type.essence_str() == "text/csv";
+
+        if is_csv {
+            let content_str = String::from_utf8_lossy(&file_data);
+            let rewritten = super::rewrite::rewrite_csv_urls(
+                &content_str,
+                absolute_path,
+                meta.id,
+                meta.host,
+                query.at.as_deref(),
+            );
+            // CSV with rewriting is not cacheable (host-dependent)
+            return FileResponse {
+                response: (
+                    axum::http::StatusCode::OK,
+                    [
+                        (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8"),
+                        (
+                            axum::http::header::CONTENT_DISPOSITION,
+                            &format!("inline; filename=\"{}\"", filename),
+                        ),
+                    ],
+                    rewritten.into_bytes(),
+                )
+                    .into_response(),
+                cacheable: None,
+            };
+        }
+
         let cacheable = Some(CacheableData {
             link: content_link,
             data: file_data.clone(),

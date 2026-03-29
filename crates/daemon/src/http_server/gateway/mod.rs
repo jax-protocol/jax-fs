@@ -1,8 +1,6 @@
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
-use regex::Regex;
 use serde::Deserialize;
-use std::sync::LazyLock;
 use uuid::Uuid;
 
 use common::mount::NodeLink;
@@ -13,6 +11,7 @@ pub mod cache;
 pub mod directory;
 pub mod file;
 pub mod index;
+pub mod rewrite;
 pub mod transform;
 pub mod version;
 
@@ -26,15 +25,6 @@ pub struct BucketMeta<'a> {
     pub link_short: &'a str,
     pub host: &'a str,
 }
-
-// Lazy static regex patterns for URL rewriting
-static HTML_ATTR_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?P<attr>(?:href|src|action|data|srcset))=["'](?P<url>\.{0,2}/[^"']+)["']"#)
-        .unwrap()
-});
-
-static MARKDOWN_LINK_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"\]\((?P<url>\.{0,2}/[^)]+)\)"#).unwrap());
 
 /// Unified query parameters deserialized from the URL.
 /// Individual handler modules define their own typed queries; this captures the
@@ -203,6 +193,7 @@ pub async fn handler(
         let dir_query = directory::DirectoryQuery {
             deep: query.deep,
             viewer: query.viewer,
+            at: query.at.clone(),
         };
         directory::handler(&mount, &path_buf, &absolute_path, &dir_query, &meta).await
     } else {
@@ -212,6 +203,7 @@ pub async fn handler(
             w: query.w,
             h: query.h,
             q: query.q,
+            at: query.at.clone(),
         };
 
         let height = inner.height();
@@ -288,119 +280,4 @@ fn not_found_response(message: &str) -> Response {
         format!("Not found: {}", message),
     )
         .into_response()
-}
-
-/// Rewrites relative URLs in content to absolute gateway URLs.
-fn rewrite_relative_urls(
-    content: &str,
-    current_path: &str,
-    bucket_id: &Uuid,
-    host: &str,
-) -> String {
-    let current_dir = if current_path == "/" {
-        "".to_string()
-    } else {
-        std::path::Path::new(current_path)
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or("")
-            .to_string()
-    };
-
-    let content = HTML_ATTR_REGEX.replace_all(content, |caps: &regex::Captures| {
-        let attr = &caps["attr"];
-        let url = &caps["url"];
-        let absolute_url = resolve_relative_url(url, &current_dir, bucket_id, host);
-        format!(r#"{}="{}""#, attr, absolute_url)
-    });
-
-    let content = MARKDOWN_LINK_REGEX.replace_all(&content, |caps: &regex::Captures| {
-        let url = &caps["url"];
-        let absolute_url = resolve_relative_url(url, &current_dir, bucket_id, host);
-        format!("]({})", absolute_url)
-    });
-
-    content.to_string()
-}
-
-fn resolve_relative_url(
-    relative_url: &str,
-    current_dir: &str,
-    bucket_id: &Uuid,
-    host: &str,
-) -> String {
-    let path = if let Some(stripped) = relative_url.strip_prefix("./") {
-        format!("{}/{}", current_dir, stripped)
-    } else if let Some(stripped) = relative_url.strip_prefix("../") {
-        let parent = std::path::Path::new(current_dir)
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or("");
-        format!("{}/{}", parent, stripped)
-    } else if relative_url.starts_with('/') {
-        relative_url.to_string()
-    } else {
-        format!("{}/{}", current_dir, relative_url)
-    };
-
-    let normalized = std::path::PathBuf::from(&path).components().fold(
-        std::path::PathBuf::new(),
-        |mut acc, component| {
-            match component {
-                std::path::Component::ParentDir => {
-                    acc.pop();
-                }
-                std::path::Component::Normal(part) => {
-                    acc.push(part);
-                }
-                _ => {}
-            }
-            acc
-        },
-    );
-
-    let normalized_str = normalized.to_str().unwrap_or("");
-    format!(
-        "{}/gw/{}/{}",
-        host.trim_end_matches('/'),
-        bucket_id,
-        normalized_str
-    )
-}
-
-/// Converts markdown content to HTML.
-fn markdown_to_html(markdown: &str) -> String {
-    use pulldown_cmark::{html, Options, Parser};
-
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TASKLISTS);
-
-    let parser = Parser::new_ext(markdown, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }}
-        img {{ max-width: 100%; height: auto; }}
-        code {{ background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }}
-        pre {{ background: #f4f4f4; padding: 12px; border-radius: 5px; overflow-x: auto; }}
-        table {{ border-collapse: collapse; width: 100%; }}
-        th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-        th {{ background-color: #f4f4f4; }}
-    </style>
-</head>
-<body>
-{}
-</body>
-</html>"#,
-        html_output
-    )
 }
