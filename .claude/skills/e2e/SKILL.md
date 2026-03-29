@@ -38,6 +38,8 @@ Read `docs/DEBUG.md` for dev environment commands and debugging.
 6. **Wait 60 seconds for sync**: `sleep 60`
 7. Check cross-node sync on app: `./bin/dev api app list`
 8. Check S3 gateway: `curl -s http://localhost:9093/gw/<bucket_id>/docs/readme.md?download=true`
+8b. Check CSV→HTML rendering: `curl -s http://localhost:9093/gw/<bucket_id>/docs/links.csv` — should return an HTML table with `<a href=` links pointing to `/gw/<bucket_id>/docs/...` paths
+8c. Check CSV raw mode: `curl -s "http://localhost:9093/gw/<bucket_id>/docs/links.csv?viewer=false"` — should return rewritten CSV with absolute gateway URLs
 9. Verify blobs in MinIO: `docker exec jax-minio mc ls local/jax-blobs/data/ | head -5`
 10. Check for **real** errors: `./bin/dev logs grep ERROR` - ignore "No addressing information" (transient)
 
@@ -85,6 +87,10 @@ Each is a separate `[[fixture]]` entry, making it easy to add new test cases.
 - App can read files: [yes/no]
 - Gateway (S3) sees bucket: [yes/no]
 - Gateway (S3) can read files: [yes/no]
+
+### Gateway Content Transforms
+- CSV→HTML rendering: [pass/fail] (links.csv returns HTML table with clickable links)
+- CSV raw rewrite: [pass/fail] (links.csv?viewer=false returns CSV with absolute gateway URLs)
 
 ### S3 Storage
 - Blobs in MinIO: [yes/no]

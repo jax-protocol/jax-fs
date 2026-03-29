@@ -66,6 +66,14 @@ This bucket is shared with:
 """
 node = "owner"
 
+# Upload a CSV file with relative links to other bucket files
+[[fixture]]
+type = "file"
+bucket = "test"
+path = "/docs/links.csv"
+content = "name,path\nHello,./hello.txt\nReadme,./readme.md\nRoot hello,../docs/hello.txt\n"
+node = "owner"
+
 # Share with _owner node as owner
 [[fixture]]
 type = "share"
@@ -208,6 +216,7 @@ node = "owner"
 #   /docs/
 #   /docs/hello.txt    (moved from /hello.txt)
 #   /docs/readme.md
+#   /docs/links.csv    (CSV with relative paths to other files)
 #
 # Node visibility:
 #   - owner  (API:5002, GW:8081): Owns bucket, sees latest state
