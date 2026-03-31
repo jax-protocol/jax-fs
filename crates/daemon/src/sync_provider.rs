@@ -202,14 +202,20 @@ where
     L: common::bucket_log::BucketLogProvider + Clone + Send + Sync + 'static,
     L::Error: std::error::Error + Send + Sync + 'static,
 {
-    // Get only actively syncable bucket IDs
-    let bucket_ids = match peer.logs().list_syncable_buckets().await {
-        Ok(ids) => ids,
+    // Get all buckets with ACL status, filter out terminal states
+    let all_buckets = match peer.logs().list_buckets().await {
+        Ok(buckets) => buckets,
         Err(e) => {
             tracing::error!("Failed to list buckets for periodic pings: {}", e);
             return;
         }
     };
+
+    let bucket_ids: Vec<_> = all_buckets
+        .into_iter()
+        .filter(|(_, status)| !status.is_terminal())
+        .map(|(id, _)| id)
+        .collect();
 
     tracing::debug!("Scheduling periodic pings for {} buckets", bucket_ids.len());
 

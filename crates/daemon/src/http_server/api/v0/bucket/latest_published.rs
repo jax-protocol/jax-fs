@@ -42,7 +42,8 @@ pub async fn handler(
         .logs()
         .exists(req.bucket_id)
         .await
-        .map_err(|e| LatestPublishedError::Internal(e.to_string()))?;
+        .map_err(|e| LatestPublishedError::Internal(e.to_string()))?
+        .is_some();
 
     if !exists {
         return Err(LatestPublishedError::BucketNotFound(req.bucket_id));

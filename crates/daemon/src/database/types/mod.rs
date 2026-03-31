@@ -1,4 +1,4 @@
-mod bucket_status;
+mod bucket_acl_event;
 mod db_hash;
 mod dbool;
 mod dcid;
@@ -6,7 +6,7 @@ mod dmime;
 mod duuid;
 mod mount_status;
 
-pub use bucket_status::BucketStatus;
+pub use bucket_acl_event::BucketAclEvent;
 pub use db_hash::DbHash;
 pub use dbool::DBool;
 pub use dcid::DCid;

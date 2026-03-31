@@ -10,10 +10,13 @@ use uuid::Uuid;
 
 use jax_daemon::http_server::api::client::ApiClient;
 use jax_daemon::http_server::api::v0::bucket::{
+    approve::ApproveRequest,
     cat::CatRequest,
     create::CreateRequest,
     delete::DeleteRequest,
     history::HistoryRequest,
+    ignore::IgnoreRequest,
+    leave::LeaveRequest,
     list::ListRequest,
     ls::LsRequest,
     mkdir::MkdirRequest,
@@ -147,6 +150,48 @@ pub async fn delete_bucket(state: State<'_, AppState>, bucket_id: String) -> Res
         .call(DeleteRequest {
             bucket_id: bucket_uuid,
             path: "/".to_string(),
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Approve a pending bucket
+#[tauri::command]
+pub async fn approve_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
+    let mut client = get_client(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+    client
+        .call(ApproveRequest {
+            bucket_id: bucket_uuid,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Ignore a pending bucket
+#[tauri::command]
+pub async fn ignore_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
+    let mut client = get_client(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+    client
+        .call(IgnoreRequest {
+            bucket_id: bucket_uuid,
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Leave a bucket
+#[tauri::command]
+pub async fn leave_bucket(state: State<'_, AppState>, bucket_id: String) -> Result<(), String> {
+    let mut client = get_client(&state).await?;
+    let bucket_uuid = parse_bucket_id(&bucket_id)?;
+    client
+        .call(LeaveRequest {
+            bucket_id: bucket_uuid,
         })
         .await
         .map_err(|e| e.to_string())?;

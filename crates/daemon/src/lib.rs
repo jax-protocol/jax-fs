@@ -23,6 +23,6 @@ pub use state::{AppConfig, AppState, BlobStoreConfig, StateError};
 
 // Re-exports for mount management
 pub use database::models::FuseMount;
-pub use database::types::BucketStatus;
+pub use database::types::BucketAclEvent;
 pub use database::types::MountStatus;
 pub use version::build_info;

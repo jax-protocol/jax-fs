@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
+use super::acl_status::BucketAclStatus;
 use super::provider::{BucketLogError, BucketLogProvider};
 use crate::linked_data::Link;
 
@@ -51,7 +52,10 @@ impl Default for MemoryBucketLogProvider {
 impl BucketLogProvider for MemoryBucketLogProvider {
     type Error = MemoryBucketLogProviderError;
 
-    async fn exists(&self, id: Uuid) -> Result<bool, BucketLogError<Self::Error>> {
+    async fn exists(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<BucketAclStatus>, BucketLogError<Self::Error>> {
         let inner = self.inner.read().map_err(|e| {
             BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
                 "failed to acquire read lock: {}",
@@ -59,7 +63,11 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             )))
         })?;
 
-        Ok(inner.entries.contains_key(&id))
+        if inner.entries.contains_key(&id) {
+            Ok(Some(BucketAclStatus::Active))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn heads(&self, id: Uuid, height: u64) -> Result<Vec<Link>, BucketLogError<Self::Error>> {
@@ -205,7 +213,9 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             .unwrap_or_default())
     }
 
-    async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>> {
+    async fn list_buckets(
+        &self,
+    ) -> Result<Vec<(Uuid, BucketAclStatus)>, BucketLogError<Self::Error>> {
         let inner = self.inner.read().map_err(|e| {
             BucketLogError::Provider(MemoryBucketLogProviderError::Internal(format!(
                 "failed to acquire read lock: {}",
@@ -213,7 +223,11 @@ impl BucketLogProvider for MemoryBucketLogProvider {
             )))
         })?;
 
-        Ok(inner.entries.keys().copied().collect())
+        Ok(inner
+            .entries
+            .keys()
+            .map(|id| (*id, BucketAclStatus::Active))
+            .collect())
     }
 
     async fn latest_published(

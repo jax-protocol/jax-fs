@@ -12,6 +12,7 @@ pub mod export;
 pub mod history;
 pub mod ignore;
 pub mod latest_published;
+pub mod leave;
 pub mod list;
 pub mod ls;
 pub mod mkdir;
@@ -30,6 +31,7 @@ pub mod update;
 pub use approve::ApproveRequest;
 pub use create::CreateRequest;
 pub use ignore::IgnoreRequest;
+pub use leave::LeaveRequest;
 pub use list::ListRequest;
 pub use share::ShareRequest;
 pub use shares::SharesRequest;
@@ -59,5 +61,6 @@ pub fn router(state: ServiceState) -> Router<ServiceState> {
         .route("/stat", post(stat::handler))
         .route("/approve", post(approve::handler))
         .route("/ignore", post(ignore::handler))
+        .route("/leave", post(leave::handler))
         .with_state(state)
 }

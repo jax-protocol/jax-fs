@@ -37,7 +37,7 @@ pub async fn handler(State(state): State<ServiceState>) -> askama_axum::Response
 
     // Only include buckets that have a published version
     let mut buckets = Vec::new();
-    for b in db_buckets {
+    for (b, _status) in db_buckets {
         if let Ok(Some((link, _height))) = state.peer().logs().latest_published(b.id).await {
             let id_str = b.id.to_string();
             let id_short = format!("{}...{}", &id_str[..8], &id_str[id_str.len() - 4..]);

@@ -1,8 +1,11 @@
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::database::{types::DCid, Database};
+use common::bucket_log::BucketAclStatus;
 use common::prelude::Link;
+
+use crate::database::types::{BucketAclEvent, DCid};
+use crate::database::Database;
 
 /// Simple bucket info for UI display (from bucket_log)
 #[derive(Debug, Clone)]
@@ -54,48 +57,65 @@ impl Database {
         }))
     }
 
-    /// List all buckets from the latest bucket_log entries
+    /// List all buckets from the latest bucket_log entries, with effective ACL status.
     pub async fn list_buckets(
         &self,
         prefix: Option<String>,
         limit: Option<u32>,
-    ) -> Result<Vec<BucketInfo>, sqlx::Error> {
+    ) -> Result<Vec<(BucketInfo, BucketAclStatus)>, sqlx::Error> {
         let limit_val = limit.unwrap_or(100).min(1000) as i64;
         let pattern = prefix
             .map(|p| format!("{}%", p))
             .unwrap_or_else(|| "%".to_string());
 
-        let rows = sqlx::query!(
-            r#"
-            SELECT
-                bl.bucket_id as "bucket_id!",
-                bl.name as "name!",
-                bl.current_link as "current_link!: DCid",
-                MIN(bl.created_at) as "created_at!"
-            FROM bucket_log bl
-            INNER JOIN (
-                SELECT bucket_id, MAX(height) as max_height
-                FROM bucket_log
-                GROUP BY bucket_id
-            ) latest ON bl.bucket_id = latest.bucket_id AND bl.height = latest.max_height
-            WHERE bl.name LIKE ?1
-            GROUP BY bl.bucket_id, bl.name, bl.current_link
-            ORDER BY created_at DESC
-            LIMIT ?2
-            "#,
-            pattern,
-            limit_val
+        let rows: Vec<(String, String, DCid, OffsetDateTime, Option<String>)> = sqlx::query_as(
+            "SELECT \
+                 bl.bucket_id, \
+                 bl.name, \
+                 bl.current_link, \
+                 MIN(bl.created_at) as created_at, \
+                 acl.event \
+             FROM bucket_log bl \
+             INNER JOIN ( \
+                 SELECT bucket_id, MAX(height) as max_height \
+                 FROM bucket_log \
+                 GROUP BY bucket_id \
+             ) latest ON bl.bucket_id = latest.bucket_id AND bl.height = latest.max_height \
+             LEFT JOIN ( \
+                 SELECT bucket_id, event \
+                 FROM bucket_acl_log \
+                 WHERE id IN (SELECT MAX(id) FROM bucket_acl_log GROUP BY bucket_id) \
+             ) acl ON bl.bucket_id = acl.bucket_id \
+             WHERE bl.name LIKE ?1 \
+             GROUP BY bl.bucket_id, bl.name, bl.current_link, acl.event \
+             ORDER BY created_at DESC \
+             LIMIT ?2",
         )
+        .bind(&pattern)
+        .bind(limit_val)
         .fetch_all(&**self)
         .await?;
 
         Ok(rows
             .into_iter()
-            .map(|r| BucketInfo {
-                id: Uuid::parse_str(&r.bucket_id).expect("invalid bucket_id UUID in database"),
-                name: r.name,
-                link: r.current_link.into(),
-                created_at: r.created_at,
+            .map(|(bucket_id, name, current_link, created_at, event_str)| {
+                let status = match event_str {
+                    Some(e) => e
+                        .parse::<BucketAclEvent>()
+                        .expect("invalid ACL event in database")
+                        .to_status(),
+                    None => BucketAclStatus::Active,
+                };
+                (
+                    BucketInfo {
+                        id: Uuid::parse_str(&bucket_id)
+                            .expect("invalid bucket_id UUID in database"),
+                        name,
+                        link: current_link.into(),
+                        created_at,
+                    },
+                    status,
+                )
             })
             .collect())
     }
