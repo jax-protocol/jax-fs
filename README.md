@@ -1,4 +1,5 @@
 # JaxBucket
+<!-- test: verify daemon spawn for jax-fs -->
 
 [![Crates.io](https://img.shields.io/crates/v/jax-daemon.svg)](https://crates.io/crates/jax-daemon)
 [![Documentation](https://docs.rs/jax-common/badge.svg)](https://docs.rs/jax-common)
