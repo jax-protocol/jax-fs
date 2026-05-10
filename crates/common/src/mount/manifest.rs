@@ -290,8 +290,8 @@ impl Manifest {
     /// Get all peer public keys from shares.
     pub fn get_peer_ids(&self) -> Vec<PublicKey> {
         self.shares
-            .iter()
-            .filter_map(|(key_hex, _)| PublicKey::from_hex(key_hex).ok())
+            .keys()
+            .filter_map(|key_hex| PublicKey::from_hex(key_hex).ok())
             .collect()
     }
 
