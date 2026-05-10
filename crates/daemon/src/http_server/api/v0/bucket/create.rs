@@ -8,7 +8,7 @@ use uuid::Uuid;
 use common::bucket_log::BucketLogProvider;
 use common::prelude::{Mount, MountError};
 
-use crate::database::types::BucketStatus;
+use crate::database::types::BucketAclEvent;
 use crate::http_server::api::client::ApiRequest;
 use crate::ServiceState;
 
@@ -91,18 +91,14 @@ pub async fn handler(
         id
     );
 
-    // Auto-set status to active for self-created buckets
+    // Auto-approve self-created buckets
     state
         .database()
-        .set_bucket_status(&id, BucketStatus::Active, None)
+        .append_acl_event(&id, BucketAclEvent::Approved, "self")
         .await
         .map_err(|e| {
-            tracing::error!(
-                "CREATE BUCKET: Failed to set bucket status for {}: {}",
-                id,
-                e
-            );
-            CreateError::SaveMount(format!("Failed to set bucket status: {}", e))
+            tracing::error!("CREATE BUCKET: Failed to set bucket ACL for {}: {}", id, e);
+            CreateError::SaveMount(format!("Failed to set bucket ACL: {}", e))
         })?;
 
     tracing::info!(

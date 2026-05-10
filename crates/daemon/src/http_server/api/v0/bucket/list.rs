@@ -47,42 +47,34 @@ pub async fn handler(
     State(state): State<ServiceState>,
     Json(req): Json<ListRequest>,
 ) -> Result<impl IntoResponse, ListError> {
-    // Query buckets from bucket_log
+    // Query buckets from bucket_log with ACL status
     let buckets = state
         .database()
         .list_buckets(req.prefix, req.limit)
         .await
         .map_err(|e| ListError::Database(e.to_string()))?;
 
-    // Parse optional status filter
+    // Parse optional status filter; default to showing pending + active only
     let status_filter = req.status.as_deref();
 
-    // Convert to response format, adding status from bucket_status table
-    let mut bucket_infos = Vec::new();
-    for b in buckets {
-        let status = state
-            .database()
-            .get_effective_bucket_status(&b.id)
-            .await
-            .map_err(|e| ListError::Database(e.to_string()))?;
-
-        let status_str = status.as_str();
-
-        // Apply status filter if provided
-        if let Some(filter) = status_filter {
-            if status_str != filter {
-                continue;
+    let bucket_infos: Vec<BucketInfo> = buckets
+        .into_iter()
+        .filter(|(_, status)| {
+            if let Some(filter) = status_filter {
+                status.as_str() == filter
+            } else {
+                // Default: show only pending + active
+                !status.is_terminal()
             }
-        }
-
-        bucket_infos.push(BucketInfo {
+        })
+        .map(|(b, status)| BucketInfo {
             bucket_id: b.id,
             name: b.name,
             link: b.link,
-            status: status_str.to_string(),
+            status: status.as_str().to_string(),
             created_at: b.created_at,
-        });
-    }
+        })
+        .collect();
 
     Ok((
         http::StatusCode::OK,

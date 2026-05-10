@@ -1,6 +1,6 @@
-import { Component, createSignal, onMount, For, Show } from 'solid-js';
+import { Component, createSignal, onMount, For, Show, createMemo } from 'solid-js';
 import { A } from '@solidjs/router';
-import { listBuckets, createBucket, BucketInfo, isFuseAvailable, isBucketMounted, mountBucket, unmountBucket, MountInfo } from '../lib/api';
+import { listBuckets, createBucket, approveBucket, ignoreBucket, BucketInfo, isFuseAvailable, isBucketMounted, mountBucket, unmountBucket, MountInfo } from '../lib/api';
 
 const Buckets: Component = () => {
   const [buckets, setBuckets] = createSignal<BucketInfo[]>([]);
@@ -11,6 +11,40 @@ const Buckets: Component = () => {
   const [fuseAvailable, setFuseAvailable] = createSignal(false);
   const [mountStatus, setMountStatus] = createSignal<Record<string, MountInfo | null>>({});
   const [mountingBucket, setMountingBucket] = createSignal<string | null>(null);
+  const [actionBucket, setActionBucket] = createSignal<string | null>(null);
+
+  const pendingBuckets = createMemo(() => buckets().filter(b => b.status === 'pending'));
+  const activeBuckets = createMemo(() => buckets().filter(b => b.status !== 'pending'));
+
+  const handleApprove = async (bucketId: string, e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      setActionBucket(bucketId);
+      setError(null);
+      await approveBucket(bucketId);
+      await fetchBuckets();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setActionBucket(null);
+    }
+  };
+
+  const handleIgnore = async (bucketId: string, e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      setActionBucket(bucketId);
+      setError(null);
+      await ignoreBucket(bucketId);
+      await fetchBuckets();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setActionBucket(null);
+    }
+  };
 
   const fetchBuckets = async () => {
     try {
@@ -183,14 +217,95 @@ const Buckets: Component = () => {
         </div>
       </Show>
 
-      {/* Bucket grid */}
-      <Show when={!loading() && buckets().length > 0}>
+      {/* Pending invites */}
+      <Show when={!loading() && pendingBuckets().length > 0}>
+        <div style={{ 'margin-bottom': '1.5rem' }}>
+          <h3 style={{ 'font-size': '0.875rem', 'font-weight': '600', 'margin-bottom': '0.75rem', color: 'var(--muted-fg)' }}>
+            Pending Invites
+          </h3>
+          <div style={{ display: 'flex', 'flex-direction': 'column', gap: '0.5rem' }}>
+            <For each={pendingBuckets()}>
+              {(bucket) => (
+                <div style={{
+                  background: 'hsl(45 93% 47% / 0.06)',
+                  border: '1px solid hsl(45 93% 47% / 0.2)',
+                  'border-radius': 'var(--radius)',
+                  padding: '1rem 1.25rem',
+                  display: 'flex',
+                  'justify-content': 'space-between',
+                  'align-items': 'center',
+                }}>
+                  <div>
+                    <div style={{ display: 'flex', 'align-items': 'center', gap: '0.5rem', 'margin-bottom': '0.25rem' }}>
+                      <span style={{ 'font-size': '0.9375rem', 'font-weight': '600' }}>{bucket.name}</span>
+                      <span style={{
+                        'font-size': '0.6875rem',
+                        'font-weight': '600',
+                        padding: '0.125rem 0.375rem',
+                        'border-radius': '9999px',
+                        background: 'hsl(45 93% 47% / 0.12)',
+                        color: 'hsl(45 93% 47%)',
+                      }}>
+                        Pending
+                      </span>
+                    </div>
+                    <div style={{ 'font-size': '0.75rem', color: 'var(--muted-fg)', 'font-family': 'monospace' }}>
+                      {bucket.bucket_id.substring(0, 8)}...
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      onClick={(e) => handleApprove(bucket.bucket_id, e)}
+                      disabled={actionBucket() === bucket.bucket_id}
+                      style={{
+                        padding: '0.375rem 0.75rem',
+                        'border-radius': '6px',
+                        border: '1px solid var(--accent-green)',
+                        background: 'var(--accent-green)',
+                        color: 'white',
+                        cursor: actionBucket() === bucket.bucket_id ? 'not-allowed' : 'pointer',
+                        'font-size': '0.75rem',
+                        'font-weight': '600',
+                        'font-family': 'inherit',
+                        opacity: actionBucket() === bucket.bucket_id ? '0.5' : '1',
+                      }}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={(e) => handleIgnore(bucket.bucket_id, e)}
+                      disabled={actionBucket() === bucket.bucket_id}
+                      style={{
+                        padding: '0.375rem 0.75rem',
+                        'border-radius': '6px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg)',
+                        color: 'var(--muted-fg)',
+                        cursor: actionBucket() === bucket.bucket_id ? 'not-allowed' : 'pointer',
+                        'font-size': '0.75rem',
+                        'font-weight': '600',
+                        'font-family': 'inherit',
+                        opacity: actionBucket() === bucket.bucket_id ? '0.5' : '1',
+                      }}
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </div>
+      </Show>
+
+      {/* Active bucket grid */}
+      <Show when={!loading() && activeBuckets().length > 0}>
         <div style={{
           display: 'grid',
           'grid-template-columns': 'repeat(auto-fill, minmax(280px, 1fr))',
           gap: '1rem',
         }}>
-          <For each={buckets()}>
+          <For each={activeBuckets()}>
             {(bucket) => (
               <A
                 href={`/buckets/${bucket.bucket_id}?path=/`}
@@ -219,7 +334,7 @@ const Buckets: Component = () => {
                       background: 'hsl(142 76% 36% / 0.12)',
                       color: 'var(--accent-green)',
                     }}>
-                      Owner
+                      Active
                     </span>
                   </div>
 

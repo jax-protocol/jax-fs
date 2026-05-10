@@ -3,6 +3,7 @@ use std::fmt::{Debug, Display};
 use async_trait::async_trait;
 use uuid::Uuid;
 
+use super::BucketAclStatus;
 use crate::linked_data::Link;
 
 // TODO (amiller68): it might be easier to design this to work
@@ -32,7 +33,13 @@ pub enum BucketLogError<T> {
 pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
     type Error: Display + Debug;
 
-    async fn exists(&self, id: Uuid) -> Result<bool, BucketLogError<Self::Error>>;
+    /// Check if a bucket exists and return its effective ACL status.
+    ///
+    /// Returns `None` if the bucket doesn't exist, `Some(status)` if it does.
+    async fn exists(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<BucketAclStatus>, BucketLogError<Self::Error>>;
 
     /// Get the possible heads for a bucket
     ///  based on passed height
@@ -116,12 +123,10 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
         ))
     }
 
-    /// List all bucket IDs that have log entries
-    ///
-    /// # Returns
-    /// * `Ok(Vec<Uuid>)` - The list of bucket IDs
-    /// * `Err(BucketLogError)` - An error occurred while fetching bucket IDs
-    async fn list_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>>;
+    /// List all bucket IDs that have log entries, with their effective ACL status.
+    async fn list_buckets(
+        &self,
+    ) -> Result<Vec<(Uuid, BucketAclStatus)>, BucketLogError<Self::Error>>;
 
     /// Get the latest published version of a bucket
     ///
@@ -137,14 +142,8 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
         id: Uuid,
     ) -> Result<Option<(Link, u64)>, BucketLogError<Self::Error>>;
 
-    /// Whether content (pins/blobs) should be synced for this bucket.
-    /// Implementations override to support approval workflows.
-    async fn should_sync_content(&self, _id: Uuid) -> Result<bool, BucketLogError<Self::Error>> {
-        Ok(true)
-    }
-
     /// Called when a new bucket is first discovered from a remote peer.
-    /// Implementations can use this to set initial status (e.g. pending).
+    /// Implementations can use this to record a `shared` ACL event.
     async fn on_new_bucket_discovered(
         &self,
         _id: Uuid,
@@ -153,8 +152,13 @@ pub trait BucketLogProvider: Send + Sync + std::fmt::Debug + Clone + 'static {
         Ok(())
     }
 
-    /// List only buckets that should be actively synced (for periodic pings).
-    async fn list_syncable_buckets(&self) -> Result<Vec<Uuid>, BucketLogError<Self::Error>> {
-        self.list_buckets().await
+    /// Called when our key is no longer in a bucket's shares list.
+    /// Implementations can use this to record a `kicked` ACL event.
+    async fn on_kicked_from_bucket(
+        &self,
+        _id: Uuid,
+        _kicked_by: Option<String>,
+    ) -> Result<(), BucketLogError<Self::Error>> {
+        Ok(())
     }
 }

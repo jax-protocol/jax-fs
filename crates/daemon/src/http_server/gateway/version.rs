@@ -20,7 +20,7 @@ pub struct VersionResponse {
 pub async fn handler(State(state): State<ServiceState>, Path(bucket_id): Path<Uuid>) -> Response {
     // Check if the bucket exists
     let exists = match state.peer().logs().exists(bucket_id).await {
-        Ok(exists) => exists,
+        Ok(status) => status.is_some(),
         Err(e) => {
             tracing::error!("Failed to check bucket existence: {}", e);
             return super::syncing_response();

@@ -43,7 +43,8 @@ pub async fn handler(
     let exists = logs
         .exists(req.bucket_id)
         .await
-        .map_err(|e| ExportError::BucketLog(e.to_string()))?;
+        .map_err(|e| ExportError::BucketLog(e.to_string()))?
+        .is_some();
 
     if !exists {
         return Err(ExportError::BucketNotFound(req.bucket_id));

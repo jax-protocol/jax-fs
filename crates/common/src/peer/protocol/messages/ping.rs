@@ -141,20 +141,21 @@ impl BidirectionalHandler for Ping {
     where
         L::Error: std::error::Error + Send + Sync + 'static,
     {
-        // Check if this bucket should be synced
-        let should_sync = peer
-            .logs()
-            .should_sync_content(ping.bucket_id)
-            .await
-            .unwrap_or(true);
+        // Skip sync for buckets in terminal ACL state (ignored/left/kicked)
+        let acl_status = peer.logs().exists(ping.bucket_id).await.unwrap_or(None);
+        if let Some(status) = acl_status {
+            if status.is_terminal() {
+                tracing::debug!(
+                    "Skipping sync for bucket {} (terminal state: {})",
+                    ping.bucket_id,
+                    status
+                );
+                return Ok(());
+            }
+        }
 
         match &pong.status {
             PingReplyStatus::Behind(our_link, our_height) => {
-                if !should_sync {
-                    tracing::debug!("Skipping sync for bucket {} (not active)", ping.bucket_id);
-                    return Ok(());
-                }
-
                 // We told them we're behind, so we should dispatch a sync job
                 tracing::info!(
                     "We're behind peer for bucket {} (our height: {}, their height: {}), dispatching sync job",

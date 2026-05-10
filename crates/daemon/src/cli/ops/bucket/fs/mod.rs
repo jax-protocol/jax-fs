@@ -1,34 +1,30 @@
 use clap::{Args, Subcommand};
 
-pub mod approve;
-pub mod ignore;
-pub mod invite;
-pub mod kick;
-pub mod leave;
+pub mod add;
+pub mod cat;
 pub mod ls;
+pub mod stat;
 
 use crate::cli::op::Op;
 
 crate::command_enum! {
-    (Invite, invite::Invite),
-    (Kick, kick::Kick),
     (Ls, ls::Ls),
-    (Approve, approve::Approve),
-    (Ignore, ignore::Ignore),
-    (Leave, leave::Leave),
+    (Cat, cat::Cat),
+    (Add, add::Add),
+    (Stat, stat::Stat),
 }
 
-// Rename the generated Command to SharesCommand for clarity
-pub type SharesCommand = Command;
+// Rename the generated Command to FsCommand for clarity
+pub type FsCommand = Command;
 
 #[derive(Args, Debug, Clone)]
-pub struct Shares {
+pub struct Fs {
     #[command(subcommand)]
-    pub command: SharesCommand,
+    pub command: FsCommand,
 }
 
 #[async_trait::async_trait]
-impl Op for Shares {
+impl Op for Fs {
     type Error = OpError;
     type Output = OpOutput;
 

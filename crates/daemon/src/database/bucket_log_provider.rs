@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use common::bucket_log::BucketLogProvider;
+use common::bucket_log::{BucketAclStatus, BucketLogProvider};
 use common::linked_data::Link;
 
-use crate::database::types::BucketStatus;
+use crate::database::types::BucketAclEvent;
 use crate::database::{types::DCid, Database};
 
 #[async_trait]
@@ -14,21 +14,10 @@ impl BucketLogProvider for Database {
     async fn exists(
         &self,
         id: Uuid,
-    ) -> Result<bool, common::bucket_log::BucketLogError<Self::Error>> {
-        let id_str = id.to_string();
-        let result = sqlx::query!(
-            r#"
-            SELECT COUNT(*) as "count!: i64"
-            FROM bucket_log
-            WHERE bucket_id = $1
-            "#,
-            id_str
-        )
-        .fetch_one(&**self)
-        .await
-        .map_err(common::bucket_log::BucketLogError::Provider)?;
-
-        Ok(result.count > 0)
+    ) -> Result<Option<BucketAclStatus>, common::bucket_log::BucketLogError<Self::Error>> {
+        self.get_effective_acl_status(&id)
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)
     }
 
     async fn heads(
@@ -189,13 +178,18 @@ impl BucketLogProvider for Database {
 
     async fn list_buckets(
         &self,
-    ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
-        let rows = sqlx::query!(
-            r#"
-            SELECT DISTINCT bucket_id
-            FROM bucket_log
-            ORDER BY bucket_id
-            "#
+    ) -> Result<Vec<(Uuid, BucketAclStatus)>, common::bucket_log::BucketLogError<Self::Error>> {
+        // Single query: all buckets from bucket_log with their effective ACL status
+        // LEFT JOIN on latest ACL event per bucket; legacy buckets default to Active
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT DISTINCT bl.bucket_id, acl.event \
+             FROM bucket_log bl \
+             LEFT JOIN ( \
+                 SELECT bucket_id, event \
+                 FROM bucket_acl_log \
+                 WHERE id IN (SELECT MAX(id) FROM bucket_acl_log GROUP BY bucket_id) \
+             ) acl ON bl.bucket_id = acl.bucket_id \
+             ORDER BY bl.bucket_id",
         )
         .fetch_all(&**self)
         .await
@@ -203,7 +197,17 @@ impl BucketLogProvider for Database {
 
         Ok(rows
             .into_iter()
-            .map(|r| Uuid::parse_str(&r.bucket_id).expect("invalid bucket_id UUID in database"))
+            .map(|(id_str, event_str)| {
+                let id = Uuid::parse_str(&id_str).expect("invalid bucket_id UUID in database");
+                let status = match event_str {
+                    Some(e) => e
+                        .parse::<BucketAclEvent>()
+                        .expect("invalid ACL event in database")
+                        .to_status(),
+                    None => BucketAclStatus::Active, // backward compat
+                };
+                (id, status)
+            })
             .collect())
     }
 
@@ -230,45 +234,25 @@ impl BucketLogProvider for Database {
         Ok(result.map(|r| (r.current_link.into(), r.height as u64)))
     }
 
-    async fn should_sync_content(
-        &self,
-        id: Uuid,
-    ) -> Result<bool, common::bucket_log::BucketLogError<Self::Error>> {
-        let status = self
-            .get_effective_bucket_status(&id)
-            .await
-            .map_err(common::bucket_log::BucketLogError::Provider)?;
-        Ok(status == BucketStatus::Active)
-    }
-
     async fn on_new_bucket_discovered(
         &self,
         id: Uuid,
         shared_by: Option<String>,
     ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
-        self.set_bucket_status(&id, BucketStatus::Pending, shared_by.as_deref())
+        let actor = shared_by.unwrap_or_else(|| "unknown".to_string());
+        self.append_acl_event(&id, BucketAclEvent::Shared, &actor)
             .await
             .map_err(common::bucket_log::BucketLogError::Provider)
     }
 
-    async fn list_syncable_buckets(
+    async fn on_kicked_from_bucket(
         &self,
-    ) -> Result<Vec<Uuid>, common::bucket_log::BucketLogError<Self::Error>> {
-        // Single query: buckets that are explicitly active OR have no status row (backward compat)
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT DISTINCT bl.bucket_id \
-             FROM bucket_log bl \
-             LEFT JOIN bucket_status bs ON bl.bucket_id = bs.bucket_id \
-             WHERE bs.status IS NULL OR bs.status = 'active' \
-             ORDER BY bl.bucket_id",
-        )
-        .fetch_all(&**self)
-        .await
-        .map_err(common::bucket_log::BucketLogError::Provider)?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| Uuid::parse_str(&r.0).expect("invalid bucket_id UUID in database"))
-            .collect())
+        id: Uuid,
+        kicked_by: Option<String>,
+    ) -> Result<(), common::bucket_log::BucketLogError<Self::Error>> {
+        let actor = kicked_by.unwrap_or_else(|| "unknown".to_string());
+        self.append_acl_event(&id, BucketAclEvent::Kicked, &actor)
+            .await
+            .map_err(common::bucket_log::BucketLogError::Provider)
     }
 }

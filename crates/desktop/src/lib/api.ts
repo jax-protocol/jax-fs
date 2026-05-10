@@ -9,6 +9,7 @@ export interface BucketInfo {
   name: string;
   link_hash: string;
   height: number;
+  status: string;
   created_at: string;
 }
 
@@ -57,6 +58,18 @@ export async function createBucket(name: string): Promise<BucketInfo> {
 
 export async function deleteBucket(bucketId: string): Promise<void> {
   return invoke('delete_bucket', { bucketId });
+}
+
+export async function approveBucket(bucketId: string): Promise<void> {
+  return invoke('approve_bucket', { bucketId });
+}
+
+export async function ignoreBucket(bucketId: string): Promise<void> {
+  return invoke('ignore_bucket', { bucketId });
+}
+
+export async function leaveBucket(bucketId: string): Promise<void> {
+  return invoke('leave_bucket', { bucketId });
 }
 
 export async function ls(bucketId: string, path: string): Promise<FileEntry[]> {
